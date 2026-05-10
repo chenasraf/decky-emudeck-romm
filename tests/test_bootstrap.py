@@ -5,6 +5,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock
 
 from bootstrap import WiringConfig, bootstrap, wire_services
+from conftest import FakeFirmwareCachePersister
 from fakes.system_time import FakeClock, FakeSleeper, FakeUuidGen
 
 from adapters.persistence import PersistenceAdapter
@@ -158,8 +159,7 @@ class TestWireServices:
             "save_state": MagicMock(),
             "save_settings_to_disk": MagicMock(),
             "save_metadata_cache": MagicMock(),
-            "save_firmware_cache": MagicMock(),
-            "load_firmware_cache": MagicMock(return_value={}),
+            "firmware_cache_persister": FakeFirmwareCachePersister(),
             "save_sync_state_persister": MagicMock(load=MagicMock(return_value=None), save=MagicMock()),
             "log_debug": MagicMock(),
         }

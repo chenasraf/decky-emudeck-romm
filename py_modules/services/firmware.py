@@ -19,9 +19,14 @@ from lib.errors import error_response
 if TYPE_CHECKING:
     import asyncio
     import logging
-    from collections.abc import Callable
 
-    from services.protocols import BiosPathProvider, Clock, RommApiProtocol, StatePersister
+    from services.protocols import (
+        BiosPathProvider,
+        Clock,
+        FirmwareCachePersister,
+        RommApiProtocol,
+        StatePersister,
+    )
 
 _FIRMWARE_CACHE_TTL = 3600  # 1 hour
 
@@ -39,9 +44,8 @@ class FirmwareService:
         plugin_dir: str,
         clock: Clock,
         save_state: StatePersister,
-        save_firmware_cache: Callable[[dict], None] | None = None,
-        load_firmware_cache: Callable[[], dict] | None = None,
-        get_bios_path: BiosPathProvider | None = None,
+        firmware_cache_persister: FirmwareCachePersister,
+        get_bios_path: BiosPathProvider,
     ) -> None:
         self._romm_api = romm_api
         self._state = state
@@ -50,8 +54,7 @@ class FirmwareService:
         self._plugin_dir = plugin_dir
         self._clock = clock
         self._save_state = save_state
-        self._save_firmware_cache = save_firmware_cache
-        self._load_firmware_cache = load_firmware_cache
+        self._firmware_cache_persister = firmware_cache_persister
         self._get_bios_path = get_bios_path
         self._bios_registry: dict = {}
         self._bios_files_index: dict = {}
@@ -141,7 +144,7 @@ class FirmwareService:
         placement (e.g. dc/dc_boot.bin). Falls back to flat in bios root
         for files not in the registry.
         """
-        bios_base = self._get_bios_path() if self._get_bios_path else ""
+        bios_base = self._get_bios_path()
         file_name = firmware.get("file_name", "")
         reg_entry = self._bios_files_index.get(file_name)
         if reg_entry and reg_entry.get("firmware_path"):
@@ -152,10 +155,8 @@ class FirmwareService:
 
     def _restore_firmware_cache(self) -> None:
         """Load firmware cache from disk on init."""
-        if not self._load_firmware_cache:
-            return
         try:
-            data = self._load_firmware_cache()
+            data = self._firmware_cache_persister.load()
             if data and "items" in data and "cached_at" in data:
                 self._firmware_cache = data["items"]
                 self._firmware_cache_epoch = data["cached_at"]
@@ -166,10 +167,12 @@ class FirmwareService:
 
     def _persist_firmware_cache(self) -> None:
         """Write current firmware cache to disk."""
-        if not self._save_firmware_cache or self._firmware_cache is None:
+        if self._firmware_cache is None:
             return
         try:
-            self._save_firmware_cache({"items": self._firmware_cache, "cached_at": self._firmware_cache_epoch})
+            self._firmware_cache_persister.save(
+                {"items": self._firmware_cache, "cached_at": self._firmware_cache_epoch}
+            )
         except Exception as e:
             self._logger.warning(f"Failed to persist firmware cache: {e}")
 
@@ -200,11 +203,10 @@ class FirmwareService:
         self._firmware_cache = None
         self._firmware_cache_at = 0
         self._firmware_cache_epoch = 0
-        if self._save_firmware_cache:
-            try:
-                self._save_firmware_cache({})
-            except Exception as e:
-                self._logger.warning(f"Failed to clear persisted firmware cache: {e}")
+        try:
+            self._firmware_cache_persister.save({})
+        except Exception as e:
+            self._logger.warning(f"Failed to clear persisted firmware cache: {e}")
 
     def check_platform_bios_cached(self, platform_slug, rom_filename=None):
         """Return BIOS status from in-memory cache only — no HTTP.
@@ -279,7 +281,7 @@ class FirmwareService:
 
     def _group_registry_firmware(self):
         """Build platform map from bios registry (offline fallback)."""
-        bios_base = self._get_bios_path() if self._get_bios_path else ""
+        bios_base = self._get_bios_path()
         platforms_map = {}
         for reg_slug, reg_files in self._bios_registry.get("platforms", {}).items():
             if reg_slug not in platforms_map:
@@ -518,7 +520,7 @@ class FirmwareService:
         except Exception:
             if not registry_platform:
                 return {"needs_bios": False}
-            bios_base = self._get_bios_path() if self._get_bios_path else ""
+            bios_base = self._get_bios_path()
             registry_items = [
                 {
                     "file_name": file_name,

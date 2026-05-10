@@ -367,6 +367,22 @@ class SaveSyncStatePersister(Protocol):
     def load(self) -> dict | None: ...
 
 
+class FirmwareCachePersister(Protocol):
+    """Read/write the on-disk firmware list cache.
+
+    Owns the round-trip for the cached firmware listing consumed by
+    ``FirmwareService``. Path, file format, and version handling are
+    adapter concerns — services see only the dict payload they
+    previously wrote. ``load`` returns an empty dict (not ``None``)
+    when no cached payload is available so callers can probe with
+    ``"items" in data`` without a None-check.
+    """
+
+    def save(self, data: dict) -> None: ...
+
+    def load(self) -> dict: ...
+
+
 class EventEmitter(Protocol):
     """Emit named events with a data payload to the frontend."""
 
@@ -438,6 +454,18 @@ class SyncStateRef(Protocol):
     """Return the current sync state value (used by ArtworkService)."""
 
     def __call__(self) -> SyncState: ...
+
+
+class ArtworkRemover(Protocol):
+    """Delete the on-disk artwork files associated with a registry entry.
+
+    Consumed by ``ShortcutRemovalService`` to clean up grid/banner/cover
+    files when a shortcut is removed. The exact set of files and the
+    naming scheme are an artwork-layer concern — this Protocol exposes
+    only the single-entry deletion seam the removal flow needs.
+    """
+
+    def remove_artwork_files(self, grid: str, rom_id: str | int, entry: dict) -> None: ...
 
 
 # ---------------------------------------------------------------------------
