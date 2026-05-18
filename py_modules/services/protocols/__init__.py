@@ -80,6 +80,7 @@ from services.protocols.persistence import (
 )
 from services.protocols.transport import (
     RommAchievementsApi,
+    RommApi,
     RommConnectionApi,
     RommDeviceApi,
     RommFirmwareApi,
@@ -130,6 +131,7 @@ __all__ = [
     "RetryStrategy",
     "RomFileAdapter",
     "RommAchievementsApi",
+    "RommApi",
     "RommConnectionApi",
     "RommDeviceApi",
     "RommFirmwareApi",
