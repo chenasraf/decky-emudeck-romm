@@ -28,7 +28,7 @@ class TestBuildShortcutsData:
         assert result[0]["rom_id"] == 1
         assert result[0]["name"] == "Game A"
         assert result[0]["fs_name"] == "gamea.z64"
-        assert result[0]["launch_options"] == "romm:1"
+        assert result[0]["launch_options"] == "emudeck-romm:1"
         assert result[0]["platform_name"] == "N64"
         assert result[0]["platform_slug"] == "n64"
         assert result[0]["igdb_id"] == 100
@@ -67,7 +67,7 @@ class TestBuildShortcutsData:
     def test_launch_options_format(self):
         import re
 
-        pattern = r"^romm:\d+$"
+        pattern = r"^emudeck-romm:\d+$"
         roms = [{"id": i, "name": f"Game {i}"} for i in [1, 42, 99999]]
         result = build_shortcuts_data(roms, "/plugin")
         for item in result:

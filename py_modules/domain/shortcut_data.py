@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import os
 
+from lib.shortcut_namespace import build_launch_options
+
 
 def build_shortcuts_data(roms: list[dict], plugin_dir: str) -> list[dict]:
     """Transform ROM list into shortcut data dicts for frontend AddShortcut calls."""
@@ -19,7 +21,7 @@ def build_shortcuts_data(roms: list[dict], plugin_dir: str) -> list[dict]:
             "fs_name": rom.get("fs_name", ""),
             "exe": exe,
             "start_dir": start_dir,
-            "launch_options": f"romm:{rom['id']}",
+            "launch_options": build_launch_options(rom["id"]),
             "platform_name": rom.get("platform_name", "Unknown"),
             "platform_slug": rom.get("platform_slug", ""),
             "igdb_id": rom.get("igdb_id"),

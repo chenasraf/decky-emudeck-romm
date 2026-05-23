@@ -1,7 +1,10 @@
 import type { SyncAddItem } from "../types";
 import { logError } from "../api/backend";
 
-const ROMM_MARKER = "romm:";
+// Must stay in sync with EMUDECK_ROMM_SHORTCUT_TAG_PREFIX in
+// py_modules/lib/shortcut_namespace.py
+const ROMM_MARKER = "emudeck-romm:";
+const ROMM_MARKER_RE = /emudeck-romm:(\d+)/;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -27,7 +30,7 @@ export async function getExistingRomMShortcuts(): Promise<Map<number, number>> {
     );
     for (const { appId, launchOptions } of entries) {
       if (launchOptions?.includes(ROMM_MARKER)) {
-        const match = /romm:(\d+)/.exec(launchOptions);
+        const match = ROMM_MARKER_RE.exec(launchOptions);
         if (match) {
           result.set(Number(match[1]), appId);
         }

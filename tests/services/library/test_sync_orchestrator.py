@@ -141,14 +141,15 @@ class TestShortcutDataFormat:
         assert "decky-emudeck-romm" in exe, f"Exe path should contain plugin name, got: {exe}"
 
     def test_launch_options_format(self, plugin):
-        """Launch options must follow the romm:<rom_id> pattern."""
+        """Launch options must follow the emudeck-romm:<rom_id> pattern."""
         import re
 
-        pattern = r"^romm:\d+$"
+        from lib.shortcut_namespace import build_launch_options
 
-        # Test valid formats
+        pattern = r"^emudeck-romm:\d+$"
+
         for rom_id in [1, 42, 4409, 99999]:
-            launch_opt = f"romm:{rom_id}"
+            launch_opt = build_launch_options(rom_id)
             assert re.match(pattern, launch_opt), f"Launch option '{launch_opt}' does not match expected pattern"
 
     def test_start_dir_is_parent_of_exe(self, plugin):
