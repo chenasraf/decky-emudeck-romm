@@ -672,3 +672,24 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+--------------------------------------------------------------------------------
+                                  ATTRIBUTION
+--------------------------------------------------------------------------------
+
+This project (decky-emudeck-romm / "EmuDeck RomM Sync") is a fork of:
+
+    danielcopper/decky-romm-sync
+    https://github.com/danielcopper/decky-romm-sync
+
+distributed under the GNU General Public License v3.0. The fork preserves the
+upstream's GPL-3.0 licensing in compliance with the license terms.
+
+Copyrights:
+
+    Copyright (c) Daniel Copper and contributors
+        (original upstream — see https://github.com/danielcopper/decky-romm-sync
+         for the full contributor list via git history)
+
+    Copyright (c) 2026 Chen Asraf
+        (fork-specific changes in this repository)
