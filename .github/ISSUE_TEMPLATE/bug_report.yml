@@ -64,7 +64,7 @@ body:
     attributes:
       label: Log excerpt
       description: |
-        Optional. Plugin logs live at `~/homebrew/logs/decky-romm-sync/`. Set log level to "debug" in plugin settings for full output. Decky Loader logs are in `~/homebrew/services/PluginLoader/`.
+        Optional. Plugin logs live at `~/homebrew/logs/decky-emudeck-romm/`. Set log level to "debug" in plugin settings for full output. Decky Loader logs are in `~/homebrew/services/PluginLoader/`.
       render: text
     validations:
       required: false

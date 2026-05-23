@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Wiki
-    url: https://github.com/danielcopper/decky-romm-sync/wiki
+  - name: Documentation
+    url: https://chenasraf.github.io/decky-emudeck-romm/
     about: Architecture, file structure, and feature documentation

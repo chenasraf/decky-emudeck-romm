@@ -99,7 +99,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BUILT_ZIP=$(ls /tmp/output/*.zip | head -1)
-          DEST="/tmp/output/decky-romm-sync.zip"
+          DEST="/tmp/output/decky-emudeck-romm.zip"
           if [ "$BUILT_ZIP" != "$DEST" ]; then
             cp "$BUILT_ZIP" "$DEST"
           fi
