@@ -2,7 +2,7 @@
 
 ## Fork context
 
-This is an **EmuDeck-variant fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). The product thesis differs from upstream — see `.scratch/PLAN.md`. Highlights:
+This is an **EmuDeck-variant fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). The product thesis differs from upstream:
 
 - File-manager-first EmuDeck client, not Steam-first RetroDECK client
 - EmuDeck-native paths for ROMs + BIOS + per-emulator saves
@@ -12,17 +12,13 @@ This is an **EmuDeck-variant fork** of [danielcopper/decky-romm-sync](https://gi
 
 The inherited Cosmic Python rules and the rest of this file still apply — only the product framing changes.
 
-## Sprint planning
-
-Sprint board IDs (Nextcloud Deck) and other private references live in `CLAUDE.local.md` (gitignored, auto-loaded by Claude Code). Working sprint plans live in `.scratch/sprint-N.md` (also gitignored).
-
 ## What This Is
 
 A Decky Loader plugin that syncs a self-hosted RomM library to EmuDeck paths (with RetroDECK still supported via a Frontend abstraction). The QAM panel handles RomM browsing, on-demand download, BIOS management, and bidirectional save sync.
 
 ## Documentation
 
-The docs live in `docs/` and are the canonical source for architecture, file structure, and feature documentation. They are built with **Material for MkDocs** and published to GitHub Pages (<https://danielcopper.github.io/decky-romm-sync/>) by `.github/workflows/docs.yml` on every push to `main`. Because the docs sit in this repo, doc updates are reviewed in the same PR as the code change — when a change affects architecture, data flows, or feature behavior, update the relevant page under `docs/` in that same PR. Preview locally with `mise run docs`.
+The docs live in `docs/` and are the canonical source for architecture, file structure, and feature documentation. They are built with **Material for MkDocs** and published to GitHub Pages (<https://chenasraf.github.io/decky-emudeck-romm/>) by `.github/workflows/docs.yml` on every push to `main`. Because the docs sit in this repo, doc updates are reviewed in the same PR as the code change — when a change affects architecture, data flows, or feature behavior, update the relevant page under `docs/` in that same PR. Preview locally with `mise run docs`.
 
 Layout mirrors the three nav tabs: `docs/user-guide/` (end users), `docs/architecture/` (how it works), `docs/contributing/` (dev setup). The old GitHub Wiki is retired — it only redirects to the published site.
 
@@ -33,7 +29,7 @@ Layout mirrors the three nav tabs: `docs/user-guide/` (end users), `docs/archite
 - **RomM API quirks**: Filter param is `platform_ids` (plural). Cover URLs have unencoded spaces (must URL-encode). Paginated: `{"items": [...], "total": N}`.
 - **AddShortcut timing**: Must wait 300-500ms after `AddShortcut()` before setting properties. Use 50ms delay between operations.
 - **Large payloads**: Never send bulk base64 data through `decky.emit()` — WebSocket bridge has size limits. Use per-item callables instead.
-- **User-Agent on outgoing HTTP**: SteamGridDB **and** RomM behind Cloudflare Tunnel reject the default `Python-urllib` UA with 403 (Bot Fight Mode at the edge). Every HTTP-talking adapter (`RommHttpAdapter`, `SteamGridDbAdapter`) takes a `user_agent: str` ctor param. Bootstrap reads `package.json` once via `PluginMetadataReader` and threads `decky-romm-sync/<version>` to both — single source of truth, no hardcoded version strings.
+- **User-Agent on outgoing HTTP**: SteamGridDB **and** RomM behind Cloudflare Tunnel reject the default `Python-urllib` UA with 403 (Bot Fight Mode at the edge). Every HTTP-talking adapter (`RommHttpAdapter`, `SteamGridDbAdapter`) takes a `user_agent: str` ctor param. Bootstrap reads `package.json` once via `PluginMetadataReader` and threads `decky-emudeck-romm/<version>` to both — single source of truth, no hardcoded version strings.
 - **AddShortcut ignores most params**: `SteamClient.Apps.AddShortcut(name, exe, startDir, launchOptions)` ignores startDir and launchOptions (confirmed by MoonDeck plugin). Must use `Set*` calls (`SetShortcutName`, `SetShortcutExe`, `SetShortcutStartDir`, `SetAppLaunchOptions`) after a 500ms delay. Do NOT pass quoted exe paths — the API handles quoting internally.
 - **BIsModOrShortcut bypass DROPPED**: Phase 5.6 removed the bypass counter entirely. Shortcuts return `BIsModOrShortcut() = true` (natural state). We own the entire game detail UI via RomMPlaySection + future RomMGameInfoPanel.
 - **Shortcut property re-sync**: Changing exe, startDir, or launchOptions on existing shortcuts may not take effect reliably. Full delete + recreate (re-sync) is required for changes to launch config.
@@ -43,7 +39,6 @@ Layout mirrors the three nav tabs: `docs/user-guide/` (end users), `docs/archite
 ## Current State
 
 Latest release and shipped features: see `git tag --sort=-v:refname` and GitHub Releases.
-Roadmap and open work: [GitHub Projects board](https://github.com/users/danielcopper/projects/2).
 
 ## Development
 
@@ -245,4 +240,3 @@ Prefer the harness over extracting listener bodies into `src/utils/*.ts` purely 
 - **Use team-swarm agents** for everything beyond trivial single-file edits — including research, exploration, and implementation. Keep main context clean and focused on architecture and coordination by delegating to agents.
 - **Sequential agent discipline.** When running agents sequentially, each agent's prompt MUST include: "When done, report back and wait for shutdown. Do NOT pick up other tasks from the task list." This prevents agents from grabbing the next unblocked task before the lead can shut them down and spawn a dedicated agent.
 - **Preserve context.** Avoid back-and-forth code changes in the main conversation. Get alignment first, then implement cleanly in one pass (via agents).
-- Refer to the [GitHub Projects board](https://github.com/users/danielcopper/projects/2) for the roadmap.

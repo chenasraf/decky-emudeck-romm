@@ -1,8 +1,15 @@
-![decky-romm-sync](assets/banner.png)
+![EmuDeck RomM Sync](assets/banner.png)
 
-# decky-romm-sync
+# EmuDeck RomM Sync
 
-A [Decky Loader](https://decky.xyz/) plugin that syncs your self-hosted [RomM](https://github.com/rommapp/romm) ROM library into Steam as Non-Steam shortcuts. Games launch through [RetroDECK](https://retrodeck.net/).
+> **EmuDeck-focused fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). Today
+> the plugin still ships identical to upstream's behaviour; the EmuDeck-specific changes are landing in phases — see
+> the project [README](https://github.com/chenasraf/decky-emudeck-romm#roadmap) for the roadmap.
+
+A [Decky Loader](https://decky.xyz/) plugin that syncs your self-hosted [RomM](https://github.com/rommapp/romm) ROM
+library into your Steam Deck. Browse and download ROMs from the QAM, manage BIOS files, keep saves in sync, and
+launch through your emulation frontend — [RetroDECK](https://retrodeck.net/) today;
+[EmuDeck](https://www.emudeck.com/) support is the target of the rewrite.
 
 - Browse your entire RomM library directly from Steam's Gaming Mode
 - Download ROMs on-demand with cover art, hero banners, logos, and metadata

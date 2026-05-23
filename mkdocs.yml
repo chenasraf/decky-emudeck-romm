@@ -1,9 +1,9 @@
-site_name: decky-romm-sync
-site_description: Decky Loader plugin to sync your RomM library to Steam as non-steam shortcuts
-site_url: https://danielcopper.github.io/decky-romm-sync/
+site_name: EmuDeck RomM Sync
+site_description: EmuDeck-focused fork of decky-romm-sync — sync your self-hosted RomM library into your Steam Deck
+site_url: https://chenasraf.github.io/decky-emudeck-romm/
 
-repo_url: https://github.com/danielcopper/decky-romm-sync
-repo_name: danielcopper/decky-romm-sync
+repo_url: https://github.com/chenasraf/decky-emudeck-romm
+repo_name: chenasraf/decky-emudeck-romm
 edit_uri: edit/main/docs/
 
 theme:
