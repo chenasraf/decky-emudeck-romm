@@ -1,0 +1,4 @@
+# Dev-only deps for the browser playground bridge. Not installed by CI.
+# Install with: .venv/bin/pip install -r requirements-playground.txt
+fastapi>=0.115
+uvicorn[standard]>=0.32

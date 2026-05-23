@@ -46,3 +46,6 @@ coverage.xml
 # Frontend test coverage
 coverage/
 /.scratch
+
+# Browser playground (dev tooling, not shipped)
+playground/dev-settings/
