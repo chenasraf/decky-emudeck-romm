@@ -10,6 +10,7 @@ import { isRomMAppId } from "../patches/gameDetailPatch";
 import { evaluateLaunch, refreshMigrationState, logInfo, logError } from "../api/backend";
 import { getMigrationState, setMigrationStatus } from "./migrationStore";
 import { setSaveSortMigrationStatus } from "./saveSortMigrationStore";
+import { DISPLAY_NAME } from "../branding";
 
 let gameActionHook: { unregister: () => void } | null = null;
 
@@ -28,7 +29,7 @@ export function registerLaunchInterceptor(): void {
       if (getMigrationState().pending) {
         SteamClient.Apps.CancelGameAction(gameActionId);
         toaster.toast({
-          title: "RomM Sync",
+          title: DISPLAY_NAME,
           body: "Pending RetroDECK migration. Open the plugin QAM to migrate or dismiss.",
         });
         return;

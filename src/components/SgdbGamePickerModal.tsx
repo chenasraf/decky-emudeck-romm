@@ -37,6 +37,7 @@ import {
 } from "../api/backend";
 import { applyArtwork } from "../utils/artwork";
 import { scrollToTop, scrollFocusedToCenter } from "../utils/scrollHelpers";
+import { DISPLAY_NAME } from "../branding";
 
 export interface SgdbGamePickerModalProps {
   romId: number;
@@ -156,7 +157,7 @@ export const SgdbGamePickerModalContent: FC<SgdbGamePickerModalProps> = ({
         },
       );
       if (!result.success) {
-        toaster.toast({ title: "RomM Sync", body: "Failed to apply artwork selection" });
+        toaster.toast({ title: DISPLAY_NAME, body: "Failed to apply artwork selection" });
         return;
       }
       const applied = await applyArtwork(romId, appId).catch((e): number => {
@@ -164,11 +165,11 @@ export const SgdbGamePickerModalContent: FC<SgdbGamePickerModalProps> = ({
         return 0;
       });
       if (applied === -1) {
-        toaster.toast({ title: "RomM Sync", body: "Set a SteamGridDB API key in settings first" });
+        toaster.toast({ title: DISPLAY_NAME, body: "Set a SteamGridDB API key in settings first" });
       } else if (applied > 0) {
-        toaster.toast({ title: "RomM Sync", body: `Artwork refreshed (${applied}/4 images applied)` });
+        toaster.toast({ title: DISPLAY_NAME, body: `Artwork refreshed (${applied}/4 images applied)` });
       } else {
-        toaster.toast({ title: "RomM Sync", body: "No artwork available for this game" });
+        toaster.toast({ title: DISPLAY_NAME, body: "No artwork available for this game" });
       }
       onApplied(applied);
       closeModal?.();

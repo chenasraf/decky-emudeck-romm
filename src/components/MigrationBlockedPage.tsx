@@ -20,6 +20,7 @@ import {
 } from "../utils/migrationStore";
 import { MigrationConflictModal } from "./MigrationConflictModal";
 import { scrollToTop } from "../utils/scrollHelpers";
+import { DISPLAY_NAME } from "../branding";
 
 /**
  * Subscribe to migration state changes.
@@ -58,7 +59,7 @@ export const MigrationBlockedPage: FC<MigrationBlockedPageProps> = ({ migration 
       if (result.success) {
         clearMigration();
         toaster.toast({
-          title: "RomM Sync",
+          title: DISPLAY_NAME,
           body: result.message || "Migration complete.",
         });
       }
@@ -87,7 +88,7 @@ export const MigrationBlockedPage: FC<MigrationBlockedPageProps> = ({ migration 
             if (result.success) {
               clearMigration();
               toaster.toast({
-                title: "RomM Sync",
+                title: DISPLAY_NAME,
                 body: "Migration dismissed.",
               });
             }

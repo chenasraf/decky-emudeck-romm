@@ -13,6 +13,7 @@ import { showSyncConflictModal } from "../SyncConflictModal";
 import { scrollFocusedToCenter } from "../../utils/scrollHelpers";
 import { formatBytes, formatTimestamp } from "../../utils/formatters";
 import { formatAttributionSegment, formatRelativeTime, pickLastSyncer } from "./helpers";
+import { DISPLAY_NAME } from "../../branding";
 
 interface VersionHistoryPanelProps {
   romId: number;
@@ -69,7 +70,7 @@ export const VersionHistoryPanel: FC<VersionHistoryPanelProps> = ({
     try {
       const result: RollbackStatus = await savesRollbackToVersion(romId, slot, version.id);
       if (result.status === "ok") {
-        toaster.toast({ title: "RomM Sync", body: `Save restored from ${formatRelativeTime(version.updated_at)}` });
+        toaster.toast({ title: DISPLAY_NAME, body: `Save restored from ${formatRelativeTime(version.updated_at)}` });
         setVersions(null);
         setExpanded(false);
         onRestored();
@@ -81,15 +82,15 @@ export const VersionHistoryPanel: FC<VersionHistoryPanelProps> = ({
         // identical to the one launched from the play button.
         const first = result.conflicts[0];
         if (first) await showSyncConflictModal(first);
-        toaster.toast({ title: "RomM Sync", body: "Resolve the conflict, then try again" });
+        toaster.toast({ title: DISPLAY_NAME, body: "Resolve the conflict, then try again" });
       } else if (result.status === "preflight_failed") {
         const detail = result.errors[0] ?? "preflight error";
-        toaster.toast({ title: "RomM Sync", body: `Sync failed before restore: ${detail}` });
+        toaster.toast({ title: DISPLAY_NAME, body: `Sync failed before restore: ${detail}` });
       } else if (result.status === "put_failed") {
         // Local download succeeded but the server-side bump didn't — switch
         // is locally complete, just won't propagate to other devices yet.
         toaster.toast({
-          title: "RomM Sync",
+          title: DISPLAY_NAME,
           body: "Restored locally, but the server didn't update. Other devices will see the previous version until you retry.",
         });
         setVersions(null);
@@ -99,16 +100,16 @@ export const VersionHistoryPanel: FC<VersionHistoryPanelProps> = ({
         // Distinct from ``version_deleted``: the chosen version may well
         // still exist on the server; the local ROM install is what's gone
         // (uninstalled between version-list load and restore tap).
-        toaster.toast({ title: "RomM Sync", body: "ROM is no longer installed locally. Reinstall and try again." });
+        toaster.toast({ title: DISPLAY_NAME, body: "ROM is no longer installed locally. Reinstall and try again." });
       } else if (result.status === "version_deleted") {
-        toaster.toast({ title: "RomM Sync", body: "This version no longer exists on the server" });
+        toaster.toast({ title: DISPLAY_NAME, body: "This version no longer exists on the server" });
       } else if (result.status === "server_unreachable") {
         // Distinct from ``not_found``: the version may well still exist;
         // we just couldn't reach the server to confirm. Prompt for retry
         // instead of telling the user the version is gone.
-        toaster.toast({ title: "RomM Sync", body: "Couldn't reach RomM. Check your connection and try again." });
+        toaster.toast({ title: DISPLAY_NAME, body: "Couldn't reach RomM. Check your connection and try again." });
       } else if (result.status === "unsupported") {
-        toaster.toast({ title: "RomM Sync", body: "Version history requires RomM 4.7+" });
+        toaster.toast({ title: DISPLAY_NAME, body: "Version history requires RomM 4.7+" });
       }
     } catch (e) {
       debugLog(`VersionHistoryPanel: restore error for save ${version.id}: ${e}`);

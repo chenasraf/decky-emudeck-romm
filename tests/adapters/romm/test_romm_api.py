@@ -240,7 +240,7 @@ class TestRegisterDevice:
             "name": "steamdeck",
             "created_at": "2026-01-01T00:00:00Z",
         }
-        result = api.register_device("steamdeck", "linux", "decky-romm-sync", "0.13.0")
+        result = api.register_device("steamdeck", "linux", "decky-emudeck-romm", "0.13.0")
         _name, payload = client.post_json.call_args[0]
         assert payload["client_version"] == "0.13.0"
         assert "version" not in payload
@@ -253,13 +253,13 @@ class TestRegisterDevice:
             "name": "steamdeck",
             "created_at": "2026-01-01T00:00:00Z",
         }
-        api.register_device("steamdeck", "linux", "decky-romm-sync", "0.13.0")
+        api.register_device("steamdeck", "linux", "decky-emudeck-romm", "0.13.0")
         client.post_json.assert_called_once_with(
             "/api/devices",
             {
                 "name": "steamdeck",
                 "platform": "linux",
-                "client": "decky-romm-sync",
+                "client": "decky-emudeck-romm",
                 "client_version": "0.13.0",
             },
         )

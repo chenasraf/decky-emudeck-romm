@@ -12,6 +12,7 @@
  */
 
 import type { DownloadFailedEvent, DownloadItem } from "../types";
+import { DISPLAY_NAME } from "../branding";
 
 export interface ToasterLike {
   toast: (msg: { title: string; body: string }) => void;
@@ -46,7 +47,7 @@ export function handleGlobalDownloadFailure(
     error: event.error_message,
   });
   toast.toast({
-    title: "RomM Sync",
+    title: DISPLAY_NAME,
     body: `Download failed: ${event.rom_name} — ${event.error_message}`,
   });
 }

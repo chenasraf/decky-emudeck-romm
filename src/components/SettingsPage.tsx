@@ -39,6 +39,7 @@ import { SaveSyncSection } from "./settings/SaveSyncSection";
 import { RegisteredDevicesSection } from "./settings/RegisteredDevicesSection";
 import { ControllerSection } from "./settings/ControllerSection";
 import { AdvancedSection } from "./settings/AdvancedSection";
+import { DISPLAY_NAME } from "../branding";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -371,7 +372,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
       if (result.success) {
         clearSaveSortMigration();
         toaster.toast({
-          title: "RomM Sync",
+          title: DISPLAY_NAME,
           body: result.message || "Migration complete.",
         });
       }

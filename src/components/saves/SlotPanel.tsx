@@ -14,6 +14,7 @@ import { MUTED_COLOR, computeSyncSummary, displaySlot, slotDeleteFailureToast } 
 import { renderSaveFileRow } from "./SaveFileRow";
 import { InactiveSlotBody } from "./InactiveSlotBody";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
+import { DISPLAY_NAME } from "../../branding";
 
 function renderActiveSlotBody(
   saveStatus: SaveStatus | null,
@@ -138,7 +139,7 @@ export const SlotPanel: FC<SlotPanelProps> = ({
     try {
       const info: SlotDeleteInfo = await getSlotDeleteInfo(romId, slotName);
       if (!info.success) {
-        toaster.toast({ title: "RomM Sync", body: slotDeleteFailureToast(info) });
+        toaster.toast({ title: DISPLAY_NAME, body: slotDeleteFailureToast(info) });
         return;
       }
 
@@ -165,20 +166,20 @@ export const SlotPanel: FC<SlotPanelProps> = ({
           try {
             const result = await deleteSlot(romId, slotName);
             if (result.success) {
-              toaster.toast({ title: "RomM Sync", body: `Slot '${slotName}' deleted` });
+              toaster.toast({ title: DISPLAY_NAME, body: `Slot '${slotName}' deleted` });
               onSlotDeleted();
             } else {
-              toaster.toast({ title: "RomM Sync", body: result.message ?? "Failed to delete slot" });
+              toaster.toast({ title: DISPLAY_NAME, body: result.message ?? "Failed to delete slot" });
             }
           } catch (e) {
             debugLog(`SavesTab: deleteSlot error: ${e}`);
-            toaster.toast({ title: "RomM Sync", body: "An error occurred while deleting the slot" });
+            toaster.toast({ title: DISPLAY_NAME, body: "An error occurred while deleting the slot" });
           }
         },
       }));
     } catch (e) {
       debugLog(`SavesTab: getSlotDeleteInfo error: ${e}`);
-      toaster.toast({ title: "RomM Sync", body: "Failed to load slot info" });
+      toaster.toast({ title: DISPLAY_NAME, body: "Failed to load slot info" });
     } finally {
       setDeleting(false);
     }

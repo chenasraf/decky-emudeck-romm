@@ -169,7 +169,7 @@ class TestDeviceRegistration:
 
     def test_register_device_assigns_id_and_stores(self) -> None:
         api = FakeRommApi()
-        device = api.register_device("deck", "steamos", "decky-romm-sync", "0.1.0")
+        device = api.register_device("deck", "steamos", "decky-emudeck-romm", "0.1.0")
         assert device["id"] == "device-1"
         assert len(api.devices) == 1
         assert api.list_devices()[0]["name"] == "deck"

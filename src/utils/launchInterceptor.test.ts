@@ -5,6 +5,7 @@ import * as gameDetailPatch from "../patches/gameDetailPatch";
 import * as migrationStore from "./migrationStore";
 import { registerLaunchInterceptor, unregisterLaunchInterceptor } from "./launchInterceptor";
 import type { LaunchVerdict } from "../types";
+import { DISPLAY_NAME } from "../branding";
 
 // The interceptor pulls in `../patches/gameDetailPatch` which transitively
 // imports from `@decky/ui` and `react`. The global `@decky/ui` mock in
@@ -201,7 +202,7 @@ describe("launchInterceptor", () => {
 
       expect(SteamClient.Apps.CancelGameAction).toHaveBeenCalledWith(55);
       expect(toaster.toast).toHaveBeenCalledWith({
-        title: "RomM Sync",
+        title: DISPLAY_NAME,
         body: "Pending RetroDECK migration. Open the plugin QAM to migrate or dismiss.",
       });
       expect(backend.evaluateLaunch).not.toHaveBeenCalled();

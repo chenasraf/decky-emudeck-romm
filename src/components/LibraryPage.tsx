@@ -477,7 +477,7 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
               <PanelSectionRow>
                 <Field
                   label={`${unknownFiles.length} file(s) not recognized`}
-                  description="Report at github.com/danielcopper/decky-romm-sync/issues if needed."
+                  description="Report at github.com/chenasraf/decky-emudeck-romm/issues if needed."
                 />
               </PanelSectionRow>
             )}

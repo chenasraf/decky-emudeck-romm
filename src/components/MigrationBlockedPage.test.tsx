@@ -23,6 +23,7 @@ import type { MigrationStatus, MigrationResult } from "../types";
 // Type-only — vi.mock("./MigrationConflictModal") below replaces the runtime
 // impl; the captured-props type stays pinned to the real component.
 import type { MigrationConflictModal } from "./MigrationConflictModal";
+import { DISPLAY_NAME } from "../branding";
 
 vi.mock("../api/backend", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/backend")>();
@@ -156,7 +157,7 @@ describe("MigrationBlockedPage component", () => {
       // clearMigration() was invoked → store is { pending: false }.
       expect(getMigrationState()).toEqual({ pending: false });
       expect(toaster.toast).toHaveBeenCalledWith({
-        title: "RomM Sync",
+        title: DISPLAY_NAME,
         body: "Migrated 3 ROMs",
       });
       // Field now visible with the result message.
@@ -177,7 +178,7 @@ describe("MigrationBlockedPage component", () => {
         await flushAsync();
       });
       expect(toaster.toast).toHaveBeenCalledWith({
-        title: "RomM Sync",
+        title: DISPLAY_NAME,
         body: "Migration complete.",
       });
     });
@@ -239,7 +240,7 @@ describe("MigrationBlockedPage component", () => {
       expect(backend.migrateRetroDeckFiles).toHaveBeenNthCalledWith(2, "overwrite");
       // Second call's success path fired the toast.
       expect(toaster.toast).toHaveBeenCalledWith({
-        title: "RomM Sync",
+        title: DISPLAY_NAME,
         body: "Done after overwrite",
       });
     });
@@ -366,7 +367,7 @@ describe("MigrationBlockedPage component", () => {
       expect(backend.dismissRetrodeckMigration).toHaveBeenCalled();
       expect(getMigrationState()).toEqual({ pending: false });
       expect(toaster.toast).toHaveBeenCalledWith({
-        title: "RomM Sync",
+        title: DISPLAY_NAME,
         body: "Migration dismissed.",
       });
     });

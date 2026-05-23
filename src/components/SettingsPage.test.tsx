@@ -30,6 +30,7 @@ import type { RegisteredDevicesSection } from "./settings/RegisteredDevicesSecti
 import type { ControllerSection } from "./settings/ControllerSection";
 import type { AdvancedSection } from "./settings/AdvancedSection";
 import type { SaveSortMigrationSection } from "./settings/SaveSortMigrationSection";
+import { DISPLAY_NAME } from "../branding";
 
 type ConnectionProps = ComponentProps<typeof ConnectionSection>;
 type SteamGridDBProps = ComponentProps<typeof SteamGridDBSection>;
@@ -1130,7 +1131,7 @@ describe("SettingsPage", () => {
 
       expect(vi.mocked(clearSaveSortMigration)).toHaveBeenCalled();
       expect(vi.mocked(toaster.toast)).toHaveBeenCalledWith(expect.objectContaining({
-        title: "RomM Sync", body: "Moved 2 files",
+        title: DISPLAY_NAME, body: "Moved 2 files",
       }));
     });
 

@@ -28,6 +28,7 @@ import { initSessionManager, destroySessionManager } from "./utils/sessionManage
 import { findOutermostScrollParent, findScrollParent } from "./utils/scrollHelpers";
 import type { SyncProgress, DownloadProgressEvent, DownloadCompleteEvent, DownloadFailedEvent, SaveStatus, SyncPlanData, SyncStaleData, SyncCollectionsData } from "./types";
 import { removeShortcut } from "./utils/steamShortcuts";
+import { DISPLAY_NAME } from "./branding";
 
 type Page = "main" | "settings" | "library" | "data" | "downloads";
 
@@ -187,7 +188,7 @@ export default definePlugin(() => {
       if (status.pending) {
         setSaveSortMigrationStatus(status);
         toaster.toast({
-          title: "RomM Sync",
+          title: DISPLAY_NAME,
           body: "RetroArch save sorting changed. Go to Settings to migrate save files.",
         });
       }
@@ -218,7 +219,7 @@ export default definePlugin(() => {
   }) => {
     logInfo(`sync_complete received: ${data.total_games} games, cancelled=${data.cancelled ?? false}`);
     toaster.toast({
-      title: "RomM Sync",
+      title: DISPLAY_NAME,
       body: data.cancelled
         ? `Sync cancelled. ${data.total_games} games processed.`
         : `Sync complete! ${data.total_games} games added.`,
@@ -379,7 +380,7 @@ export default definePlugin(() => {
         total_bytes: prev?.total_bytes ?? 0,
       });
       toaster.toast({
-        title: "RomM Sync",
+        title: DISPLAY_NAME,
         body: `Downloaded ${data.rom_name}`,
       });
     }
@@ -412,7 +413,7 @@ export default definePlugin(() => {
     [{ old_settings: { sort_by_content: boolean; sort_by_core: boolean }; new_settings: { sort_by_content: boolean; sort_by_core: boolean } }]
   >("save_sort_changed", () => {
     toaster.toast({
-      title: "RomM Sync",
+      title: DISPLAY_NAME,
       body: "RetroArch save sorting changed. Go to Settings to migrate save files.",
     });
   });
@@ -428,7 +429,7 @@ export default definePlugin(() => {
   );
 
   return {
-    name: "RomM Sync",
+    name: DISPLAY_NAME,
     icon: <FaGamepad />,
     content: <QAMPanel />,
     alwaysRender: true,

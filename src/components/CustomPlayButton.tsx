@@ -44,6 +44,7 @@ import { handleButtonDownloadFailure } from "../utils/downloadFailure";
 import { showCoreChangeModal } from "./CoreChangeModal";
 import { showSyncConflictModal } from "./SyncConflictModal";
 import type { DownloadProgressEvent, DownloadCompleteEvent, DownloadFailedEvent, SyncConflict } from "../types";
+import { DISPLAY_NAME } from "../branding";
 
 type PlayButtonState = "loading" | "not_romm" | "download" | "conflict" | "syncing" | "play" | "launching" | "dl_complete" | "uninstalling";
 
@@ -445,7 +446,7 @@ export const CustomPlayButton: FC<CustomPlayButtonProps> = ({ appId }) => { // N
       setState("play");
     } catch (e) {
       debugLog(`CustomPlayButton: resolve conflict failed: ${e}`);
-      toaster.toast({ title: "RomM Sync", body: "Couldn't reach server to resolve conflict" });
+      toaster.toast({ title: DISPLAY_NAME, body: "Couldn't reach server to resolve conflict" });
       setState("conflict");
     }
   };
@@ -456,11 +457,11 @@ export const CustomPlayButton: FC<CustomPlayButtonProps> = ({ appId }) => { // N
     try {
       const result = await startDownload(romId);
       if (!result.success) {
-        toaster.toast({ title: "RomM Sync", body: result.message || "Download failed" });
+        toaster.toast({ title: DISPLAY_NAME, body: result.message || "Download failed" });
         setActionPending(false);
       }
     } catch {
-      toaster.toast({ title: "RomM Sync", body: "Download failed — is RomM server running?" });
+      toaster.toast({ title: DISPLAY_NAME, body: "Download failed — is RomM server running?" });
       setActionPending(false);
     }
   };
@@ -472,16 +473,16 @@ export const CustomPlayButton: FC<CustomPlayButtonProps> = ({ appId }) => { // N
       const result = await removeRom(romId);
       if (result.success) {
         globalThis.dispatchEvent(new CustomEvent("romm_rom_uninstalled", { detail: { rom_id: romId } }));
-        toaster.toast({ title: "RomM Sync", body: `${romName || "ROM"} uninstalled` });
+        toaster.toast({ title: DISPLAY_NAME, body: `${romName || "ROM"} uninstalled` });
         // Dark pulse transition before showing Download button
         setState("uninstalling");
         transitionTimerRef.current = setTimeout(() => setState("download"), 500);
         return;
       } else {
-        toaster.toast({ title: "RomM Sync", body: result.message || "Uninstall failed" });
+        toaster.toast({ title: DISPLAY_NAME, body: result.message || "Uninstall failed" });
       }
     } catch {
-      toaster.toast({ title: "RomM Sync", body: "Uninstall failed" });
+      toaster.toast({ title: DISPLAY_NAME, body: "Uninstall failed" });
     }
   };
 

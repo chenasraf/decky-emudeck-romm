@@ -9,7 +9,7 @@ class TestBuildShortcutsData:
     """Tests for build_shortcuts_data()."""
 
     def test_builds_correct_format(self):
-        plugin_dir = "/home/deck/homebrew/plugins/decky-romm-sync"
+        plugin_dir = "/home/deck/homebrew/plugins/decky-emudeck-romm"
         roms = [
             {
                 "id": 1,
@@ -53,13 +53,13 @@ class TestBuildShortcutsData:
         assert result[0]["sgdb_id"] is None
 
     def test_exe_path_contains_romm_launcher(self):
-        plugin_dir = "/home/deck/homebrew/plugins/decky-romm-sync"
+        plugin_dir = "/home/deck/homebrew/plugins/decky-emudeck-romm"
         roms = [{"id": 1, "name": "Game"}]
         result = build_shortcuts_data(roms, plugin_dir)
         assert result[0]["exe"].endswith("/bin/romm-launcher")
 
     def test_start_dir_is_parent_of_exe(self):
-        plugin_dir = "/home/deck/homebrew/plugins/decky-romm-sync"
+        plugin_dir = "/home/deck/homebrew/plugins/decky-emudeck-romm"
         roms = [{"id": 1, "name": "Game"}]
         result = build_shortcuts_data(roms, plugin_dir)
         assert result[0]["start_dir"] == os.path.dirname(result[0]["exe"])

@@ -6,6 +6,7 @@ import {
   type ToasterLike,
 } from "./downloadFailure";
 import type { DownloadFailedEvent, DownloadItem } from "../types";
+import { DISPLAY_NAME } from "../branding";
 
 function makeEvent(overrides: Partial<DownloadFailedEvent> = {}): DownloadFailedEvent {
   return {
@@ -51,7 +52,7 @@ describe("handleGlobalDownloadFailure", () => {
     });
     expect(toast.toast).toHaveBeenCalledOnce();
     expect(toast.toast).toHaveBeenCalledWith({
-      title: "RomM Sync",
+      title: DISPLAY_NAME,
       body: "Download failed: Super Mario 64 — disk full",
     });
   });
@@ -88,7 +89,7 @@ describe("handleGlobalDownloadFailure", () => {
     handleGlobalDownloadFailure(makeEvent({ error_message: "" }), store, toast);
 
     expect(toast.toast).toHaveBeenCalledWith({
-      title: "RomM Sync",
+      title: DISPLAY_NAME,
       body: "Download failed: Super Mario 64 — ",
     });
     const [[updated]] = (store.updateDownload as unknown as { mock: { calls: [DownloadItem][] } }).mock.calls;

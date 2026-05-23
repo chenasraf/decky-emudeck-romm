@@ -6,6 +6,7 @@ import * as backend from "../../api/backend";
 import { toaster } from "@decky/api";
 import { showSyncConflictModal } from "../SyncConflictModal";
 import type { SaveVersionEntry, RollbackStatus } from "../../types";
+import { DISPLAY_NAME } from "../../branding";
 
 // Override the global DialogButton stub so it forwards `disabled` and we can
 // assert it. The global stub only wires onClick.
@@ -237,7 +238,7 @@ describe("VersionHistoryPanel", () => {
       await flushAsync();
       await flushAsync();
       expect(vi.mocked(toaster.toast)).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "RomM Sync", body: expect.stringContaining("Save restored") }),
+        expect.objectContaining({ title: DISPLAY_NAME, body: expect.stringContaining("Save restored") }),
       );
       expect(onRestored).toHaveBeenCalledTimes(1);
       // Collapsed again — chevron is ▸

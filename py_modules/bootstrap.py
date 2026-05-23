@@ -321,7 +321,7 @@ def bootstrap(
     # version once at boot and thread the string to every HTTP-talking
     # adapter. Bot Fight Mode on Cloudflare blocks the default
     # ``Python-urllib`` UA before requests reach self-hosted RomM (#249).
-    user_agent = f"decky-romm-sync/{plugin_metadata.read_version(plugin_dir)}"
+    user_agent = f"decky-emudeck-romm/{plugin_metadata.read_version(plugin_dir)}"
     http_adapter = RommHttpAdapter(settings, plugin_dir, logger, user_agent)
     romm_api = RommApiAdapter(http_adapter)
     steam_config = SteamConfigAdapter(user_home=user_home, logger=logger)
