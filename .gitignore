@@ -35,6 +35,7 @@ log.txt
 
 # Claude Code
 .claude/
+CLAUDE.local.md
 .venv/
 
 # Git worktrees
@@ -44,3 +45,4 @@ coverage.xml
 
 # Frontend test coverage
 coverage/
+/.scratch

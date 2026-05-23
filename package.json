@@ -1,7 +1,7 @@
 {
-  "name": "decky-romm-sync",
-  "version": "0.18.0",
-  "description": "Decky Loader plugin to sync your RomM library to Steam as non-steam shortcuts",
+  "name": "decky-emudeck-romm",
+  "version": "0.1.0",
+  "description": "Decky Loader plugin — EmuDeck-focused fork of decky-romm-sync: browse and download from your RomM library into EmuDeck paths, manage BIOS, and sync saves bidirectionally",
   "type": "module",
   "scripts": {
     "build": "rollup -c",

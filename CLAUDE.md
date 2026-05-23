@@ -1,8 +1,24 @@
-# decky-romm-sync — Decky Loader Plugin
+# decky-emudeck-romm — Decky Loader Plugin (EmuDeck Variant)
+
+## Fork context
+
+This is an **EmuDeck-variant fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). The product thesis differs from upstream — see `.scratch/PLAN.md`. Highlights:
+
+- File-manager-first EmuDeck client, not Steam-first RetroDECK client
+- EmuDeck-native paths for ROMs + BIOS + per-emulator saves
+- Bidirectional save sync with per-system name normalization
+- On-demand browse + download from RomM (full-library auto-sync becomes opt-in)
+- Steam shortcuts are demoted to opt-in / secondary
+
+The inherited Cosmic Python rules and the rest of this file still apply — only the product framing changes.
+
+## Sprint planning
+
+Sprint board IDs (Nextcloud Deck) and other private references live in `CLAUDE.local.md` (gitignored, auto-loaded by Claude Code). Working sprint plans live in `.scratch/sprint-N.md` (also gitignored).
 
 ## What This Is
 
-A Decky Loader plugin that syncs a self-hosted RomM library into Steam as Non-Steam shortcuts. Games launch via RetroDECK. The QAM panel handles settings, sync, downloads, and BIOS management.
+A Decky Loader plugin that syncs a self-hosted RomM library to EmuDeck paths (with RetroDECK still supported via a Frontend abstraction). The QAM panel handles RomM browsing, on-demand download, BIOS management, and bidirectional save sync.
 
 ## Documentation
 

@@ -138,7 +138,7 @@ class TestShortcutDataFormat:
         exe = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", "romm-launcher")
 
         assert exe.endswith("/bin/romm-launcher"), f"Exe path should end with /bin/romm-launcher, got: {exe}"
-        assert "decky-romm-sync" in exe, f"Exe path should contain plugin name, got: {exe}"
+        assert "decky-emudeck-romm" in exe, f"Exe path should contain plugin name, got: {exe}"
 
     def test_launch_options_format(self, plugin):
         """Launch options must follow the romm:<rom_id> pattern."""
