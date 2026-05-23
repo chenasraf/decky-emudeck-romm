@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b2838"/>
+      <stop offset="100%" stop-color="#311b58"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <text x="512" y="430" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="700" fill="#ffffff" text-anchor="middle">EmuDeck</text>
+  <text x="512" y="530" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="700" fill="#ffffff" text-anchor="middle">RomM Sync</text>
+  <rect x="312" y="580" width="400" height="2" fill="#2a3548"/>
+  <text x="512" y="625" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#7a8a9d" text-anchor="middle">Decky Loader plugin</text>
+  <text x="512" y="665" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#7a8a9d" text-anchor="middle">self-hosted RomM library</text>
+  <text x="512" y="780" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#66c0f4" text-anchor="middle">fork of</text>
+  <text x="512" y="810" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#66c0f4" text-anchor="middle">danielcopper/decky-romm-sync</text>
+</svg>

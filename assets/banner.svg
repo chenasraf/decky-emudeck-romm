@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="375" viewBox="0 0 850 375">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b2838"/>
+      <stop offset="100%" stop-color="#311b58"/>
+    </linearGradient>
+  </defs>
+  <rect width="850" height="375" fill="url(#bg)"/>
+  <text x="425" y="170" font-family="Helvetica, Arial, sans-serif" font-size="62" font-weight="700" fill="#ffffff" text-anchor="middle">EmuDeck RomM Sync</text>
+  <text x="425" y="220" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#7a8a9d" text-anchor="middle">Decky Loader plugin · self-hosted RomM library</text>
+  <text x="425" y="295" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#66c0f4" text-anchor="middle">fork of danielcopper/decky-romm-sync</text>
+  <rect x="120" y="320" width="610" height="2" fill="#2a3548"/>
+</svg>

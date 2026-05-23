@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { DISPLAY_NAME, CLIENT_NAME } from "./branding";
 
@@ -9,8 +10,10 @@ import { DISPLAY_NAME, CLIENT_NAME } from "./branding";
 // `import … from "*.json"` so the rollup bundle never has to follow these
 // imports (it would otherwise try to compile the JSON into dist/).
 
+const here = dirname(fileURLToPath(import.meta.url));
+
 function readJson(relPath: string): Record<string, unknown> {
-  const text = readFileSync(join(__dirname, "..", relPath), "utf-8");
+  const text = readFileSync(join(here, "..", relPath), "utf-8");
   return JSON.parse(text) as Record<string, unknown>;
 }
 
