@@ -1,12 +1,7 @@
 ![decky-romm-sync](assets/banner.png)
 
-[![CI](https://github.com/danielcopper/decky-romm-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/danielcopper/decky-romm-sync/actions/workflows/ci.yml)
-[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=danielcopper_decky-romm-sync&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=danielcopper_decky-romm-sync)
-[![Coverage](https://img.shields.io/sonar/coverage/danielcopper_decky-romm-sync?server=https%3A%2F%2Fsonarcloud.io)](https://sonarcloud.io/summary/new_code?id=danielcopper_decky-romm-sync)
-[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=danielcopper_decky-romm-sync&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=danielcopper_decky-romm-sync)
-[![Reliability](https://sonarcloud.io/api/project_badges/measure?project=danielcopper_decky-romm-sync&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=danielcopper_decky-romm-sync)
-[![Security](https://sonarcloud.io/api/project_badges/measure?project=danielcopper_decky-romm-sync&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=danielcopper_decky-romm-sync)
-[![Downloads](https://img.shields.io/github/downloads/danielcopper/decky-romm-sync/total.svg)](https://github.com/danielcopper/decky-romm-sync/releases)
+[![CI](https://github.com/chenasraf/decky-emudeck-romm/actions/workflows/ci.yml/badge.svg)](https://github.com/chenasraf/decky-emudeck-romm/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/github/downloads/chenasraf/decky-emudeck-romm/total.svg)](https://github.com/chenasraf/decky-emudeck-romm/releases)
 
 # decky-romm-sync
 

@@ -44,7 +44,7 @@ description = "Deploy plugin files to Decky plugin directory"
 depends = ["build"]
 raw = true
 run = """
-DEST="$HOME/homebrew/plugins/decky-romm-sync"
+DEST="$HOME/homebrew/plugins/decky-emudeck-romm"
 if [ -d "$DEST" ] && [ "$(stat -c '%U' "$DEST")" != "$USER" ]; then
   sudo chown -R "$USER:$USER" "$DEST"
 fi
