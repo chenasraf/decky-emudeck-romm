@@ -32,9 +32,9 @@ from fakes.fake_sgdb_artwork_cache import FakeSgdbArtworkCache
 from fakes.system_time import FakeClock, FakeSleeper, FakeUuidGen
 from models.state import ShortcutRegistryEntry, make_default_plugin_state
 
+from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
 from adapters.metadata_cache_store import MetadataCacheStoreAdapter
 from adapters.registry_store import RegistryStoreAdapter
-from adapters.retrodeck_paths import RetroDeckPathsAdapter
 from adapters.romm.http import RommHttpAdapter
 from adapters.romm.romm_api import RommApiAdapter
 from adapters.steam_config import SteamConfigAdapter
@@ -84,10 +84,10 @@ class TestBootstrap:
         result = _bootstrap_for(tmp_path)
         assert isinstance(result.adapters.romm_api, RommApiAdapter)
 
-    def test_returns_retrodeck_paths_adapter(self, tmp_path):
+    def test_returns_retrodeck_frontend_adapter(self, tmp_path):
         """Bootstrap instantiates the RetroDECK paths adapter for the callbacks bundle."""
         result = _bootstrap_for(tmp_path)
-        assert isinstance(result.callbacks.retrodeck_paths, RetroDeckPathsAdapter)
+        assert isinstance(result.callbacks.retrodeck_paths, RetroDeckFrontendAdapter)
 
     def test_returns_core_info_provider_on_adapters(self, tmp_path):
         """``core_info_provider`` (CoreResolver) is bundled with adapters, not callbacks.

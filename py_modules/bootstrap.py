@@ -24,6 +24,7 @@ from adapters.download_file import DownloadFileAdapter
 from adapters.download_queue import DownloadQueueAdapter
 from adapters.es_de_config import CoreResolver, GamelistXmlEditorAdapter
 from adapters.firmware_file import FirmwareFileAdapter
+from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
 from adapters.hostname import HostnameAdapter
 from adapters.metadata_cache_store import MetadataCacheStoreAdapter
 from adapters.migration_file import MigrationFileAdapter
@@ -40,7 +41,6 @@ from adapters.plugin_metadata import PluginMetadataAdapter
 from adapters.registry_store import RegistryStoreAdapter
 from adapters.retroarch_config import RetroArchConfigAdapter
 from adapters.retroarch_core_info import RetroArchCoreInfoAdapter
-from adapters.retrodeck_paths import RetroDeckPathsAdapter
 from adapters.rom_files import RomFileAdapter
 from adapters.romm.http import RommHttpAdapter
 from adapters.romm.romm_api import RommApiAdapter
@@ -287,7 +287,7 @@ def bootstrap(
         ``stores``, ``callbacks``) plus the small set of Plugin-only
         handles ``main.py`` itself binds (``handles.debug_logger``).
     """
-    retrodeck_paths = RetroDeckPathsAdapter(user_home=user_home, logger=logger)
+    retrodeck_paths = RetroDeckFrontendAdapter(user_home=user_home, logger=logger)
     retroarch_config = RetroArchConfigAdapter(user_home=user_home, logger=logger)
     retroarch_core_info = RetroArchCoreInfoAdapter(user_home=user_home, logger=logger)
     core_resolver = CoreResolver(

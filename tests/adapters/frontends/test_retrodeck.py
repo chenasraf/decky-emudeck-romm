@@ -1,4 +1,4 @@
-"""Tests for adapters.retrodeck_paths.RetroDeckPathsAdapter."""
+"""Tests for adapters.frontends.retrodeck.RetroDeckFrontendAdapter."""
 
 from __future__ import annotations
 
@@ -6,19 +6,20 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 from unittest.mock import patch
 
-from adapters.retrodeck_paths import RetroDeckPathsAdapter
+from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
 
 
-def _make_adapter(tmp_path, config: dict | None = None) -> RetroDeckPathsAdapter:
+def _make_adapter(tmp_path, config: dict | None = None) -> RetroDeckFrontendAdapter:
     """Create adapter with optional retrodeck.json config."""
     user_home = str(tmp_path)
     if config is not None:
         config_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retrodeck"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "retrodeck.json").write_text(json.dumps(config))
-    return RetroDeckPathsAdapter(user_home=user_home, logger=logging.getLogger("test"))
+    return RetroDeckFrontendAdapter(user_home=user_home, logger=logging.getLogger("test"))
 
 
 class TestPathResolution:
@@ -66,7 +67,7 @@ class TestPathResolution:
         config_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retrodeck"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "retrodeck.json").write_text("not valid json")
-        adapter = RetroDeckPathsAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
+        adapter = RetroDeckFrontendAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
         assert adapter.bios_path() == os.path.join(str(tmp_path), "retrodeck", "bios")
 
 
@@ -117,7 +118,7 @@ class TestLoadConfigLogging:
         config_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retrodeck"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "retrodeck.json").write_text("not valid json")
-        adapter = RetroDeckPathsAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
+        adapter = RetroDeckFrontendAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
 
         with caplog.at_level(logging.WARNING):
             result = adapter.bios_path()
@@ -140,7 +141,7 @@ class TestLoadConfigLogging:
                 raise PermissionError(f"denied: {path}")
             return real_open(path, *args, **kwargs)
 
-        adapter = RetroDeckPathsAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
+        adapter = RetroDeckFrontendAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
         with patch("builtins.open", side_effect=fake_open), caplog.at_level(logging.WARNING):
             result = adapter.bios_path()
 
@@ -150,10 +151,76 @@ class TestLoadConfigLogging:
     def test_load_config_does_not_log_on_missing_file(self, tmp_path, caplog):
         """A missing ``retrodeck.json`` is the expected fresh-install
         fallback path and must NOT spam the log on every read."""
-        adapter = RetroDeckPathsAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
+        adapter = RetroDeckFrontendAdapter(user_home=str(tmp_path), logger=logging.getLogger("test"))
 
         with caplog.at_level(logging.WARNING):
             result = adapter.bios_path()
 
         assert result == os.path.join(str(tmp_path), "retrodeck", "bios")
         assert not any("Failed to load RetroDECK config" in rec.message for rec in caplog.records)
+
+
+class TestFrontendProtocolMethods:
+    def test_rom_root_joins_system(self, tmp_path):
+        adapter = _make_adapter(tmp_path, {"paths": {"roms_path": "/r"}})
+        assert adapter.rom_root("snes") == Path("/r/snes")
+
+    def test_bios_root_wraps_bios_path(self, tmp_path):
+        adapter = _make_adapter(tmp_path, {"paths": {"bios_path": "/b"}})
+        assert adapter.bios_root() == Path("/b")
+
+    def test_save_root_joins_system(self, tmp_path):
+        adapter = _make_adapter(tmp_path, {"paths": {"saves_path": "/s"}})
+        assert adapter.save_root("psx") == Path("/s/psx")
+
+    def test_retroarch_config_path_uses_flatpak_layout(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        expected = (
+            tmp_path
+            / ".var"
+            / "app"
+            / "net.retrodeck.retrodeck"
+            / "config"
+            / "retroarch"
+            / "retroarch.cfg"
+        )
+        assert adapter.retroarch_config_path() == expected
+
+    def test_retroarch_cores_root_uses_flatpak_layout(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        expected = (
+            tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch" / "cores"
+        )
+        assert adapter.retroarch_cores_root() == expected
+
+    def test_launch_command_uses_file_path(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        cmd = adapter.launch_command({"file_path": "/roms/snes/game.smc"})
+        assert cmd == "flatpak run net.retrodeck.retrodeck /roms/snes/game.smc"
+
+    def test_launch_command_falls_back_to_path_key(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        cmd = adapter.launch_command({"path": "/roms/snes/game.smc"})
+        assert cmd == "flatpak run net.retrodeck.retrodeck /roms/snes/game.smc"
+
+    def test_launch_command_handles_missing_path(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        # No file_path/path key — command still parses but no ROM argv.
+        assert adapter.launch_command({}) == "flatpak run net.retrodeck.retrodeck"
+
+    def test_detect_true_when_flatpak_dir_exists(self, tmp_path):
+        (tmp_path / ".var" / "app" / "net.retrodeck.retrodeck").mkdir(parents=True)
+        adapter = _make_adapter(tmp_path)
+        assert adapter.detect() is True
+
+    def test_detect_false_when_flatpak_dir_missing(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        assert adapter.detect() is False
+
+    def test_version_returns_none(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        assert adapter.version() is None
+
+    def test_compatible_is_true(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        assert adapter.compatible() is True
