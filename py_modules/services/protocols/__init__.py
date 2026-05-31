@@ -19,6 +19,9 @@ The package is organised topically — consumers always deep-import via
   service subtree.
 - ``cross_service``: narrowly-typed multi-method seams one service
   exposes to another so services remain independent.
+- ``frontend``: host emulator-frontend (RetroDECK, EmuDeck, …)
+  abstraction covering path getters, launch shape, detection, and
+  version compatibility.
 """
 
 from __future__ import annotations
@@ -51,6 +54,7 @@ from services.protocols.files import (
     SaveFileStore,
     SgdbArtworkCache,
 )
+from services.protocols.frontend import Frontend
 from services.protocols.infra import (
     DebugLogger,
     DownloadQueueCleanup,
@@ -114,6 +118,7 @@ __all__ = [
     "EventEmitter",
     "FirmwareCachePersister",
     "FirmwareFileStore",
+    "Frontend",
     "GamelistXmlEditor",
     "HostnameReader",
     "LaunchGateInstalledChecker",

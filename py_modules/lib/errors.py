@@ -89,6 +89,36 @@ class RommUnsupportedError(RommApiError):
         )
 
 
+class FrontendUnsupportedError(Exception):
+    """Detected emulator-frontend version sits outside the adapter's tested band.
+
+    Raised by the bootstrap composition root when the chosen
+    ``Frontend`` adapter reports ``compatible() is False``. ``main.py``
+    catches this, surfaces a Decky toast, and populates a
+    ``version_unsupported`` field on the connection-check response so
+    the frontend UI can render a "update your frontend" banner instead
+    of silently running against an untested release.
+    """
+
+    def __init__(
+        self,
+        *,
+        frontend: str,
+        detected: str | None,
+        expected_min: str,
+        expected_max: str,
+    ) -> None:
+        self.frontend = frontend
+        self.detected = detected
+        self.expected_min = expected_min
+        self.expected_max = expected_max
+        detected_str = detected if detected is not None else "unknown"
+        super().__init__(
+            f"{frontend} version {detected_str} is outside the tested range "
+            f"[{expected_min}, {expected_max}]"
+        )
+
+
 def classify_error(exc):
     """Return (error_code, user_friendly_message) for an exception."""
     if isinstance(exc, RommAuthError):
