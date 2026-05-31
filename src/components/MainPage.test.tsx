@@ -497,6 +497,42 @@ describe("MainPage", () => {
       setVerSpy.mockRestore();
     });
 
+    it("testConnection error_code='version_unsupported' parks payload + renders FrontendUnsupportedCard + hides sync CTAs", async () => {
+      const payload = {
+        frontend: "EmuDeck",
+        detected: "esde:5,ra:2,srm:99",
+        expected_min: "esde:5,ra:2,srm:9",
+        expected_max: "esde:5,ra:2,srm:9",
+      };
+      vi.mocked(backend.testConnection).mockResolvedValue({
+        success: false,
+        message: "EmuDeck unsupported",
+        error_code: "version_unsupported",
+        version_unsupported: payload,
+      });
+      const setFrontendSpy = vi.spyOn(connectionState, "setFrontendUnsupported");
+      const { container } = render(<MainPage onNavigate={vi.fn()} />);
+      await flushAsync();
+      expect(setFrontendSpy).toHaveBeenCalledWith(payload);
+      // Card title is rendered, banner branch short-circuits the page.
+      expect(container.textContent).toContain("EmuDeck version not supported");
+      // Sync CTAs are gone — the page renders only the warning card.
+      expect(container.textContent).not.toContain("Sync Library");
+      setFrontendSpy.mockRestore();
+    });
+
+    it("testConnection success clears both versionError AND frontendUnsupported", async () => {
+      vi.mocked(backend.testConnection).mockResolvedValue({ success: true, message: "ok" });
+      const setVerSpy = vi.spyOn(connectionState, "setVersionError");
+      const setFrontendSpy = vi.spyOn(connectionState, "setFrontendUnsupported");
+      render(<MainPage onNavigate={vi.fn()} />);
+      await flushAsync();
+      expect(setVerSpy).toHaveBeenCalledWith(null);
+      expect(setFrontendSpy).toHaveBeenCalledWith(null);
+      setVerSpy.mockRestore();
+      setFrontendSpy.mockRestore();
+    });
+
     it("testConnection success=false (no version_error) sets connected=false and clears versionError", async () => {
       vi.mocked(backend.testConnection).mockResolvedValue({
         success: false,

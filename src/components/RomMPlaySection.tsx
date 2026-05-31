@@ -92,7 +92,7 @@ interface InfoState {
   achievementTotal: number;
 }
 
-import { setRommConnectionState, setVersionError } from "../utils/connectionState";
+import { setRommConnectionState, setVersionError, setFrontendUnsupported } from "../utils/connectionState";
 import { useVersionError } from "./VersionErrorCard";
 import { useMigrationStatus } from "./MigrationBlockedPage";
 import { DISPLAY_NAME } from "../branding";
@@ -323,6 +323,13 @@ export const RomMPlaySection: FC<RomMPlaySectionProps> = ({ appId }) => { // NOS
         if (cancelled) return;
         if (result.error_code === "version_error") {
           setVersionError(result.message);
+          setRommConnectionState("offline");
+          setConnectionState("offline");
+          globalThis.dispatchEvent(new CustomEvent("romm_connection_changed", { detail: { state: "offline" } }));
+          return;
+        }
+        if (result.error_code === "version_unsupported" && result.version_unsupported) {
+          setFrontendUnsupported(result.version_unsupported);
           setRommConnectionState("offline");
           setConnectionState("offline");
           globalThis.dispatchEvent(new CustomEvent("romm_connection_changed", { detail: { state: "offline" } }));

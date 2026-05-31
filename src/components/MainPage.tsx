@@ -35,8 +35,9 @@ import { getDownloadState } from "../utils/downloadStore";
 import { getMigrationState, onMigrationChange, setMigrationStatus } from "../utils/migrationStore";
 import { getSaveSortMigrationState, onSaveSortMigrationChange, setSaveSortMigrationStatus } from "../utils/saveSortMigrationStore";
 import { requestSyncCancel } from "../utils/syncManager";
-import { setVersionError } from "../utils/connectionState";
+import { setVersionError, setFrontendUnsupported } from "../utils/connectionState";
 import { VersionErrorCard, useVersionError } from "./VersionErrorCard";
+import { FrontendUnsupportedCard, useFrontendUnsupported } from "./FrontendUnsupportedCard";
 import { MigrationBlockedPage } from "./MigrationBlockedPage";
 import type { SyncProgress, SyncStage, SyncStats, SyncPreview, SyncPreviewSummary, DownloadItem, MigrationStatus } from "../types";
 
@@ -146,6 +147,7 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
   const [stats, setStats] = useState<SyncStats | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const versionError = useVersionError();
+  const frontendUnsupported = useFrontendUnsupported();
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [status, setStatus] = useState("");
@@ -176,6 +178,11 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
     testConnection().then((r) => {
       setConnected(r.success);
       setVersionError(r.error_code === "version_error" ? r.message : null);
+      setFrontendUnsupported(
+        r.error_code === "version_unsupported" && r.version_unsupported
+          ? r.version_unsupported
+          : null,
+      );
     });
     getSettings().then((s) => {
       if (s.retroarch_input_check) {
@@ -336,6 +343,10 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
   const activeDownloads = downloads.filter(d => d.status === "queued" || d.status === "downloading");
   const completedDownloads = downloads.filter(d => d.status === "completed" || d.status === "failed" || d.status === "cancelled");
   const hasDownloads = activeDownloads.length > 0 || completedDownloads.length > 0;
+
+  if (frontendUnsupported) {
+    return <FrontendUnsupportedCard payload={frontendUnsupported} compact />;
+  }
 
   if (versionError) {
     return <VersionErrorCard message={versionError} compact />;

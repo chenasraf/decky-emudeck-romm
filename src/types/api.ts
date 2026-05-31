@@ -15,12 +15,27 @@ export type RommErrorCode =
   | "not_found_error"
   | "unsupported_error"
   | "version_error"
+  | "version_unsupported"
   | "config_error"
   | "disk_error"
   | "api_error"
   | "stale_conflict"
   | "stale_preview"
   | "unknown_error";
+
+/**
+ * Additive payload carried alongside ``error_code: "version_unsupported"``
+ * when the backend's chosen emulator-frontend (RetroDECK / EmuDeck) is
+ * outside the plugin's tested version band. Populated by the
+ * connection-check callable when bootstrap raised
+ * ``FrontendUnsupportedError``.
+ */
+export interface FrontendUnsupportedPayload {
+  frontend: string;
+  detected: string | null;
+  expected_min: string;
+  expected_max: string;
+}
 
 export interface InstalledRom {
   rom_id: number;

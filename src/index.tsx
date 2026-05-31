@@ -23,7 +23,7 @@ import { getAllMetadataCache, getAppIdRomIdMap, ensureDeviceRegistered, getSaveS
 import { createOrUpdateCollections, createOrUpdateRomMCollections, clearPlatformCollection, getHostname } from "./utils/collections";
 import { setMigrationStatus } from "./utils/migrationStore";
 import { setSaveSortMigrationStatus } from "./utils/saveSortMigrationStore";
-import { setVersionError } from "./utils/connectionState";
+import { setVersionError, setFrontendUnsupported } from "./utils/connectionState";
 import { initSessionManager, destroySessionManager } from "./utils/sessionManager";
 import { findOutermostScrollParent, findScrollParent } from "./utils/scrollHelpers";
 import type { SyncProgress, DownloadProgressEvent, DownloadCompleteEvent, DownloadFailedEvent, SaveStatus, SyncPlanData, SyncStaleData, SyncCollectionsData } from "./types";
@@ -160,8 +160,11 @@ export default definePlugin(() => {
       const result = await withTimeout(testConnection(), CALLABLE_TIMEOUT);
       if (result.error_code === "version_error") {
         setVersionError(result.message);
+      } else if (result.error_code === "version_unsupported" && result.version_unsupported) {
+        setFrontendUnsupported(result.version_unsupported);
       } else if (result.success) {
         setVersionError(null);
+        setFrontendUnsupported(null);
       }
     } catch {
       // Silent — other components will retry; don't block startup on connection failure
