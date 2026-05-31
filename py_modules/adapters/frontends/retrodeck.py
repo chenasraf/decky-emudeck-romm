@@ -6,13 +6,6 @@ Path getters resolve via ``retrodeck.json`` — RetroDECK's user-facing
 configurator output — cached for 30 seconds: long enough to amortize
 repeated reads during a sync run, short enough to pick up edits made
 via the RetroDECK configurator within a single plugin session.
-
-The class also keeps the legacy ``saves_path`` / ``roms_path`` /
-``bios_path`` / ``retrodeck_home`` ``str``-returning methods that
-satisfy the older :class:`services.protocols.paths.RetroDeckPaths`
-Protocol consumed by services today; B13 swaps every service onto the
-``Frontend`` Protocol's ``Path``-typed getters and the legacy methods
-become deletable.
 """
 
 from __future__ import annotations
@@ -81,30 +74,25 @@ class RetroDeckFrontendAdapter:
                 return path
         return os.path.join(self._user_home, "retrodeck", fallback_subdir)
 
-    # ---- legacy str getters (RetroDeckPaths Protocol) -----------------
-
-    def bios_path(self) -> str:
-        return self._get_path("bios_path", "bios")
-
-    def roms_path(self) -> str:
-        return self._get_path("roms_path", "roms")
-
-    def saves_path(self) -> str:
-        return self._get_path("saves_path", "saves")
-
-    def retrodeck_home(self) -> str:
-        return self._get_path("rd_home_path", "")
-
     # ---- Frontend Protocol --------------------------------------------
 
+    def roms(self) -> Path:
+        return Path(self._get_path("roms_path", "roms"))
+
+    def saves(self) -> Path:
+        return Path(self._get_path("saves_path", "saves"))
+
+    def home(self) -> Path:
+        return Path(self._get_path("rd_home_path", ""))
+
     def rom_root(self, system: str) -> Path:
-        return Path(self.roms_path()) / system
+        return self.roms() / system
 
     def bios_root(self) -> Path:
-        return Path(self.bios_path())
+        return Path(self._get_path("bios_path", "bios"))
 
     def save_root(self, system: str) -> Path:
-        return Path(self.saves_path()) / system
+        return self.saves() / system
 
     def retroarch_config_path(self) -> Path | None:
         return Path(self._flatpak_root()) / "config" / "retroarch" / "retroarch.cfg"

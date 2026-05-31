@@ -4,11 +4,12 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from fakes.fake_download_queue_cleanup import FakeDownloadQueueCleanup
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_rom_file_store import FakeRomFileStore
 from models.state import make_default_plugin_state
 
@@ -59,7 +60,7 @@ def service(state, save_sync_state, logger, queue_cleanup, rom_files):
             state_persister=MagicMock(),
             save_sync_state_writer=MagicMock(),
             rom_file_store=rom_files,
-            retrodeck_paths=FakeRetroDeckPaths(roms=_ROMS_BASE),
+            frontend=FakeFrontend(rom_root=Path(_ROMS_BASE), bios_root=Path("/tmp/b"), save_root=Path("/tmp/s")),
             download_queue_cleanup=queue_cleanup,
         ),
     )
@@ -486,7 +487,7 @@ class TestDownloadQueueCleanup:
                 state_persister=MagicMock(),
                 save_sync_state_writer=MagicMock(),
                 rom_file_store=rom_files,
-                retrodeck_paths=FakeRetroDeckPaths(roms=_ROMS_BASE),
+                frontend=FakeFrontend(rom_root=Path(_ROMS_BASE), bios_root=Path("/tmp/b"), save_root=Path("/tmp/s")),
                 download_queue_cleanup=None,
             ),
         )

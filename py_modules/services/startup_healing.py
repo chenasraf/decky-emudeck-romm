@@ -21,7 +21,7 @@ from domain.installed_roms import is_pending_migration_path
 if TYPE_CHECKING:
     import logging
 
-    from services.protocols import PathExistsReader, RetroDeckPaths, ShortcutRegistryStore, StatePersister
+    from services.protocols import Frontend, PathExistsReader, ShortcutRegistryStore, StatePersister
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class StartupHealingServiceConfig:
     logger: logging.Logger
     state_persister: StatePersister
     registry_store: ShortcutRegistryStore
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     path_probe: PathExistsReader
 
 
@@ -50,7 +50,7 @@ class StartupHealingService:
         self._logger = config.logger
         self._state_persister = config.state_persister
         self._registry_store = config.registry_store
-        self._retrodeck_paths = config.retrodeck_paths
+        self._frontend = config.frontend
         self._path_probe = config.path_probe
 
     def prune_stale_installed_roms(self) -> None:
@@ -64,8 +64,8 @@ class StartupHealingService:
         but the user hasn't migrated yet, so the entries must survive
         until they do.
         """
-        retrodeck_home = self._retrodeck_paths.retrodeck_home()
-        if not retrodeck_home or not self._path_probe.exists(retrodeck_home):
+        retrodeck_home = str(self._frontend.home())
+        if not retrodeck_home or retrodeck_home == "." or not self._path_probe.exists(retrodeck_home):
             self._logger.info(
                 f"Skipping installed_roms prune: retrodeck home unavailable ({retrodeck_home or 'unset'})"
             )

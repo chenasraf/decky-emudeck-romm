@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,9 +10,9 @@ import pytest
 from conftest import _make_retry, _make_testable_plugin
 from fakes.fake_core_info_provider import FakeCoreInfoProvider
 from fakes.fake_firmware_cache_persister import FakeFirmwareCachePersister
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_hostname_reader import FakeHostnameReader
 from fakes.fake_plugin_metadata_reader import FakePluginMetadataReader
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from fakes.fake_save_api import FakeSaveApi
 from fakes.library_peers import FakeArtworkManager, FakeMetadataExtractor
 from fakes.system_time import FakeClock, FakeSleeper, FakeUuidGen
@@ -96,9 +97,10 @@ def plugin(tmp_path):
                 )
             ),
             save_file_store=SaveFileAdapter(),
-            retrodeck_paths=FakeRetroDeckPaths(
-                saves=saves_path,
-                roms=str(tmp_path / "retrodeck" / "roms"),
+            frontend=FakeFrontend(
+                rom_root=tmp_path / "retrodeck" / "roms",
+                bios_root=tmp_path / "retrodeck" / "bios",
+                save_root=Path(saves_path),
             ),
             get_active_core=lambda system_name, rom_filename=None: (None, None),
             hostname_provider=FakeHostnameReader(),
@@ -148,7 +150,7 @@ def plugin(tmp_path):
             state_persister=MagicMock(),
             firmware_cache_persister=FakeFirmwareCachePersister(),
             firmware_file_store=FirmwareFileAdapter(),
-            retrodeck_paths=FakeRetroDeckPaths(),
+            frontend=FakeFrontend(rom_root=Path("/tmp/r"), bios_root=Path("/tmp/b"), save_root=Path("/tmp/s")),
             core_info=FakeCoreInfoProvider(),
         ),
     )
@@ -494,7 +496,11 @@ class TestGetCachedGameDetailBiosFromCache:
 
         plugin._firmware_service._core_info.active_core = ("mgba_libretro.so", "mGBA")
         plugin._firmware_service._core_info.available_cores = []
-        with patch.object(plugin._firmware_service, "_retrodeck_paths", FakeRetroDeckPaths(bios=str(tmp_path))):
+        with patch.object(
+            plugin._firmware_service,
+            "_frontend",
+            FakeFrontend(rom_root=Path("/tmp/r"), bios_root=Path(str(tmp_path)), save_root=Path("/tmp/s")),
+        ):
             result = game_detail_service.get_cached_game_detail(50000)
 
         assert result["found"] is True
@@ -714,7 +720,9 @@ class TestComputedFields:
         plugin._firmware_service._core_info.active_core = ("mgba_libretro.so", "mGBA")
         plugin._firmware_service._core_info.available_cores = []
         with patch.object(
-            plugin._firmware_service, "_retrodeck_paths", FakeRetroDeckPaths(bios=str(tmp_path / "nonexistent"))
+            plugin._firmware_service,
+            "_frontend",
+            FakeFrontend(rom_root=Path("/tmp/r"), bios_root=tmp_path / "nonexistent", save_root=Path("/tmp/s")),
         ):
             result = game_detail_service.get_cached_game_detail(99999)
 
@@ -767,7 +775,11 @@ class TestComputedFields:
 
         plugin._firmware_service._core_info.active_core = ("mgba_libretro.so", "mGBA")
         plugin._firmware_service._core_info.available_cores = []
-        with patch.object(plugin._firmware_service, "_retrodeck_paths", FakeRetroDeckPaths(bios=str(bios_dir))):
+        with patch.object(
+            plugin._firmware_service,
+            "_frontend",
+            FakeFrontend(rom_root=Path("/tmp/r"), bios_root=Path(str(bios_dir)), save_root=Path("/tmp/s")),
+        ):
             result = game_detail_service.get_cached_game_detail(99999)
 
         assert result["bios_level"] == "ok"

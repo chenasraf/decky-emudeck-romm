@@ -39,8 +39,33 @@ class Frontend(Protocol):
     based on the user setting + autodetect + fallback chain.
     """
 
+    def roms(self) -> Path:
+        """Base directory holding every per-system ROM subfolder."""
+        ...
+
+    def saves(self) -> Path:
+        """Base directory holding every per-system save subfolder."""
+        ...
+
+    def home(self) -> Path:
+        """Root the frontend stores its own files under.
+
+        RetroDECK: the Flatpak ``rd_home_path`` (where the bundled
+        ES-DE config lives). EmuDeck: the ``emulationPath`` parsed
+        from ``settings.sh``. Used by services that detect
+        path-change migrations (the user switching internal SSD ↔
+        SD card) and by ES-DE override writes — Phase 6 will
+        firm up ES-DE-specific resolution; today the call sites
+        treat ``home()`` as an opaque sentinel for change detection.
+        """
+        ...
+
     def rom_root(self, system: str) -> Path:
-        """Directory the frontend expects ROMs for ``system`` to live in."""
+        """Directory the frontend expects ROMs for ``system`` to live in.
+
+        Convenience wrapper over :meth:`roms` — equivalent to
+        ``self.roms() / system``.
+        """
         ...
 
     def bios_root(self) -> Path:

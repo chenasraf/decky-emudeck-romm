@@ -21,11 +21,11 @@ from fakes.fake_download_file_store import FakeDownloadFileStore
 from fakes.fake_download_queue_store import FakeDownloadQueueStore
 from fakes.fake_firmware_cache_persister import FakeFirmwareCachePersister
 from fakes.fake_firmware_file_store import FakeFirmwareFileStore
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_hostname_reader import FakeHostnameReader
 from fakes.fake_migration_file_store import FakeMigrationFileStore
 from fakes.fake_path_exists_reader import FakePathExistsReader
 from fakes.fake_plugin_metadata_reader import FakePluginMetadataReader
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from fakes.fake_rom_file_store import FakeRomFileStore
 from fakes.fake_save_file_store import FakeSaveFileStore
 from fakes.fake_sgdb_artwork_cache import FakeSgdbArtworkCache
@@ -87,7 +87,7 @@ class TestBootstrap:
     def test_returns_retrodeck_frontend_adapter(self, tmp_path):
         """Bootstrap instantiates the RetroDECK paths adapter for the callbacks bundle."""
         result = _bootstrap_for(tmp_path)
-        assert isinstance(result.callbacks.retrodeck_paths, RetroDeckFrontendAdapter)
+        assert isinstance(result.callbacks.frontend, RetroDeckFrontendAdapter)
 
     def test_returns_core_info_provider_on_adapters(self, tmp_path):
         """``core_info_provider`` (CoreResolver) is bundled with adapters, not callbacks.
@@ -219,11 +219,11 @@ class TestWireServices:
             "sleeper": FakeSleeper(),
             "hostname_provider": FakeHostnameReader(),
             "min_required_version": (4, 8, 1),
-            "retrodeck_paths": FakeRetroDeckPaths(
-                saves=str(tmp_path / "saves"),
-                roms=str(tmp_path / "retrodeck" / "roms"),
-                bios=str(tmp_path / "retrodeck" / "bios"),
-                home=str(tmp_path / "retrodeck"),
+            "frontend": FakeFrontend(
+                rom_root=tmp_path / "retrodeck" / "roms",
+                bios_root=tmp_path / "retrodeck" / "bios",
+                save_root=tmp_path / "saves",
+                home=tmp_path / "retrodeck",
             ),
             "get_retroarch_save_sorting": MagicMock(return_value=(True, False)),
             "get_core_name": MagicMock(return_value="Snes9x"),
@@ -278,7 +278,7 @@ class TestWireServices:
                 hostname_provider=deps["hostname_provider"],
             ),
             callbacks=CallbackBundle(
-                retrodeck_paths=deps["retrodeck_paths"],
+                frontend=deps["frontend"],
                 get_retroarch_save_sorting=deps["get_retroarch_save_sorting"],
                 get_core_name=deps["get_core_name"],
                 state_persister=deps["state_persister"],

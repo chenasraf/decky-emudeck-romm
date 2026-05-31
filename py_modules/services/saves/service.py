@@ -63,7 +63,7 @@ class SaveService:
             config=RomInfoServiceConfig(
                 state=config.state,
                 save_file_store=config.save_file_store,
-                retrodeck_paths=config.retrodeck_paths,
+                frontend=config.frontend,
                 get_active_core=config.get_active_core,
                 get_core_name=config.get_core_name,
                 logger=config.logger,

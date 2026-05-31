@@ -88,6 +88,9 @@ class TestProtocolConformance:
 
     def test_implements_every_frontend_method(self, fake_frontend):
         for name in (
+            "roms",
+            "saves",
+            "home",
             "rom_root",
             "bios_root",
             "save_root",

@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from services.protocols import (
         BiosChecker,
         CoreInfoProvider,
+        Frontend,
         GamelistXmlEditor,
-        RetroDeckPaths,
     )
 
 
@@ -42,7 +42,7 @@ class CoreServiceConfig:
     logger: logging.Logger
     core_info: CoreInfoProvider
     gamelist_editor: GamelistXmlEditor
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     bios_checker: BiosChecker
 
 
@@ -54,7 +54,7 @@ class CoreService:
         self._logger = config.logger
         self._core_info = config.core_info
         self._gamelist_editor = config.gamelist_editor
-        self._retrodeck_paths = config.retrodeck_paths
+        self._frontend = config.frontend
         self._bios_checker = config.bios_checker
 
     async def get_available_cores(self, platform_slug: str) -> dict:
@@ -86,8 +86,8 @@ class CoreService:
         RetroDECK home, XML write error, BIOS recheck error) returns
         ``{"success": False, "message": ...}``.
         """
-        retrodeck_home = self._retrodeck_paths.retrodeck_home()
-        if not retrodeck_home:
+        retrodeck_home = str(self._frontend.home())
+        if not retrodeck_home or retrodeck_home == ".":
             return {"success": False, "message": "RetroDECK home not found"}
         try:
             await self._loop.run_in_executor(
@@ -122,8 +122,8 @@ class CoreService:
         so the response reflects the per-game core selection. Returns
         the same success/error shape as ``set_system_core``.
         """
-        retrodeck_home = self._retrodeck_paths.retrodeck_home()
-        if not retrodeck_home:
+        retrodeck_home = str(self._frontend.home())
+        if not retrodeck_home or retrodeck_home == ".":
             return {"success": False, "message": "RetroDECK home not found"}
         try:
             await self._loop.run_in_executor(

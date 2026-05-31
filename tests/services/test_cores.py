@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 import pytest
 from fakes.fake_core_info_provider import FakeCoreInfoProvider
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
+from fakes.fake_frontend import FakeFrontend
 
 from services.cores import CoreService, CoreServiceConfig
 
@@ -86,19 +87,24 @@ def bios_checker() -> FakeBiosChecker:
 
 
 @pytest.fixture
-def retrodeck_paths() -> FakeRetroDeckPaths:
-    return FakeRetroDeckPaths(home="/home/deck/retrodeck")
+def frontend() -> FakeFrontend:
+    return FakeFrontend(
+        rom_root=Path("/home/deck/retrodeck/roms"),
+        bios_root=Path("/home/deck/retrodeck/bios"),
+        save_root=Path("/home/deck/retrodeck/saves"),
+        home=Path("/home/deck/retrodeck"),
+    )
 
 
 @pytest.fixture
-def service(event_loop, logger, core_info, gamelist_editor, bios_checker, retrodeck_paths) -> CoreService:
+def service(event_loop, logger, core_info, gamelist_editor, bios_checker, frontend) -> CoreService:
     return CoreService(
         config=CoreServiceConfig(
             loop=event_loop,
             logger=logger,
             core_info=core_info,
             gamelist_editor=gamelist_editor,
-            retrodeck_paths=retrodeck_paths,
+            frontend=frontend,
             bios_checker=bios_checker,
         ),
     )
@@ -150,12 +156,12 @@ class TestSetSystemCore:
         self,
         event_loop,
         service,
-        retrodeck_paths,
+        frontend,
         gamelist_editor,
         bios_checker,
         core_info,
     ):
-        retrodeck_paths.home = ""
+        frontend._home = Path("")
         result = event_loop.run_until_complete(service.set_system_core("snes", "Snes9x"))
         assert result == {"success": False, "message": "RetroDECK home not found"}
         assert gamelist_editor.system_calls == []
@@ -218,12 +224,12 @@ class TestSetGameCore:
         self,
         event_loop,
         service,
-        retrodeck_paths,
+        frontend,
         gamelist_editor,
         bios_checker,
         core_info,
     ):
-        retrodeck_paths.home = ""
+        frontend._home = Path("")
         result = event_loop.run_until_complete(
             service.set_game_core("n64", "n64/zelda.z64", "Mupen64Plus"),
         )

@@ -33,6 +33,25 @@ def _write_versions_json(tmp_path, data: dict) -> None:
     (backend_dir / "versions.json").write_text(json.dumps(data))
 
 
+class TestBaseGetters:
+    def test_roms_returns_base(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        assert adapter.roms() == tmp_path / "Emulation" / "roms"
+
+    def test_saves_returns_central_tree(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        assert adapter.saves() == tmp_path / "Emulation" / "saves"
+
+    def test_home_returns_emulation_path(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        assert adapter.home() == tmp_path / "Emulation"
+
+    def test_home_follows_sd_card_settings_sh(self, tmp_path):
+        _write_settings_sh(tmp_path, 'emulationPath="/run/media/deck/512GB"/Emulation\n')
+        adapter = _make_adapter(tmp_path)
+        assert adapter.home() == Path("/run/media/deck/512GB/Emulation")
+
+
 class TestPathsFallback:
     def test_rom_root_falls_back_to_home_emulation(self, tmp_path):
         adapter = _make_adapter(tmp_path)

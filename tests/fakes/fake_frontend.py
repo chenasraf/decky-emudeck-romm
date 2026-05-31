@@ -28,23 +28,34 @@ class FakeFrontend:
         rom_root: Path,
         bios_root: Path,
         save_root: Path,
+        home: Path | None = None,
         retroarch_config_path: Path | None = None,
         retroarch_cores_root: Path | None = None,
         detect: bool = True,
         version: str | None = "fake:1",
         compatible: bool = True,
     ) -> None:
-        # Trees are stored as per-system subtree roots; methods append
-        # the system slug. Tests that need per-system overrides can
-        # subclass or patch.
+        # ``rom_root`` / ``save_root`` are the BASE trees; per-system
+        # methods append the slug. ``home`` defaults to the parent of
+        # ``rom_root`` so tests rarely have to set it explicitly.
         self._rom_root = rom_root
         self._bios_root = bios_root
         self._save_root = save_root
+        self._home = home if home is not None else rom_root.parent
         self._retroarch_config_path = retroarch_config_path
         self._retroarch_cores_root = retroarch_cores_root
         self._detect = detect
         self._version = version
         self._compatible = compatible
+
+    def roms(self) -> Path:
+        return self._rom_root
+
+    def saves(self) -> Path:
+        return self._save_root
+
+    def home(self) -> Path:
+        return self._home
 
     def rom_root(self, system: str) -> Path:
         return self._rom_root / system

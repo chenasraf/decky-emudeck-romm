@@ -31,7 +31,7 @@ if TYPE_CHECKING:
         CoreInfoProvider,
         FirmwareCachePersister,
         FirmwareFileStore,
-        RetroDeckPaths,
+        Frontend,
         RommFirmwareApi,
         StatePersister,
     )
@@ -59,7 +59,7 @@ class FirmwareServiceConfig:
     state_persister: StatePersister
     firmware_cache_persister: FirmwareCachePersister
     firmware_file_store: FirmwareFileStore
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     core_info: CoreInfoProvider
 
 
@@ -80,7 +80,7 @@ class FirmwareService:
         self._state_persister = config.state_persister
         self._firmware_cache_persister = config.firmware_cache_persister
         self._firmware_file_store = config.firmware_file_store
-        self._retrodeck_paths = config.retrodeck_paths
+        self._frontend = config.frontend
         self._core_info = config.core_info
         self._bios_registry: dict = {}
         self._bios_files_index: dict | None = None
@@ -157,7 +157,7 @@ class FirmwareService:
         placement (e.g. dc/dc_boot.bin). Falls back to flat in bios root
         for files not in the registry.
         """
-        bios_base = self._retrodeck_paths.bios_path()
+        bios_base = str(self._frontend.bios_root())
         file_name = firmware.get("file_name", "")
         reg_entry = self.bios_files_index.get(file_name)
         if reg_entry and reg_entry.get("firmware_path"):
@@ -293,7 +293,7 @@ class FirmwareService:
 
     def _group_registry_firmware(self):
         """Build platform map from bios registry (offline fallback)."""
-        bios_base = self._retrodeck_paths.bios_path()
+        bios_base = str(self._frontend.bios_root())
         platforms_map = {}
         for reg_slug, reg_files in self._bios_registry.get("platforms", {}).items():
             if reg_slug not in platforms_map:
@@ -514,7 +514,7 @@ class FirmwareService:
         except Exception:
             if not registry_platform:
                 return {"needs_bios": False}
-            bios_base = self._retrodeck_paths.bios_path()
+            bios_base = str(self._frontend.bios_root())
             registry_items = [
                 {
                     "file_name": file_name,

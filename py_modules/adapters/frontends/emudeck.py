@@ -110,8 +110,23 @@ class EmuDeckFrontendAdapter:
 
     # ---- Frontend Protocol -------------------------------------------
 
+    def roms(self) -> Path:
+        return Path(self._roms_path())
+
+    def saves(self) -> Path:
+        return Path(self._emulation_path()) / "saves"
+
+    def home(self) -> Path:
+        # ``emulationPath`` is the closest analog to RetroDECK's
+        # ``rd_home_path``. ES-DE-specific path resolution is Phase 6
+        # work — EmuDeck stores ES-DE config under ``~/ES-DE/`` rather
+        # than under the emulation root, so callers that read ES-DE
+        # config off ``home()`` will diverge between frontends until
+        # Phase 6 lands.
+        return Path(self._emulation_path())
+
     def rom_root(self, system: str) -> Path:
-        return Path(self._roms_path()) / system
+        return self.roms() / system
 
     def bios_root(self) -> Path:
         return Path(self._emulation_path()) / "bios"
@@ -119,7 +134,7 @@ class EmuDeckFrontendAdapter:
     def save_root(self, system: str) -> Path:
         # Central save tree per docs/architecture/emudeck-layout.md.
         # Per-emulator overrides (Flatpak exceptions) land in Phase 4.
-        return Path(self._emulation_path()) / "saves" / system
+        return self.saves() / system
 
     def retroarch_config_path(self) -> Path | None:
         return self._retroarch_flatpak_root() / "config" / "retroarch" / "retroarch.cfg"

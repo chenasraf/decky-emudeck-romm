@@ -1,12 +1,13 @@
-"""RetroDECK runtime path, system, and core resolution Protocols.
+"""RetroArch / ES-DE system and core resolution Protocols.
 
-Services query the host RetroDECK/RetroArch/ES-DE environment through
-these Protocols: filesystem path getters (saves, roms, BIOS,
-RetroDECK home), platform-to-system resolution, RetroArch save sorting
+Services query the host RetroArch/ES-DE environment through these
+Protocols: platform-to-system resolution, RetroArch save sorting
 toggles, and RetroArch core lookups for ES-DE configured systems.
 ``GamelistXmlEditor`` is the matching write seam for ES-DE
 per-system / per-game core overrides — paired with ``CoreInfoProvider``
-which owns the read side.
+which owns the read side. Frontend path getters (saves, ROMs, BIOS,
+home) now live on the ``Frontend`` Protocol — see
+``services/protocols/frontend.py``.
 """
 
 from __future__ import annotations
@@ -18,24 +19,6 @@ class SystemResolver(Protocol):
     """Resolve a RomM platform slug to a RetroDECK system path."""
 
     def __call__(self, platform_slug: str, platform_fs_slug: str | None = None) -> str: ...
-
-
-class RetroDeckPaths(Protocol):
-    """Bundled accessor for the four RetroDECK runtime directory paths.
-
-    Distinct method names per path are deliberate: a single
-    ``def __call__(self) -> str`` shape would make a saves-for-bios
-    mix-up silently type-check at the call site. Separate names give
-    the type checker enough information to flag it.
-    """
-
-    def saves_path(self) -> str: ...
-
-    def roms_path(self) -> str: ...
-
-    def bios_path(self) -> str: ...
-
-    def retrodeck_home(self) -> str: ...
 
 
 class RetroArchSaveSortingProvider(Protocol):

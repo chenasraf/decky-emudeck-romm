@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from services.protocols import (
         CoreNameProviderFn,
         CoreResolverFn,
-        RetroDeckPaths,
+        Frontend,
         SaveFileStore,
     )
 
@@ -38,13 +38,13 @@ class RomInfoServiceConfig:
 
     Holds the main plugin state dict (for ``installed_roms`` reads and
     save-sort state), the Protocol-typed filesystem adapter, the
-    RetroDECK runtime-path accessor, the ES-DE core resolver, the
+    ``Frontend`` path provider, the ES-DE core resolver, the
     RetroArch core-name provider, and the standard-library logger.
     """
 
     state: PluginState
     save_file_store: SaveFileStore
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     get_active_core: CoreResolverFn
     get_core_name: CoreNameProviderFn
     logger: logging.Logger
@@ -57,7 +57,7 @@ class RomInfoService:
         self._config = config
         self._state = config.state
         self._save_file_store = config.save_file_store
-        self._retrodeck_paths = config.retrodeck_paths
+        self._frontend = config.frontend
         self._get_active_core = config.get_active_core
         self._get_core_name = config.get_core_name
         self._logger = config.logger
@@ -86,8 +86,8 @@ class RomInfoService:
         # session that just ended still wrote to the old directory. Reading
         # the current settings here would point sync at the wrong location
         # and risk downloading stale server content to the new layout (#238).
-        saves_base = self._retrodeck_paths.saves_path()
-        roms_base = self._retrodeck_paths.roms_path()
+        saves_base = str(self._frontend.saves())
+        roms_base = str(self._frontend.roms())
         sort_state = self.pending_sort_settings() or self._state.get("save_sort_settings")
         if sort_state:
             sort_by_content = sort_state.get("sort_by_content", True)

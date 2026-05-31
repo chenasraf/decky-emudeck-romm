@@ -43,7 +43,7 @@ class Plugin:
     _http_adapter: Any
     _romm_api: Any
     _steam_config: Any
-    _retrodeck_paths: Any
+    _frontend: Any
     _save_sync_state: Any
 
     _MIN_REQUIRED_VERSION = (4, 8, 1)

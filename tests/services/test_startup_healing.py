@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_path_exists_reader import FakePathExistsReader
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from models.state import InstalledRomEntry, PluginState, ShortcutRegistryEntry, make_default_plugin_state
 
 from adapters.registry_store import RegistryStoreAdapter
@@ -56,7 +57,12 @@ def _make_service(
             logger=logger,
             state_persister=state_persister,
             registry_store=RegistryStoreAdapter(state=state, logger=logger),
-            retrodeck_paths=FakeRetroDeckPaths(home=retrodeck_home),
+            frontend=FakeFrontend(
+                rom_root=Path("/tmp/r"),
+                bios_root=Path("/tmp/b"),
+                save_root=Path("/tmp/s"),
+                home=Path(retrodeck_home),
+            ),
             path_probe=probe,
         ),
     )

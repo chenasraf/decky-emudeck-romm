@@ -71,7 +71,6 @@ from services.protocols.paths import (
     RetroArchConfigReader,
     RetroArchCoreInfoReader,
     RetroArchSaveSortingProvider,
-    RetroDeckPaths,
     SystemResolver,
 )
 from services.protocols.persistence import (
@@ -135,7 +134,6 @@ __all__ = [
     "RetroArchConfigReader",
     "RetroArchCoreInfoReader",
     "RetroArchSaveSortingProvider",
-    "RetroDeckPaths",
     "RetryStrategy",
     "RomFileStore",
     "RommAchievementsApi",

@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_migration_file_store import FakeMigrationFileStore
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from models.state import PluginState, SaveSortSettings, make_default_plugin_state
 
 from adapters.migration_file import MigrationFileAdapter
@@ -62,11 +63,11 @@ def _make_service(
             settings_persister=MagicMock(),
             emit=MagicMock(),
             get_bios_files_index=lambda: {},
-            retrodeck_paths=FakeRetroDeckPaths(
-                saves=saves_path,
-                roms=roms_path,
-                bios=str(tmp_path / "bios"),
-                home=str(tmp_path),
+            frontend=FakeFrontend(
+                rom_root=Path(roms_path),
+                bios_root=tmp_path / "bios",
+                save_root=Path(saves_path),
+                home=tmp_path,
             ),
             get_retroarch_save_sorting=lambda: sort_settings,
             get_active_core=active_core,
@@ -178,7 +179,7 @@ class TestCollectSaveSortingItems:
                 "installed_roms": installed_roms,
             },
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         old_settings: SaveSortSettings = {"sort_by_content": True, "sort_by_core": False}
         new_settings: SaveSortSettings = {"sort_by_content": False, "sort_by_core": False}
@@ -209,7 +210,7 @@ class TestCollectSaveSortingItems:
             }
         }
         svc, _ = _make_service(tmp_path, installed_roms=installed_roms)
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         # Same settings -> same dir
         same_settings: SaveSortSettings = {"sort_by_content": True, "sort_by_core": False}
@@ -236,7 +237,7 @@ class TestCollectSaveSortingItems:
             }
         }
         svc, _ = _make_service(tmp_path, installed_roms=installed_roms)
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         old_settings: SaveSortSettings = {"sort_by_content": True, "sort_by_core": False}
         new_settings: SaveSortSettings = {"sort_by_content": False, "sort_by_core": False}
@@ -290,7 +291,7 @@ class TestSaveSortMigrationStatus:
                 "save_sort_settings": new_settings,
             },
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.get_save_sort_migration_status()
 
@@ -337,7 +338,7 @@ class TestMigrateSaveSortFiles:
                 "save_sort_settings": new_settings,
             },
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -394,7 +395,7 @@ class TestMigrateSaveSortFiles:
                 "save_sort_settings": new_settings,
             },
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -447,7 +448,7 @@ class TestMigrateSaveSortFiles:
                 "save_sort_settings": new_settings,
             },
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -494,7 +495,7 @@ class TestMigrateSaveSortFiles:
             },
             migration_file_store=fake,
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -547,7 +548,7 @@ class TestMigrateSaveSortFiles:
             },
             migration_file_store=fake,
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -597,7 +598,7 @@ class TestMigrateSaveSortFiles:
             },
             migration_file_store=fake,
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -628,7 +629,7 @@ class TestMigrateSaveSortFiles:
                 "save_sort_settings": new_settings,
             },
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         result = await svc.migrate_save_sort_files()
 
@@ -765,7 +766,7 @@ class TestSortByCoreMigrationEndToEnd:
             active_core=active_core,
             get_core_name=get_core_name,
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         items = svc._collect_save_sorting_items(old_settings, new_settings)
 
@@ -818,7 +819,7 @@ class TestSortByCoreMigrationEndToEnd:
             active_core=active_core,
             get_core_name=get_core_name,
         )
-        svc._retrodeck_paths = FakeRetroDeckPaths(saves=str(saves_path), roms=str(roms_path))
+        svc._frontend = FakeFrontend(rom_root=Path(roms_path), bios_root=Path("/tmp/b"), save_root=Path(saves_path))
 
         with caplog.at_level(logging.WARNING):
             items = svc._collect_save_sorting_items(old_settings, new_settings)

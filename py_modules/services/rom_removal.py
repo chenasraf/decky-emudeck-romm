@@ -14,7 +14,7 @@ from lib.path_safety import is_safe_rom_path
 if TYPE_CHECKING:
     import logging
 
-    from services.protocols import DownloadQueueCleanup, RetroDeckPaths, RomFileStore, StatePersister
+    from services.protocols import DownloadQueueCleanup, Frontend, RomFileStore, StatePersister
 
 
 @dataclass(frozen=True)
@@ -22,8 +22,8 @@ class RomRemovalServiceConfig:
     """Frozen wiring bundle handed to ``RomRemovalService.__init__``.
 
     Holds the live state dicts, runtime infrastructure, persistence
-    callbacks, the Protocol-typed filesystem adapter, the RetroDECK
-    paths bundle, and the ``DownloadQueueCleanup`` eviction seam
+    callbacks, the Protocol-typed filesystem adapter, the ``Frontend``
+    seam, and the ``DownloadQueueCleanup`` eviction seam
     (``None`` when no download cleanup is wired). Decomposes the ctor
     so a new dependency does not push past the S107 parameter-count
     limit.
@@ -36,7 +36,7 @@ class RomRemovalServiceConfig:
     state_persister: StatePersister
     save_sync_state_writer: StatePersister
     rom_file_store: RomFileStore
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     download_queue_cleanup: DownloadQueueCleanup | None
 
 
@@ -55,7 +55,7 @@ class RomRemovalService:
         self._state_persister = config.state_persister
         self._save_sync_state_writer = config.save_sync_state_writer
         self._rom_file_store = config.rom_file_store
-        self._retrodeck_paths = config.retrodeck_paths
+        self._frontend = config.frontend
         self._download_queue_cleanup = config.download_queue_cleanup
 
     def _delete_rom_files(self, installed: InstalledRomEntry) -> None:
@@ -63,7 +63,7 @@ class RomRemovalService:
         rom_dir = installed.get("rom_dir", "")
         file_path = installed.get("file_path", "")
 
-        roms_base = self._retrodeck_paths.roms_path()
+        roms_base = str(self._frontend.roms())
         if rom_dir and self._rom_file_store.is_dir(rom_dir):
             if not is_safe_rom_path(rom_dir, roms_base):
                 self._logger.error(f"Refusing to delete path outside roms directory: {rom_dir}")

@@ -1,12 +1,13 @@
 import asyncio
 import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_metadata_cache_persister import FakeMetadataCachePersister
 from fakes.fake_path_exists_reader import FakePathExistsReader
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from fakes.fake_settings_persister import FakeSettingsPersister
 from fakes.fake_sgdb_artwork_cache import FakeSgdbArtworkCache
 from fakes.fake_state_persister import FakeStatePersister
@@ -39,7 +40,12 @@ def plugin():
     # Default to "/tmp" so the prune guard sees an existing home in tests that
     # don't override it. Tests exercising the guard rebuild this with a
     # non-existent path or empty string.
-    p._retrodeck_paths = FakeRetroDeckPaths(home="/tmp")
+    p._frontend = FakeFrontend(
+        rom_root=Path("/tmp/roms"),
+        bios_root=Path("/tmp/bios"),
+        save_root=Path("/tmp/saves"),
+        home=Path("/tmp"),
+    )
     # Default migration service mock — no migration pending. Tests that need
     # to exercise the @migration_blocked gate override this.
     p._migration_service = MagicMock()
@@ -123,7 +129,7 @@ def plugin():
             logger=decky.logger,
             state_persister=p._state_persister,
             registry_store=p._registry_store,
-            retrodeck_paths=p._retrodeck_paths,
+            frontend=p._frontend,
             path_probe=FakePathExistsReader(),
         ),
     )
@@ -911,7 +917,7 @@ class TestMainStartupOrdering:
                 save_sync_state=MagicMock(),
             ),
             callbacks=CallbackBundle(
-                retrodeck_paths=MagicMock(),
+                frontend=MagicMock(),
                 get_retroarch_save_sorting=MagicMock(),
                 get_core_name=MagicMock(),
                 state_persister=MagicMock(),

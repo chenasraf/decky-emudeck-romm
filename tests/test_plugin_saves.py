@@ -2,15 +2,16 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 # conftest.py patches decky before this import; use _make_testable_plugin for test-only attrs
 from conftest import _make_retry, _make_testable_plugin
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_hostname_reader import FakeHostnameReader
 from fakes.fake_plugin_metadata_reader import FakePluginMetadataReader
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from fakes.fake_save_api import FakeSaveApi
 from fakes.library_peers import FakeArtworkManager, FakeMetadataExtractor
 from fakes.system_time import FakeClock, FakeSleeper, FakeUuidGen
@@ -100,9 +101,10 @@ def plugin(tmp_path):
                 )
             ),
             save_file_store=save_file_adapter,
-            retrodeck_paths=FakeRetroDeckPaths(
-                saves=saves_path,
-                roms=str(tmp_path / "retrodeck" / "roms"),
+            frontend=FakeFrontend(
+                rom_root=tmp_path / "retrodeck" / "roms",
+                bios_root=tmp_path / "retrodeck" / "bios",
+                save_root=Path(saves_path),
             ),
             get_active_core=lambda system_name, rom_filename=None: (None, None),
             hostname_provider=FakeHostnameReader(),
@@ -467,7 +469,11 @@ class TestPostExitSync:
                 settings_persister=MagicMock(),
                 emit=MagicMock(),
                 get_bios_files_index=lambda: {},
-                retrodeck_paths=FakeRetroDeckPaths(),
+                frontend=FakeFrontend(
+                    rom_root=Path("/tmp/roms"),
+                    bios_root=Path("/tmp/bios"),
+                    save_root=Path("/tmp/saves"),
+                ),
                 get_retroarch_save_sorting=lambda: (False, False),
                 get_active_core=lambda system_name, rom_filename=None: (None, None),
                 get_core_name=lambda core_so: None,

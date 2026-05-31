@@ -27,9 +27,9 @@ if TYPE_CHECKING:
         CoreNameProviderFn,
         CoreResolverFn,
         EventEmitter,
+        Frontend,
         MigrationFileStore,
         RetroArchSaveSortingProvider,
-        RetroDeckPaths,
         SettingsPersister,
         StatePersister,
     )
@@ -62,7 +62,7 @@ class MigrationServiceConfig:
     settings_persister: SettingsPersister
     emit: EventEmitter
     get_bios_files_index: Callable[[], dict]
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     get_retroarch_save_sorting: RetroArchSaveSortingProvider
     get_active_core: CoreResolverFn
     get_core_name: CoreNameProviderFn
@@ -81,7 +81,7 @@ class MigrationService:
         self._settings_persister = config.settings_persister
         self._emit = config.emit
         self._get_bios_files_index = config.get_bios_files_index
-        self._retrodeck_paths = config.retrodeck_paths
+        self._frontend = config.frontend
         self._get_retroarch_save_sorting = config.get_retroarch_save_sorting
         self._get_active_core = config.get_active_core
         self._get_core_name = config.get_core_name
@@ -142,10 +142,10 @@ class MigrationService:
 
     def detect_retrodeck_path_change(self) -> None:
         """Check if RetroDECK home path changed since last run."""
-        current_home = self._retrodeck_paths.retrodeck_home()
+        current_home = str(self._frontend.home())
         stored_home = self._state.get("retrodeck_home_path", "")
 
-        if not current_home:
+        if not current_home or current_home == ".":
             return
 
         if not self._migration_file_store.is_dir(current_home):
@@ -267,7 +267,7 @@ class MigrationService:
         """Collect untracked BIOS migration items (downloaded before state tracking)."""
         items = []
         old_bios = os.path.join(old_home, "bios")
-        new_bios = self._retrodeck_paths.bios_path()
+        new_bios = str(self._frontend.bios_root())
         if not self._migration_file_store.is_dir(old_bios):
             return items
         downloaded_bios = self._state.get("downloaded_bios", {})
@@ -291,7 +291,7 @@ class MigrationService:
         """
         items = []
         old_saves = os.path.join(old_home, "saves")
-        new_saves = self._retrodeck_paths.saves_path()
+        new_saves = str(self._frontend.saves())
         if not self._migration_file_store.is_dir(old_saves):
             return items
         for dirpath, _dirs, filenames in self._migration_file_store.walk_files(old_saves):
@@ -565,8 +565,8 @@ class MigrationService:
 
     def _collect_save_sorting_items(self, old_settings: SaveSortSettings, new_settings: SaveSortSettings) -> list:
         """Collect save files that need migration due to sort setting change."""
-        saves_base = self._retrodeck_paths.saves_path()
-        roms_base = self._retrodeck_paths.roms_path()
+        saves_base = str(self._frontend.saves())
+        roms_base = str(self._frontend.roms())
         need_core = bool(old_settings.get("sort_by_core") or new_settings.get("sort_by_core"))
         items: list[tuple[str, str, str, object, str]] = []
         for entry in self._state.get("installed_roms", {}).values():

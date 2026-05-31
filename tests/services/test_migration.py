@@ -1,13 +1,14 @@
 import asyncio
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fakes.fake_core_info_provider import FakeCoreInfoProvider
 from fakes.fake_firmware_cache_persister import FakeFirmwareCachePersister
+from fakes.fake_frontend import FakeFrontend
 from fakes.fake_migration_file_store import FakeMigrationFileStore
-from fakes.fake_retrodeck_paths import FakeRetroDeckPaths
 from fakes.fake_settings_persister import FakeSettingsPersister
 from fakes.fake_state_persister import FakeStatePersister
 from fakes.library_peers import FakeArtworkManager, FakeMetadataExtractor
@@ -25,6 +26,18 @@ from main import Plugin
 from services.firmware import FirmwareService, FirmwareServiceConfig
 from services.library import LibraryService, LibraryServiceConfig
 from services.migration import MigrationService, MigrationServiceConfig
+
+
+def _frontend(
+    *, home: str = "/tmp/r", saves: str = "/tmp/s", roms: str = "/tmp/r", bios: str = "/tmp/b"
+) -> FakeFrontend:
+    """Build a FakeFrontend with the legacy str-based kwargs the test suite was written against."""
+    return FakeFrontend(
+        rom_root=Path(roms),
+        bios_root=Path(bios),
+        save_root=Path(saves),
+        home=Path(home),
+    )
 
 
 class RecordingEmitter:
@@ -71,7 +84,7 @@ def plugin(tmp_path, fake_romm_api):
             state_persister=FakeStatePersister(),
             firmware_cache_persister=FakeFirmwareCachePersister(),
             firmware_file_store=FirmwareFileAdapter(),
-            retrodeck_paths=FakeRetroDeckPaths(),
+            frontend=_frontend(),
             core_info=FakeCoreInfoProvider(),
         ),
     )
@@ -120,7 +133,7 @@ def plugin(tmp_path, fake_romm_api):
             settings_persister=p._settings_persister,
             emit=RecordingEmitter(),
             get_bios_files_index=lambda: p._firmware_service.bios_files_index,
-            retrodeck_paths=FakeRetroDeckPaths(),
+            frontend=_frontend(),
             get_retroarch_save_sorting=_default_save_sorting,
             get_active_core=_no_active_core,
             get_core_name=_no_core_name,
@@ -171,7 +184,7 @@ class TestPathChangeDetection:
         fake_home = str(tmp_path / "retrodeck")
         os.makedirs(fake_home, exist_ok=True)
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=fake_home)
+        plugin._migration_service._frontend = _frontend(home=fake_home)
         plugin._migration_service.detect_retrodeck_path_change()
 
         assert plugin._state["retrodeck_home_path"] == fake_home
@@ -192,7 +205,7 @@ class TestPathChangeDetection:
         loop = _RecordingLoop()
         plugin._migration_service._loop = loop
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=fake_home)
+        plugin._migration_service._frontend = _frontend(home=fake_home)
         plugin._migration_service.detect_retrodeck_path_change()
 
         assert loop.tasks == []
@@ -211,7 +224,7 @@ class TestPathChangeDetection:
 
         plugin._state["retrodeck_home_path"] = old_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=new_home)
+        plugin._migration_service._frontend = _frontend(home=new_home)
         plugin._migration_service.detect_retrodeck_path_change()
 
         # ``create_task`` schedules the emit coroutine on the running loop —
@@ -233,7 +246,7 @@ class TestPathChangeDetection:
         assert "cleared" not in payload
 
     def test_empty_current_home_no_action(self, plugin, tmp_path):
-        """If ``retrodeck_paths`` returns empty string, do nothing."""
+        """If ``frontend.home()`` returns empty / "." path, do nothing."""
         import decky
 
         decky.DECKY_USER_HOME = str(tmp_path)
@@ -241,7 +254,7 @@ class TestPathChangeDetection:
         loop = _RecordingLoop()
         plugin._migration_service._loop = loop
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home="")
+        plugin._migration_service._frontend = _frontend(home="")
         plugin._migration_service.detect_retrodeck_path_change()
 
         assert loop.tasks == []
@@ -262,7 +275,7 @@ class TestPathChangeDetection:
         plugin._state["retrodeck_home_path"] = new_home
         plugin._state["retrodeck_home_path_previous"] = old_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=old_home)
+        plugin._migration_service._frontend = _frontend(home=old_home)
         plugin._migration_service.detect_retrodeck_path_change()
 
         # ``create_task`` schedules the emit coroutine on the running loop —
@@ -297,7 +310,7 @@ class TestPathChangeDetection:
         plugin._state["retrodeck_home_path"] = new_home
         plugin._state["retrodeck_home_path_previous"] = old_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=old_home)
+        plugin._migration_service._frontend = _frontend(home=old_home)
         plugin._migration_service.detect_retrodeck_path_change()
 
         # ``create_task`` schedules the emit coroutine on the running loop —
@@ -626,7 +639,7 @@ class TestMigrateSaveFiles:
         plugin._state["retrodeck_home_path_previous"] = old_home
         plugin._state["retrodeck_home_path"] = new_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(saves=os.path.join(new_home, "saves"))
+        plugin._migration_service._frontend = _frontend(saves=os.path.join(new_home, "saves"))
         result = await plugin.migrate_retrodeck_files()
 
         assert result["success"] is True
@@ -659,7 +672,7 @@ class TestMigrateSaveFiles:
         plugin._state["retrodeck_home_path_previous"] = old_home
         plugin._state["retrodeck_home_path"] = new_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(saves=os.path.join(new_home, "saves"))
+        plugin._migration_service._frontend = _frontend(saves=os.path.join(new_home, "saves"))
         result = await plugin.migrate_retrodeck_files()
 
         assert result["needs_confirmation"] is True
@@ -689,7 +702,7 @@ class TestMigrateSaveFiles:
         plugin._state["retrodeck_home_path_previous"] = old_home
         plugin._state["retrodeck_home_path"] = new_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(saves=os.path.join(new_home, "saves"))
+        plugin._migration_service._frontend = _frontend(saves=os.path.join(new_home, "saves"))
         result = await plugin.migrate_retrodeck_files("overwrite")
 
         assert result["success"] is True
@@ -720,7 +733,7 @@ class TestMigrateSaveFiles:
         plugin._state["retrodeck_home_path_previous"] = old_home
         plugin._state["retrodeck_home_path"] = new_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(saves=os.path.join(new_home, "saves"))
+        plugin._migration_service._frontend = _frontend(saves=os.path.join(new_home, "saves"))
         result = await plugin.migrate_retrodeck_files("skip")
 
         assert result["success"] is True
@@ -751,7 +764,7 @@ class TestMigrateSaveFiles:
         plugin._state["retrodeck_home_path_previous"] = old_home
         plugin._state["retrodeck_home_path"] = new_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(saves=os.path.join(new_home, "saves"))
+        plugin._migration_service._frontend = _frontend(saves=os.path.join(new_home, "saves"))
         result = await plugin.migrate_retrodeck_files()
 
         assert result["saves_moved"] == 1  # only the real save, not the backup
@@ -775,7 +788,7 @@ class TestMigrateSaveFiles:
         plugin._state["retrodeck_home_path_previous"] = old_home
         plugin._state["retrodeck_home_path"] = new_home
 
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(saves=os.path.join(new_home, "saves"))
+        plugin._migration_service._frontend = _frontend(saves=os.path.join(new_home, "saves"))
         status = await plugin.get_migration_status()
 
         assert status["pending"] is True
@@ -917,7 +930,7 @@ class TestMigrationFailureInjection:
             "settings_persister": FakeSettingsPersister(),
             "emit": RecordingEmitter(),
             "get_bios_files_index": lambda: {},
-            "retrodeck_paths": FakeRetroDeckPaths(),
+            "frontend": _frontend(),
             "get_retroarch_save_sorting": lambda: (False, False),
             "get_active_core": lambda system, rom_filename: (None, None),
             "get_core_name": lambda core_so: None,
@@ -1127,7 +1140,7 @@ class TestBackgroundTaskTracking:
         os.makedirs(new_home, exist_ok=True)
 
         plugin._state["retrodeck_home_path"] = old_home
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=new_home)
+        plugin._migration_service._frontend = _frontend(home=new_home)
 
         assert plugin._migration_service._background_tasks == set()
 
@@ -1154,7 +1167,7 @@ class TestBackgroundTaskTracking:
         os.makedirs(new_home, exist_ok=True)
 
         plugin._state["retrodeck_home_path"] = old_home
-        plugin._migration_service._retrodeck_paths = FakeRetroDeckPaths(home=new_home)
+        plugin._migration_service._frontend = _frontend(home=new_home)
 
         plugin._migration_service.detect_retrodeck_path_change()
         assert len(plugin._migration_service._background_tasks) == 1

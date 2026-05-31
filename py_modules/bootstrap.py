@@ -86,7 +86,6 @@ from services.protocols import (
     PathExistsReader,
     PluginMetadataReader,
     RetroArchSaveSortingProvider,
-    RetroDeckPaths,
     RomFileStore,
     RommApi,
     SaveFileStore,
@@ -193,7 +192,7 @@ class RuntimeBundle:
 class CallbackBundle:
     """Provider callables and persister Protocols injected into services."""
 
-    retrodeck_paths: RetroDeckPaths
+    frontend: Frontend
     get_retroarch_save_sorting: RetroArchSaveSortingProvider
     get_core_name: CoreNameProviderFn
     state_persister: StatePersister
@@ -312,7 +311,7 @@ def bootstrap(
         ``stores``, ``callbacks``) plus the small set of Plugin-only
         handles ``main.py`` itself binds (``handles.debug_logger``).
     """
-    retrodeck_paths = RetroDeckFrontendAdapter(user_home=user_home, logger=logger)
+    frontend = RetroDeckFrontendAdapter(user_home=user_home, logger=logger)
     # Version-band gate runs immediately after frontend instantiation so an
     # untested EmuDeck release fails fast at startup rather than silently
     # corrupting paths during a sync run. RetroDECK's adapter always
@@ -320,13 +319,13 @@ def bootstrap(
     # B14's frontend-selection logic threads the same probe through every
     # other adapter so the same guard fires regardless of which frontend
     # is picked.
-    _enforce_frontend_compatibility(retrodeck_paths)
+    _enforce_frontend_compatibility(frontend)
     retroarch_config = RetroArchConfigAdapter(user_home=user_home, logger=logger)
     retroarch_core_info = RetroArchCoreInfoAdapter(user_home=user_home, logger=logger)
     core_resolver = CoreResolver(
         plugin_dir=plugin_dir,
         logger=logger,
-        get_retrodeck_home=retrodeck_paths.retrodeck_home,
+        get_retrodeck_home=lambda: str(frontend.home()),
     )
     gamelist_editor = GamelistXmlEditorAdapter(logger=logger)
 
@@ -399,7 +398,7 @@ def bootstrap(
         save_sync_state=save_sync_state,
     )
     callbacks = CallbackBundle(
-        retrodeck_paths=retrodeck_paths,
+        frontend=frontend,
         get_retroarch_save_sorting=retroarch_config.get_retroarch_save_sorting,
         get_core_name=retroarch_core_info.get_corename,
         state_persister=state_persister,
@@ -464,7 +463,7 @@ def wire_services(cfg: WiringConfig) -> dict:
             settings_persister=cfg.callbacks.settings_persister,
             emit=cfg.runtime.emit,
             get_bios_files_index=bios_files_index_binding.get,
-            retrodeck_paths=cfg.callbacks.retrodeck_paths,
+            frontend=cfg.callbacks.frontend,
             get_retroarch_save_sorting=cfg.callbacks.get_retroarch_save_sorting,
             get_active_core=cfg.adapters.core_info_provider.get_active_core,
             get_core_name=cfg.callbacks.get_core_name,
@@ -482,7 +481,7 @@ def wire_services(cfg: WiringConfig) -> dict:
         loop=cfg.runtime.loop,
         logger=cfg.runtime.logger,
         clock=cfg.runtime.clock,
-        retrodeck_paths=cfg.callbacks.retrodeck_paths,
+        frontend=cfg.callbacks.frontend,
         get_active_core=cfg.adapters.core_info_provider.get_active_core,
         hostname_provider=cfg.runtime.hostname_provider,
         log_debug=cfg.callbacks.log_debug,
@@ -588,7 +587,7 @@ def wire_services(cfg: WiringConfig) -> dict:
             clock=cfg.runtime.clock,
             sleeper=cfg.runtime.sleeper,
             state_persister=cfg.callbacks.state_persister,
-            retrodeck_paths=cfg.callbacks.retrodeck_paths,
+            frontend=cfg.callbacks.frontend,
             is_retrodeck_migration_pending=migration_service.is_retrodeck_migration_pending,
         ),
     )
@@ -602,7 +601,7 @@ def wire_services(cfg: WiringConfig) -> dict:
             state_persister=cfg.callbacks.state_persister,
             save_sync_state_writer=save_sync_service,
             rom_file_store=cfg.adapters.rom_file_store,
-            retrodeck_paths=cfg.callbacks.retrodeck_paths,
+            frontend=cfg.callbacks.frontend,
             download_queue_cleanup=download_service,
         ),
     )
@@ -618,7 +617,7 @@ def wire_services(cfg: WiringConfig) -> dict:
             state_persister=cfg.callbacks.state_persister,
             firmware_cache_persister=cfg.callbacks.firmware_cache_persister,
             firmware_file_store=cfg.adapters.firmware_file_store,
-            retrodeck_paths=cfg.callbacks.retrodeck_paths,
+            frontend=cfg.callbacks.frontend,
             core_info=cfg.adapters.core_info_provider,
         ),
     )
@@ -684,7 +683,7 @@ def wire_services(cfg: WiringConfig) -> dict:
             logger=cfg.runtime.logger,
             core_info=cfg.adapters.core_info_provider,
             gamelist_editor=cfg.adapters.gamelist_editor,
-            retrodeck_paths=cfg.callbacks.retrodeck_paths,
+            frontend=cfg.callbacks.frontend,
             bios_checker=firmware_service,
         ),
     )
@@ -705,7 +704,7 @@ def wire_services(cfg: WiringConfig) -> dict:
             logger=cfg.runtime.logger,
             state_persister=cfg.callbacks.state_persister,
             registry_store=cfg.callbacks.registry_store,
-            retrodeck_paths=cfg.callbacks.retrodeck_paths,
+            frontend=cfg.callbacks.frontend,
             path_probe=cfg.adapters.path_probe,
         ),
     )
