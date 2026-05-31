@@ -52,6 +52,7 @@ from adapters.system_clock import SystemClock
 from adapters.system_uuid_gen import SystemUuidGen
 from domain.save_state import SaveSyncState
 from domain.state_migrations import migrate_settings, migrate_state
+from lib.errors import FrontendUnsupportedError
 from lib.late_binding import LateBinding
 from services.achievements import AchievementsService, AchievementsServiceConfig
 from services.artwork import ArtworkService, ArtworkServiceConfig
@@ -76,6 +77,7 @@ from services.protocols import (
     EventEmitter,
     FirmwareCachePersister,
     FirmwareFileStore,
+    Frontend,
     GamelistXmlEditor,
     HostnameReader,
     MetadataCachePersister,
@@ -116,6 +118,29 @@ def _default_state() -> PluginState:
     even if the underlying default ever changes.
     """
     return make_default_plugin_state()
+
+
+def _enforce_frontend_compatibility(frontend: Frontend) -> None:
+    """Raise ``FrontendUnsupportedError`` when the chosen frontend is out of band.
+
+    Per-adapter ``compatible()`` returns False when ``version()`` falls
+    outside the adapter's ``[_MIN_TESTED_VERSION, _MAX_TESTED_VERSION]``
+    band. Bootstrap converts that into a typed error the plugin
+    entrypoint catches, surfacing both a Decky-side toast and a
+    ``version_unsupported`` field on the connection-check response.
+    """
+    if frontend.compatible():
+        return
+    name = type(frontend).__name__.removesuffix("FrontendAdapter") or "frontend"
+    detected = frontend.version()
+    expected_min = getattr(frontend, "_MIN_TESTED_VERSION", None)
+    expected_max = getattr(frontend, "_MAX_TESTED_VERSION", None)
+    raise FrontendUnsupportedError(
+        frontend=name,
+        detected=detected,
+        expected_min=str(expected_min) if expected_min is not None else "",
+        expected_max=str(expected_max) if expected_max is not None else "",
+    )
 
 
 @dataclass(frozen=True)
@@ -288,6 +313,14 @@ def bootstrap(
         handles ``main.py`` itself binds (``handles.debug_logger``).
     """
     retrodeck_paths = RetroDeckFrontendAdapter(user_home=user_home, logger=logger)
+    # Version-band gate runs immediately after frontend instantiation so an
+    # untested EmuDeck release fails fast at startup rather than silently
+    # corrupting paths during a sync run. RetroDECK's adapter always
+    # reports compatible=True this sprint (no version surface to gate on);
+    # B14's frontend-selection logic threads the same probe through every
+    # other adapter so the same guard fires regardless of which frontend
+    # is picked.
+    _enforce_frontend_compatibility(retrodeck_paths)
     retroarch_config = RetroArchConfigAdapter(user_home=user_home, logger=logger)
     retroarch_core_info = RetroArchCoreInfoAdapter(user_home=user_home, logger=logger)
     core_resolver = CoreResolver(

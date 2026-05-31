@@ -972,3 +972,81 @@ class TestCancelCallablesNotBlockedByMigration:
         result = await plugin.cancel_download(42)
         assert result.get("blocked_by_migration") is not True
         plugin._download_service.cancel_download.assert_called_once_with(42)
+
+
+class TestFrontendUnsupportedSurfacing:
+    """``bootstrap`` may refuse to wire when the host frontend is out of
+    band. ``Plugin._main`` catches the typed error, parks the payload on
+    ``_frontend_unsupported``, and the ``test_connection`` callable
+    short-circuits with the discriminated-status response shape so the
+    frontend UI can render an unsupported-version banner.
+    """
+
+    @pytest.mark.asyncio
+    async def test_main_catches_frontend_unsupported_and_skips_wiring(self):
+        from unittest.mock import patch
+
+        from lib.errors import FrontendUnsupportedError
+        from main import Plugin
+
+        plugin = Plugin()
+        plugin.loop = asyncio.get_event_loop()
+        exc = FrontendUnsupportedError(
+            frontend="EmuDeck",
+            detected="esde:5,ra:2,srm:99",
+            expected_min="esde:5,ra:2,srm:9",
+            expected_max="esde:5,ra:2,srm:9",
+        )
+        from unittest.mock import AsyncMock
+
+        with (
+            patch("main.bootstrap", side_effect=exc),
+            patch("main.wire_services") as wire,
+            patch("main.decky.emit", new=AsyncMock()) as emit,
+        ):
+            await plugin._main()
+
+        wire.assert_not_called()
+        emit.assert_awaited_once()
+        assert emit.call_args.args[0] == "frontend_unsupported"
+        assert plugin._frontend_unsupported == {
+            "frontend": "EmuDeck",
+            "detected": "esde:5,ra:2,srm:99",
+            "expected_min": "esde:5,ra:2,srm:9",
+            "expected_max": "esde:5,ra:2,srm:9",
+        }
+
+    @pytest.mark.asyncio
+    async def test_test_connection_short_circuits_when_frontend_unsupported(self, plugin):
+        plugin._frontend_unsupported = {
+            "frontend": "EmuDeck",
+            "detected": "esde:5,ra:2,srm:99",
+            "expected_min": "esde:5,ra:2,srm:9",
+            "expected_max": "esde:5,ra:2,srm:9",
+        }
+        # Underlying connection service must NOT be called when the
+        # frontend is unsupported — wire it to a sentinel that would
+        # fail the test if invoked.
+        plugin._connection_service = MagicMock()
+        plugin._connection_service.test_connection = MagicMock(
+            side_effect=AssertionError("connection service must not be queried")
+        )
+
+        result = await plugin.test_connection()
+
+        assert result["success"] is False
+        assert result["error_code"] == "version_unsupported"
+        assert result["version_unsupported"] == plugin._frontend_unsupported
+        assert "EmuDeck" in result["message"]
+        assert "esde:5,ra:2,srm:99" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_test_connection_passes_through_when_frontend_supported(self, plugin):
+        from unittest.mock import AsyncMock
+
+        plugin._frontend_unsupported = None
+        plugin._connection_service = MagicMock()
+        plugin._connection_service.test_connection = AsyncMock(return_value={"success": True})
+        result = await plugin.test_connection()
+        assert result == {"success": True}
+        plugin._connection_service.test_connection.assert_awaited_once()

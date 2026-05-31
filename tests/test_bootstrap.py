@@ -494,3 +494,47 @@ class TestWireServices:
             "sort_by_core": False,
         }
         deps["loop"].close()
+
+
+class TestFrontendCompatibility:
+    """Bootstrap refuses to wire when the chosen frontend is out of band.
+
+    RetroDECK reports ``compatible() == True`` unconditionally this
+    sprint, so the raise path is exercised by monkey-patching the
+    adapter method to flip the verdict.
+    """
+
+    def test_raises_when_frontend_reports_incompatible(self, tmp_path, monkeypatch):
+        import pytest
+
+        from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
+        from lib.errors import FrontendUnsupportedError
+
+        monkeypatch.setattr(RetroDeckFrontendAdapter, "compatible", lambda self: False)
+        with pytest.raises(FrontendUnsupportedError) as excinfo:
+            _bootstrap_for(tmp_path)
+        assert excinfo.value.frontend == "RetroDeck"
+        # RetroDECK has no version surface — detected == None is preserved.
+        assert excinfo.value.detected is None
+
+    def test_payload_carries_tested_band_when_class_exposes_constants(
+        self, tmp_path, monkeypatch
+    ):
+        import pytest
+
+        from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
+        from lib.errors import FrontendUnsupportedError
+
+        monkeypatch.setattr(RetroDeckFrontendAdapter, "compatible", lambda self: False)
+        monkeypatch.setattr(RetroDeckFrontendAdapter, "_MIN_TESTED_VERSION", "v1", raising=False)
+        monkeypatch.setattr(RetroDeckFrontendAdapter, "_MAX_TESTED_VERSION", "v3", raising=False)
+        with pytest.raises(FrontendUnsupportedError) as excinfo:
+            _bootstrap_for(tmp_path)
+        assert excinfo.value.expected_min == "v1"
+        assert excinfo.value.expected_max == "v3"
+
+    def test_no_raise_when_frontend_reports_compatible(self, tmp_path):
+        # Sanity check — the default RetroDECK path is permissive so
+        # the existing wiring still completes without surprises.
+        result = _bootstrap_for(tmp_path)
+        assert result is not None

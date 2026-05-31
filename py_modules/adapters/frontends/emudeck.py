@@ -53,6 +53,12 @@ _ROMS_PATH_LINE = re.compile(r'^\s*romsPath="([^"]*)"(/[^\s]+)?\s*$')
 class EmuDeckFrontendAdapter:
     """EmuDeck implementation of the ``Frontend`` Protocol."""
 
+    # Exposed as class attributes so bootstrap can include them in the
+    # ``FrontendUnsupportedError`` payload without reaching into module
+    # globals via ``getattr``-on-the-instance falling through.
+    _MIN_TESTED_VERSION = _OBSERVED_SCHEMA_SIGNATURE
+    _MAX_TESTED_VERSION = _OBSERVED_SCHEMA_SIGNATURE
+
     def __init__(self, *, user_home: str, logger: logging.Logger) -> None:
         self._user_home = user_home
         self._logger = logger
@@ -128,21 +134,25 @@ class EmuDeckFrontendAdapter:
         )
 
     def detect(self) -> bool:
-        # PLAN.md Phase 2 autodetect rule: presence of $romsPath. We
+        # autodetect rule: presence of $romsPath. We
         # resolve $romsPath through settings.sh when available so SD-card
         # installs still autodetect — the bare ~/Emulation check would
         # miss them.
         return os.path.isdir(self._roms_path())
 
     def version(self) -> str | None:
-        path = os.path.join(self._user_home, ".config", "EmuDeck", "backend", "versions.json")
+        path = os.path.join(
+            self._user_home, ".config", "EmuDeck", "backend", "versions.json"
+        )
         try:
             with open(path) as f:
                 data = json.load(f)
         except FileNotFoundError:
             return None
         except (OSError, json.JSONDecodeError) as exc:
-            self._logger.warning(f"Failed to read EmuDeck versions.json at {path}: {exc}")
+            self._logger.warning(
+                f"Failed to read EmuDeck versions.json at {path}: {exc}"
+            )
             return None
         pairs: list[str] = []
         for key in _TRACKED_SCHEMA_KEYS:
@@ -167,3 +177,4 @@ class EmuDeckFrontendAdapter:
         if v is None:
             return False
         return _MIN_TESTED_VERSION <= v <= _MAX_TESTED_VERSION
+

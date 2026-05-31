@@ -16,6 +16,7 @@ from bootstrap import (
     wire_services,
 )
 
+from lib.errors import FrontendUnsupportedError
 from lib.migration_gate import migration_blocked
 
 
@@ -47,6 +48,12 @@ class Plugin:
 
     _MIN_REQUIRED_VERSION = (4, 8, 1)
 
+    # Populated by ``_main()`` when ``bootstrap()`` rejects the host
+    # frontend's version band. While set, ``test_connection`` short-circuits
+    # so the UI can render the unsupported-version banner instead of
+    # exercising a half-wired plugin.
+    _frontend_unsupported: dict | None = None
+
     # -- logging ---------------------------------------------------------------
     #
     # ``_debug_logger`` is wired by ``_main()`` to the
@@ -73,13 +80,28 @@ class Plugin:
         # ── 1. Wire adapters ────────────────────────────────────────────────
         # Bootstrap loads + migrates settings as part of adapter construction
         # so RommHttpAdapter binds the live, migrated dict in one pass.
-        result = bootstrap(
-            settings_dir=decky.DECKY_PLUGIN_SETTINGS_DIR,
-            runtime_dir=decky.DECKY_PLUGIN_RUNTIME_DIR,
-            plugin_dir=decky.DECKY_PLUGIN_DIR,
-            user_home=decky.DECKY_USER_HOME,
-            logger=decky.logger,
-        )
+        try:
+            result = bootstrap(
+                settings_dir=decky.DECKY_PLUGIN_SETTINGS_DIR,
+                runtime_dir=decky.DECKY_PLUGIN_RUNTIME_DIR,
+                plugin_dir=decky.DECKY_PLUGIN_DIR,
+                user_home=decky.DECKY_USER_HOME,
+                logger=decky.logger,
+            )
+        except FrontendUnsupportedError as exc:
+            self._frontend_unsupported = {
+                "frontend": exc.frontend,
+                "detected": exc.detected,
+                "expected_min": exc.expected_min,
+                "expected_max": exc.expected_max,
+            }
+            decky.logger.error(
+                f"{exc.frontend} {exc.detected or 'version unknown'} is outside the "
+                f"tested range [{exc.expected_min}, {exc.expected_max}] — "
+                "plugin refuses to operate. Update your frontend or open an issue."
+            )
+            await decky.emit("frontend_unsupported", self._frontend_unsupported)
+            return
         self.settings = result.stores.settings
         self._debug_logger = result.handles.debug_logger
 
@@ -158,6 +180,19 @@ class Plugin:
     # S7503 warnings are suppressed in sonar-project.properties (fp1).
 
     async def test_connection(self):
+        if self._frontend_unsupported is not None:
+            detected = self._frontend_unsupported["detected"] or "unknown"
+            return {
+                "success": False,
+                "message": (
+                    f"{self._frontend_unsupported['frontend']} {detected} is outside the "
+                    f"tested range [{self._frontend_unsupported['expected_min']}, "
+                    f"{self._frontend_unsupported['expected_max']}]. "
+                    "Update your frontend or open an issue."
+                ),
+                "error_code": "version_unsupported",
+                "version_unsupported": self._frontend_unsupported,
+            }
         return await self._connection_service.test_connection()
 
     async def save_settings(self, romm_url, romm_user, romm_pass, allow_insecure_ssl=None):
