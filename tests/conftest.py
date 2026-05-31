@@ -94,6 +94,31 @@ def fake_romm_api():
 
 
 @pytest.fixture
+def fake_frontend(tmp_path):
+    """Function-scoped ``FakeFrontend`` rooted under ``tmp_path``.
+
+    Defaults to a detected, in-band frontend with all root paths
+    pointing at fresh ``tmp_path`` subdirectories so tests that touch
+    the filesystem never accidentally write under the real home. Tests
+    that want a different shape (out-of-band version, undetected,
+    custom paths) construct ``FakeFrontend`` directly.
+    """
+    from fakes.fake_frontend import FakeFrontend
+
+    rom_root = tmp_path / "roms"
+    bios_root = tmp_path / "bios"
+    save_root = tmp_path / "saves"
+    retroarch_root = tmp_path / "retroarch"
+    return FakeFrontend(
+        rom_root=rom_root,
+        bios_root=bios_root,
+        save_root=save_root,
+        retroarch_config_path=retroarch_root / "retroarch.cfg",
+        retroarch_cores_root=retroarch_root / "cores",
+    )
+
+
+@pytest.fixture
 def fake_steamgrid_db_api():
     """Function-scoped ``FakeSteamGridDbApi`` instance.
 
