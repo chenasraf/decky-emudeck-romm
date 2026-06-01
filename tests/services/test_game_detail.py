@@ -110,7 +110,6 @@ def plugin(tmp_path):
             emit=AsyncMock(),
             get_core_name=lambda core_so: None,
             detect_sort_change=lambda: None,
-            is_retrodeck_migration_pending=lambda: False,
         ),
     )
     p._save_sync_service.init_state()

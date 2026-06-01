@@ -31,19 +31,17 @@ import {
   getSaveSlots,
   isSaveTrackingConfigured,
   debugLog,
-  refreshMigrationState,
+  getSaveSortMigrationStatus,
   logError,
 } from "../api/backend";
 import { SlotSetupWizard } from "./SlotSetupWizard";
 import { SavesTab } from "./SavesTab";
 import type { RomMetadata, InstalledRom, BiosStatus, SaveStatus, SyncConflict, Achievement, AchievementProgress, EarnedAchievement, SaveSlotSummary } from "../types";
 import type { RommDataChangedDetail } from "../types/events";
-import { getMigrationState, onMigrationChange, setMigrationStatus } from "../utils/migrationStore";
 import { getSaveSortMigrationState, onSaveSortMigrationChange, setSaveSortMigrationStatus } from "../utils/saveSortMigrationStore";
 import { scrollFocusedToCenter } from "../utils/scrollHelpers";
 import { applyLoadSlotsResult, applyRefreshSlotResult } from "../utils/slotState";
 import { VersionErrorCard, useVersionError } from "./VersionErrorCard";
-import { MigrationBlockedCard } from "./MigrationBlockedCard";
 
 interface RomMGameInfoPanelProps {
   appId: number;
@@ -306,22 +304,17 @@ export const RomMGameInfoPanel: FC<RomMGameInfoPanelProps> = ({ appId }) => { //
     slotsLoading: false,
   });
   const romIdRef = useRef<number | null>(null);
-  const [migration, setMigration] = useState(getMigrationState());
   const [saveSortPending, setSaveSortPending] = useState(getSaveSortMigrationState().pending);
 
   useEffect(() => {
-    const unsub = onMigrationChange(() => setMigration(getMigrationState()));
     const unsubSaveSort = onSaveSortMigrationChange(() => setSaveSortPending(getSaveSortMigrationState().pending));
-    return () => { unsub(); unsubSaveSort(); };
+    return () => { unsubSaveSort(); };
   }, []);
 
   useEffect(() => {
-    refreshMigrationState()
-      .then(({ retrodeck, save_sort }) => {
-        setMigrationStatus(retrodeck);
-        setSaveSortMigrationStatus(save_sort);
-      })
-      .catch((e) => logError(`Failed to refresh migration state: ${e}`));
+    getSaveSortMigrationStatus()
+      .then((status) => setSaveSortMigrationStatus(status))
+      .catch((e) => logError(`Failed to refresh save-sort migration state: ${e}`));
   }, [appId]);
 
   useEffect(() => {
@@ -550,15 +543,6 @@ export const RomMGameInfoPanel: FC<RomMGameInfoPanelProps> = ({ appId }) => { //
       "div",
       { "data-romm": "true" },
       createElement(VersionErrorCard, { message: versionError }),
-    );
-  }
-
-  // --- Pending RetroDECK migration — block the page until resolved ---
-  if (migration.pending) {
-    return createElement(
-      "div",
-      { "data-romm": "true" },
-      createElement(MigrationBlockedCard, {}),
     );
   }
 

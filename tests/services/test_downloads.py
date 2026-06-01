@@ -90,7 +90,6 @@ def plugin():
                 roms=os.path.join(os.path.expanduser("~"), "retrodeck", "roms"),
                 bios=os.path.join(os.path.expanduser("~"), "retrodeck", "bios"),
             ),
-            is_retrodeck_migration_pending=lambda: False,
         ),
     )
     p._rom_removal_service = RomRemovalService(
@@ -586,50 +585,6 @@ class TestDownloadRequestPolling:
             remaining = json.load(f)
         assert remaining == []
         assert len(requests) == 2
-
-
-class TestPollDownloadRequestsMigrationPause:
-    """Verify the poll loop pauses (does NOT read+clear the request file)
-    while a RetroDECK migration is pending — would otherwise drop queued
-    download requests on the floor (#251)."""
-
-    @pytest.mark.asyncio
-    async def test_poll_download_requests_pauses_when_migration_pending(self, plugin, tmp_path):
-        plugin._download_service._runtime_dir = str(tmp_path)
-        plugin._download_service._is_retrodeck_migration_pending = lambda: True
-
-        requests_path = tmp_path / "download_requests.json"
-        original_payload = [{"rom_id": 42}, {"rom_id": 99}]
-        requests_path.write_text(json.dumps(original_payload))
-
-        # Stub the injected Sleeper so we can run a single iteration
-        # deterministically: first call sleeps normally (returns immediately),
-        # second call cancels the loop so we exit after one pass.
-        class _CancellingSleeper:
-            def __init__(self):
-                self.calls = 0
-
-            async def sleep(self, _seconds):
-                self.calls += 1
-                if self.calls >= 2:
-                    raise asyncio.CancelledError
-
-        plugin._download_service._sleeper = _CancellingSleeper()
-
-        # Track whether the request file IO was invoked via the queue adapter.
-        from fakes.fake_download_queue_store import FakeDownloadQueueStore
-
-        tracking_queue = FakeDownloadQueueStore()
-        plugin._download_service._download_queue_io = tracking_queue
-
-        with pytest.raises(asyncio.CancelledError):
-            await plugin._download_service.poll_download_requests()
-
-        # IO must NOT have been called while migration was pending.
-        assert tracking_queue.poll_count == 0
-        # Request file must still hold its original contents — not truncated.
-        with open(requests_path) as f:
-            assert json.load(f) == original_payload
 
 
 class TestMultiFileRomDeletion:
@@ -2192,8 +2147,6 @@ class TestPollDownloadRequestsLoopBody:
         from fakes.fake_download_queue_store import FakeDownloadQueueStore
 
         plugin._download_service._runtime_dir = str(tmp_path)
-        # No migration pending — must not block the loop body.
-        plugin._download_service._is_retrodeck_migration_pending = lambda: False
 
         # Sleeper cancels after one full iteration so the body runs
         # exactly once.
@@ -2230,7 +2183,6 @@ class TestPollDownloadRequestsLoopBody:
         from fakes.fake_download_queue_store import FakeDownloadQueueStore
 
         plugin._download_service._runtime_dir = str(tmp_path)
-        plugin._download_service._is_retrodeck_migration_pending = lambda: False
 
         class _CancellingSleeper:
             def __init__(self):
@@ -2259,7 +2211,6 @@ class TestPollDownloadRequestsLoopBody:
         import logging
 
         plugin._download_service._runtime_dir = str(tmp_path)
-        plugin._download_service._is_retrodeck_migration_pending = lambda: False
 
         # Sleeper cancels after a couple of iterations so the loop
         # body runs at least once after the failing poll.

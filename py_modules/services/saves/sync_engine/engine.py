@@ -34,7 +34,6 @@ if TYPE_CHECKING:
         CoreResolverFn,
         DebugLogger,
         HostnameReader,
-        MigrationPendingFn,
         RetryStrategy,
         RommSyncApi,
         SaveFileStore,
@@ -57,8 +56,8 @@ class SyncEngineConfig:
     Protocol-typed filesystem adapter, the ``DebugLogger`` seam, the
     ES-DE core resolver, the hostname provider used for device
     registration, the plugin version string passed to the server on
-    register/update, and the optional sort-change and migration-pending
-    callbacks SyncEngine consults at the entry of every public flow.
+    register/update, and the optional sort-change callback SyncEngine
+    consults at the entry of every public flow.
     """
 
     state: PluginState
@@ -75,7 +74,6 @@ class SyncEngineConfig:
     hostname_provider: HostnameReader
     plugin_version: str
     detect_sort_change: SaveSortChangeFn
-    is_retrodeck_migration_pending: MigrationPendingFn
 
 
 class SyncEngine:
@@ -97,7 +95,6 @@ class SyncEngine:
         self._hostname_provider = config.hostname_provider
         self._plugin_version = config.plugin_version
         self._detect_sort_change = config.detect_sort_change
-        self._is_retrodeck_migration_pending = config.is_retrodeck_migration_pending
         # Per-rom lock dict — serializes concurrent sync operations on the
         # same rom_id (pre_launch_sync, post_exit_sync, manual sync, resolve).
         self._rom_sync_locks: dict[int, asyncio.Lock] = {}
@@ -254,20 +251,6 @@ class SyncEngine:
             if not self._state_svc.is_save_sync_enabled():
                 return {"success": True, "message": SAVE_SYNC_DISABLED, "synced": 0}
 
-            # Defense in depth: block pre_launch_sync if a future caller bypasses
-            # the @migration_blocked decorator at the public callable. saves_dir
-            # would otherwise resolve under the new home and silently desync from
-            # files still living at the old home. Internal _sync_rom_saves callers
-            # (sync_all_saves, rollback_to_version) are protected by the decorator
-            # on their own public callables — this guard is for pre_launch_sync.
-            if self._is_retrodeck_migration_pending():
-                return {
-                    "success": False,
-                    "message": "Pending RetroDECK migration. Open the plugin QAM to migrate or dismiss.",
-                    "synced": 0,
-                    "blocked_by_migration": True,
-                }
-
             # Refresh save-sort state before the migration gate — see #238.
             await self._refresh_save_sort_state("pre_launch_sync")
 
@@ -310,18 +293,6 @@ class SyncEngine:
             if not self._state_svc.is_save_sync_enabled():
                 self._logger.info("post_exit_sync skipped: save sync disabled")
                 return {"success": True, "message": SAVE_SYNC_DISABLED, "synced": 0}
-
-            # Defense in depth: same rationale as pre_launch_sync — internal
-            # _sync_rom_saves callers are protected by @migration_blocked on
-            # their public callables; this guard covers post_exit_sync only.
-            if self._is_retrodeck_migration_pending():
-                self._logger.info("post_exit_sync skipped: retrodeck migration pending")
-                return {
-                    "success": False,
-                    "message": "Pending RetroDECK migration. Open the plugin QAM to migrate or dismiss.",
-                    "synced": 0,
-                    "blocked_by_migration": True,
-                }
 
             if not self._state_svc.state.settings.sync_after_exit:
                 self._logger.info("post_exit_sync skipped: sync_after_exit disabled")

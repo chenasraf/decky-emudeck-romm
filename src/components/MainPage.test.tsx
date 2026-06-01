@@ -8,8 +8,8 @@
 // absence of state change.
 //
 // MainPage catch sites (asserted below):
-//   - mount: refreshMigrationState().catch → logError("Failed to refresh
-//     migration state: ...") — asserted via vi.spyOn(backend, "logError").
+//   - mount: getSaveSortMigrationStatus().catch → logError("Failed to
+//     refresh save-sort migration state: ...") — asserted via vi.spyOn.
 //   - handleSync wrapping try/catch → setStatus("Failed to start sync") —
 //     asserted via rendered Field label.
 //   - handleApply try/catch → setStatus("Failed to apply sync") — asserted.
@@ -20,19 +20,6 @@
 //     un-gate the status field; #733 fix landed — message now visible.
 //   - fixRetroarchInputDriver inline `.catch(() => {})` (inside ConfirmModal
 //     onOK) — truly-ignored; warning state remains (no clear).
-//
-// MUTATION CHECKS (by inspection — auto-mode classifier likely blocks on
-// React state internals + listener cleanup, so confidence is recorded here):
-//   1. Removing the `unsubMigration()` call from the unmount cleanup would
-//      break the "subscribes on mount and unsubscribes on unmount" test —
-//      migrationListeners.length would stay at 1 after unmount.
-//   2. Removing `clearInterval(pollRef.current)` from stopPolling would
-//      break the "interval cleared on unmount" test — clearIntervalSpy
-//      would not be called with the captured pollRef id.
-//   3. Removing the setStatus("Failed to start sync") assignment from
-//      handleSync's catch would break the "syncPreview rejection surfaces
-//      'Failed to start sync'" test — the Field label would render as the
-//      empty string instead of the failure message.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
@@ -46,7 +33,6 @@ import { showModal } from "@decky/ui";
 import * as syncManager from "../utils/syncManager";
 import * as connectionState from "../utils/connectionState";
 import type {
-  MigrationStatus,
   SaveSortMigrationStatus,
   SyncStats,
   SyncPreview,
@@ -69,32 +55,7 @@ vi.mock("./VersionErrorCard", () => ({
     ),
 }));
 
-vi.mock("./MigrationBlockedPage", () => ({
-  MigrationBlockedPage: (_props: { migration: MigrationStatus }) =>
-    createElement("div", { "data-testid": "migration-blocked-page" }),
-}));
-
-// migrationStore — listener-array mock so tests drive subscribe/notify
-// deterministically. resetAllMocks wipes impls; re-stubbed in beforeEach.
-const migrationListeners: Array<() => void> = [];
-let currentMigrationState: MigrationStatus = { pending: false };
-vi.mock("../utils/migrationStore", () => ({
-  getMigrationState: vi.fn(() => currentMigrationState),
-  setMigrationStatus: vi.fn((s: MigrationStatus) => {
-    currentMigrationState = s;
-    migrationListeners.forEach((fn) => fn());
-  }),
-  onMigrationChange: vi.fn((cb: () => void) => {
-    migrationListeners.push(cb);
-    return () => {
-      const i = migrationListeners.indexOf(cb);
-      if (i >= 0) migrationListeners.splice(i, 1);
-    };
-  }),
-}));
-import * as migrationStore from "../utils/migrationStore";
-
-// saveSortMigrationStore — same listener-array pattern.
+// saveSortMigrationStore — listener-array pattern.
 const saveSortListeners: Array<() => void> = [];
 let currentSaveSortState: SaveSortMigrationStatus = { pending: false };
 vi.mock("../utils/saveSortMigrationStore", () => ({
@@ -274,9 +235,7 @@ function fieldLabels(container: HTMLElement): string[] {
 describe("MainPage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    migrationListeners.length = 0;
     saveSortListeners.length = 0;
-    currentMigrationState = { pending: false };
     currentSaveSortState = { pending: false };
     setDownloads([]);
     setSyncProgress({
@@ -289,26 +248,6 @@ describe("MainPage", () => {
 
     // Re-stub useVersionError (resetAllMocks wiped it).
     vi.mocked(useVersionError).mockReturnValue(null);
-
-    // Re-stub migrationStore impls.
-    vi.mocked(migrationStore.getMigrationState).mockImplementation(
-      () => currentMigrationState,
-    );
-    vi.mocked(migrationStore.setMigrationStatus).mockImplementation(
-      (s: MigrationStatus) => {
-        currentMigrationState = s;
-        migrationListeners.forEach((fn) => fn());
-      },
-    );
-    vi.mocked(migrationStore.onMigrationChange).mockImplementation(
-      (cb: () => void) => {
-        migrationListeners.push(cb);
-        return () => {
-          const i = migrationListeners.indexOf(cb);
-          if (i >= 0) migrationListeners.splice(i, 1);
-        };
-      },
-    );
 
     // Re-stub saveSortMigrationStore impls.
     vi.mocked(
@@ -331,9 +270,8 @@ describe("MainPage", () => {
     });
 
     // Default backend mocks — tests override per case.
-    vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-      retrodeck: { pending: false },
-      save_sort: { pending: false },
+    vi.mocked(backend.getSaveSortMigrationStatus).mockResolvedValue({
+      pending: false,
     });
     vi.mocked(backend.getSyncStats).mockResolvedValue(defaultStats());
     vi.mocked(backend.testConnection).mockResolvedValue({
@@ -403,18 +341,6 @@ describe("MainPage", () => {
       expect(queryByTestId("panel-section")).toBeNull();
     });
 
-    it("renders only MigrationBlockedPage when migration.pending=true", async () => {
-      currentMigrationState = { pending: true };
-      vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-        retrodeck: { pending: true },
-        save_sort: { pending: false },
-      });
-      const { queryByTestId } = render(<MainPage onNavigate={vi.fn()} />);
-      await flushAsync();
-      expect(queryByTestId("migration-blocked-page")).not.toBeNull();
-      expect(queryByTestId("version-error-card")).toBeNull();
-    });
-
     it("renders the full panel with Status / Sync / Settings sections by default", async () => {
       const { container } = render(<MainPage onNavigate={vi.fn()} />);
       await flushAsync();
@@ -429,28 +355,22 @@ describe("MainPage", () => {
   // B. Mount useEffect — initial fetches
   // ===========================================================================
   describe("mount useEffect", () => {
-    it("calls refreshMigrationState and pushes the result into both stores", async () => {
-      const retrodeck: MigrationStatus = { pending: false, roms_count: 1 };
+    it("calls getSaveSortMigrationStatus and pushes the result into the store", async () => {
       const saveSort: SaveSortMigrationStatus = { pending: false };
-      vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-        retrodeck,
-        save_sort: saveSort,
-      });
+      vi.mocked(backend.getSaveSortMigrationStatus).mockResolvedValue(saveSort);
       render(<MainPage onNavigate={vi.fn()} />);
       await flushAsync();
-      expect(vi.mocked(migrationStore.setMigrationStatus))
-        .toHaveBeenCalledWith(retrodeck);
       expect(vi.mocked(saveSortMigrationStore.setSaveSortMigrationStatus))
         .toHaveBeenCalledWith(saveSort);
     });
 
-    it("logs the failure when refreshMigrationState rejects", async () => {
-      vi.mocked(backend.refreshMigrationState).mockRejectedValue(new Error("boom"));
+    it("logs the failure when getSaveSortMigrationStatus rejects", async () => {
+      vi.mocked(backend.getSaveSortMigrationStatus).mockRejectedValue(new Error("boom"));
       const logSpy = vi.spyOn(backend, "logError").mockImplementation(() => {});
       render(<MainPage onNavigate={vi.fn()} />);
       await flushAsync();
       expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to refresh migration state"),
+        expect.stringContaining("Failed to refresh save-sort migration state"),
       );
       logSpy.mockRestore();
     });
@@ -600,33 +520,12 @@ describe("MainPage", () => {
   // C. Store subscribers — subscribe + cleanup + re-render on notify
   // ===========================================================================
   describe("store subscribers", () => {
-    it("subscribes to onMigrationChange on mount, unsubscribes on unmount", async () => {
-      const { unmount } = render(<MainPage onNavigate={vi.fn()} />);
-      await flushAsync();
-      expect(migrationListeners.length).toBe(1);
-      unmount();
-      expect(migrationListeners.length).toBe(0);
-    });
-
     it("subscribes to onSaveSortMigrationChange on mount, unsubscribes on unmount", async () => {
       const { unmount } = render(<MainPage onNavigate={vi.fn()} />);
       await flushAsync();
       expect(saveSortListeners.length).toBe(1);
       unmount();
       expect(saveSortListeners.length).toBe(0);
-    });
-
-    it("re-renders MigrationBlockedPage when migration store flips to pending", async () => {
-      const { queryByTestId } = render(<MainPage onNavigate={vi.fn()} />);
-      await flushAsync();
-      // Initially: normal panel
-      expect(queryByTestId("migration-blocked-page")).toBeNull();
-
-      await act(async () => {
-        vi.mocked(migrationStore.setMigrationStatus)({ pending: true });
-      });
-
-      expect(queryByTestId("migration-blocked-page")).not.toBeNull();
     });
 
     it("re-renders the save-sort migration banner when saveSort store flips to pending", async () => {
@@ -1525,11 +1424,11 @@ describe("MainPage", () => {
 
     it("clicking 'Go to Settings' (save-sort migration banner) invokes onNavigate('settings')", async () => {
       currentSaveSortState = { pending: true, saves_count: 3 };
-      // refreshMigrationState runs on mount and writes save_sort back to the
+      // getSaveSortMigrationStatus runs on mount and writes back to the
       // store — also return pending:true so the banner stays visible.
-      vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-        retrodeck: { pending: false },
-        save_sort: { pending: true, saves_count: 3 },
+      vi.mocked(backend.getSaveSortMigrationStatus).mockResolvedValue({
+        pending: true,
+        saves_count: 3,
       });
       const onNavigate = vi.fn();
       const { container } = render(<MainPage onNavigate={onNavigate} />);

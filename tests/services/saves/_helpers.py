@@ -67,7 +67,6 @@ def make_service(tmp_path, fake_api=None, *, emit=None, **overrides) -> tuple["S
         emit=emit if emit is not None else _noop_emit,
         get_core_name=lambda core_so: None,
         detect_sort_change=lambda: None,
-        is_retrodeck_migration_pending=lambda: False,
     )
     config_kwargs.update(overrides)
     svc = SaveService(config=SaveServiceConfig(**config_kwargs))

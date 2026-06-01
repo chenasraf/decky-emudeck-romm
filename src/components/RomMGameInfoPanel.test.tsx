@@ -23,7 +23,7 @@ import {
   domListenerCount,
 } from "../test-utils/dom-event-listener-spy";
 import { useVersionError } from "./VersionErrorCard";
-import type { MigrationStatus, SaveSortMigrationStatus } from "../types";
+import type { SaveSortMigrationStatus } from "../types";
 
 // Type-only imports — vi.mock(...) below replaces the runtime impl, but
 // pinning captured-props shapes to the real component keeps assertions in
@@ -31,17 +31,14 @@ import type { MigrationStatus, SaveSortMigrationStatus } from "../types";
 import type { SlotSetupWizard } from "./SlotSetupWizard";
 import type { SavesTab } from "./SavesTab";
 import type { VersionErrorCard } from "./VersionErrorCard";
-import type { MigrationBlockedCard } from "./MigrationBlockedCard";
 
 type SlotSetupWizardProps = ComponentProps<typeof SlotSetupWizard>;
 type SavesTabProps = ComponentProps<typeof SavesTab>;
 type VersionErrorCardProps = ComponentProps<typeof VersionErrorCard>;
-type MigrationBlockedCardProps = ComponentProps<typeof MigrationBlockedCard>;
 
 const capturedSlotSetupWizard: SlotSetupWizardProps[] = [];
 const capturedSavesTab: SavesTabProps[] = [];
 const capturedVersionErrorCard: VersionErrorCardProps[] = [];
-const capturedMigrationBlockedCard: MigrationBlockedCardProps[] = [];
 
 vi.mock("./SlotSetupWizard", () => ({
   SlotSetupWizard: (props: SlotSetupWizardProps) => {
@@ -65,13 +62,6 @@ vi.mock("./VersionErrorCard", () => ({
   useVersionError: vi.fn(() => null),
 }));
 
-vi.mock("./MigrationBlockedCard", () => ({
-  MigrationBlockedCard: (props: MigrationBlockedCardProps) => {
-    capturedMigrationBlockedCard.push(props);
-    return createElement("div", { "data-testid": "migration-blocked-card" });
-  },
-}));
-
 // ----- Slot state helpers — already tested in src/utils/slotState.test.ts.
 // Mock so we can observe + assert the panel routes through them with the
 // right arg shape.
@@ -90,31 +80,10 @@ vi.mock("../utils/cachedGameDetailStore", () => ({
   invalidateCachedGameDetail: vi.fn(),
 }));
 
-// ----- migrationStore — own listener list + state so tests drive the
-// subscribe/unsubscribe + state-change flow deterministically.
-// `vi.resetAllMocks()` in beforeEach wipes the impls — re-stubbed there.
-const migrationListeners: Array<() => void> = [];
-let currentMigrationState: MigrationStatus = { pending: false };
-vi.mock("../utils/migrationStore", () => ({
-  getMigrationState: vi.fn(() => currentMigrationState),
-  setMigrationStatus: vi.fn((s: MigrationStatus) => {
-    currentMigrationState = s;
-    migrationListeners.forEach((fn) => fn());
-  }),
-  onMigrationChange: vi.fn((cb: () => void) => {
-    migrationListeners.push(cb);
-    return () => {
-      const i = migrationListeners.indexOf(cb);
-      if (i >= 0) migrationListeners.splice(i, 1);
-    };
-  }),
-}));
-import * as migrationStore from "../utils/migrationStore";
-
-// ----- saveSortMigrationStore — same listener-array pattern as
-// migrationStore. The panel reads .pending on mount and re-renders when the
-// store notifies. clearSaveSortMigration isn't used by the panel but the mock
-// declares it as a vi.fn for shape parity with the real module.
+// ----- saveSortMigrationStore — listener-array pattern. The panel reads
+// .pending on mount and re-renders when the store notifies.
+// clearSaveSortMigration isn't used by the panel but the mock declares it
+// as a vi.fn for shape parity with the real module.
 const saveSortListeners: Array<() => void> = [];
 let currentSaveSortState: SaveSortMigrationStatus = { pending: false };
 vi.mock("../utils/saveSortMigrationStore", () => ({
@@ -152,10 +121,7 @@ describe("RomMGameInfoPanel", () => {
     capturedSlotSetupWizard.length = 0;
     capturedSavesTab.length = 0;
     capturedVersionErrorCard.length = 0;
-    capturedMigrationBlockedCard.length = 0;
-    migrationListeners.length = 0;
     saveSortListeners.length = 0;
-    currentMigrationState = { pending: false };
     currentSaveSortState = { pending: false };
     testAppId++;
     installDomEventListenerSpy();
@@ -163,25 +129,6 @@ describe("RomMGameInfoPanel", () => {
     // resetAllMocks wipes module-mock impls — re-stub below.
     vi.mocked(useVersionError).mockReturnValue(null);
 
-    // Re-stub migrationStore impls (resetAllMocks wiped them).
-    vi.mocked(migrationStore.getMigrationState).mockImplementation(
-      () => currentMigrationState,
-    );
-    vi.mocked(migrationStore.setMigrationStatus).mockImplementation(
-      (s: MigrationStatus) => {
-        currentMigrationState = s;
-        migrationListeners.forEach((fn) => fn());
-      },
-    );
-    vi.mocked(migrationStore.onMigrationChange).mockImplementation(
-      (cb: () => void) => {
-        migrationListeners.push(cb);
-        return () => {
-          const i = migrationListeners.indexOf(cb);
-          if (i >= 0) migrationListeners.splice(i, 1);
-        };
-      },
-    );
     // Re-stub saveSortMigrationStore impls.
     vi.mocked(
       saveSortMigrationStore.getSaveSortMigrationState,
@@ -208,9 +155,8 @@ describe("RomMGameInfoPanel", () => {
     });
     vi.mocked(cachedStore.invalidateCachedGameDetail).mockReturnValue(undefined);
     vi.mocked(backend.debugLog).mockResolvedValue(undefined);
-    vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-      retrodeck: { pending: false },
-      save_sort: { pending: false },
+    vi.mocked(backend.getSaveSortMigrationStatus).mockResolvedValue({
+      pending: false,
     });
     vi.mocked(backend.getRomMetadata).mockResolvedValue({} as never);
     vi.mocked(backend.getInstalledRom).mockResolvedValue(null);
@@ -264,24 +210,7 @@ describe("RomMGameInfoPanel", () => {
       const { queryByTestId } = render(<RomMGameInfoPanel appId={testAppId} />);
       await flushAsync();
       expect(queryByTestId("version-error-card")).not.toBeNull();
-      expect(queryByTestId("migration-blocked-card")).toBeNull();
       expect(capturedVersionErrorCard[0]?.message).toBe("server too old");
-    });
-
-    it("renders only MigrationBlockedCard when migration is pending", async () => {
-      currentMigrationState = { pending: true };
-      // refreshMigrationState() runs on mount and overwrites the store state —
-      // also return pending=true so it doesn't clobber the gate after the
-      // useEffect resolves.
-      vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-        retrodeck: { pending: true },
-        save_sort: { pending: false },
-      });
-      const { queryByTestId } = render(<RomMGameInfoPanel appId={testAppId} />);
-      await flushAsync();
-      expect(queryByTestId("migration-blocked-card")).not.toBeNull();
-      expect(queryByTestId("version-error-card")).toBeNull();
-      expect(capturedMigrationBlockedCard.length).toBeGreaterThanOrEqual(1);
     });
 
     it("renders 'Loading...' before loadData resolves", () => {
@@ -466,38 +395,33 @@ describe("RomMGameInfoPanel", () => {
   });
 
   // ------------------------------------------------------------------
-  // C. refreshMigrationState mount-time call + logError on rejection
+  // C. getSaveSortMigrationStatus mount-time call + logError on rejection
   // ------------------------------------------------------------------
 
-  describe("refreshMigrationState on mount", () => {
-    it("calls setMigrationStatus + setSaveSortMigrationStatus on success", async () => {
-      const { setMigrationStatus } = await import("../utils/migrationStore");
+  describe("getSaveSortMigrationStatus on mount", () => {
+    it("calls setSaveSortMigrationStatus on success", async () => {
       const { setSaveSortMigrationStatus } = await import(
         "../utils/saveSortMigrationStore"
       );
-      vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-        retrodeck: { pending: false },
-        save_sort: { pending: true } as SaveSortMigrationStatus,
-      });
+      vi.mocked(backend.getSaveSortMigrationStatus).mockResolvedValue({
+        pending: true,
+      } as SaveSortMigrationStatus);
       render(<RomMGameInfoPanel appId={testAppId} />);
       await flushAsync();
-      expect(setMigrationStatus).toHaveBeenCalledWith(
-        expect.objectContaining({ pending: false }),
-      );
       expect(setSaveSortMigrationStatus).toHaveBeenCalledWith(
         expect.objectContaining({ pending: true }),
       );
     });
 
-    it("calls logError when refreshMigrationState rejects", async () => {
+    it("calls logError when getSaveSortMigrationStatus rejects", async () => {
       const logSpy = vi.spyOn(backend, "logError").mockImplementation(() => {});
-      vi.mocked(backend.refreshMigrationState).mockRejectedValue(
+      vi.mocked(backend.getSaveSortMigrationStatus).mockRejectedValue(
         new Error("boom"),
       );
       render(<RomMGameInfoPanel appId={testAppId} />);
       await flushAsync();
       expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to refresh migration state"),
+        expect.stringContaining("Failed to refresh save-sort migration state"),
       );
       logSpy.mockRestore();
     });
@@ -1185,15 +1109,6 @@ describe("RomMGameInfoPanel", () => {
   // ------------------------------------------------------------------
 
   describe("migration store subscriptions", () => {
-    it("subscribes to migrationStore on mount and unsubscribes on unmount", async () => {
-      const before = migrationListeners.length;
-      const { unmount } = render(<RomMGameInfoPanel appId={testAppId} />);
-      await flushAsync();
-      expect(migrationListeners.length).toBe(before + 1);
-      unmount();
-      expect(migrationListeners.length).toBe(before);
-    });
-
     it("subscribes to saveSortMigrationStore on mount and unsubscribes on unmount", async () => {
       const before = saveSortListeners.length;
       const { unmount } = render(<RomMGameInfoPanel appId={testAppId} />);
@@ -1201,25 +1116,6 @@ describe("RomMGameInfoPanel", () => {
       expect(saveSortListeners.length).toBe(before + 1);
       unmount();
       expect(saveSortListeners.length).toBe(before);
-    });
-
-    it("listener fired after migrationStore changes to pending=true → switches to MigrationBlockedCard", async () => {
-      vi.mocked(cachedStore.getCachedGameDetail).mockResolvedValue({
-        found: true,
-        rom_id: 1,
-        metadata: {} as never,
-        stale_fields: [],
-      });
-      const { queryByTestId } = render(
-        <RomMGameInfoPanel appId={testAppId} />,
-      );
-      await flushAsync();
-      expect(queryByTestId("migration-blocked-card")).toBeNull();
-      await act(async () => {
-        currentMigrationState = { pending: true };
-        migrationListeners.forEach((fn) => fn());
-      });
-      expect(queryByTestId("migration-blocked-card")).not.toBeNull();
     });
 
     it("listener fired after saveSortMigrationStore changes to pending=true → renders save-sort warning", async () => {
@@ -2184,11 +2080,10 @@ describe("RomMGameInfoPanel", () => {
 
     it("renders when saveSortPending=true at mount", async () => {
       currentSaveSortState = { pending: true };
-      // refreshMigrationState() on mount overwrites the store — return
-      // pending=true so the gate survives the useEffect resolution.
-      vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-        retrodeck: { pending: false },
-        save_sort: { pending: true },
+      // getSaveSortMigrationStatus() on mount overwrites the store —
+      // return pending=true so the gate survives the useEffect resolution.
+      vi.mocked(backend.getSaveSortMigrationStatus).mockResolvedValue({
+        pending: true,
       });
       vi.mocked(cachedStore.getCachedGameDetail).mockResolvedValue({
         found: true,

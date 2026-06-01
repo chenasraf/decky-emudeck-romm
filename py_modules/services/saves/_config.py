@@ -26,7 +26,6 @@ if TYPE_CHECKING:
         EventEmitter,
         Frontend,
         HostnameReader,
-        MigrationPendingFn,
         PluginMetadataReader,
         RetryStrategy,
         RommSyncApi,
@@ -117,9 +116,6 @@ class SaveServiceConfig:
         ``post_exit_sync`` invoke this callback once at their entry
         point; failures are logged and swallowed so save-sync degrades
         gracefully to the previously-known state.
-    is_retrodeck_migration_pending:
-        Callback returning ``True`` when a RetroDECK migration is in
-        flight; SaveService gates destructive operations on this signal.
     log_debug:
         ``DebugLogger`` Protocol seam — routes through the user's QAM
         log-level filter. Injected directly into each sub-service that
@@ -145,4 +141,3 @@ class SaveServiceConfig:
     get_core_name: CoreNameProviderFn
     emit: EventEmitter
     detect_sort_change: SaveSortChangeFn
-    is_retrodeck_migration_pending: MigrationPendingFn

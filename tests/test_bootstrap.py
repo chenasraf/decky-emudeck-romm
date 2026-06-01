@@ -362,29 +362,6 @@ class TestWireServices:
         assert sgdb_service._get_pending_sync() == {42: {"name": "Game", "platform_name": "N64"}}
         deps["loop"].close()
 
-    def test_bios_files_index_binding_observes_firmware_rebinds(self, tmp_path):
-        """MigrationService sees post-load reassignments of bios_files_index.
-
-        Regression for #349: ``firmware_service.load_bios_registry()`` rebinds
-        ``_bios_files_index`` to a fresh dict each call; the binding must
-        re-resolve the property on every read.
-        """
-        deps = self._make_deps(tmp_path)
-        result = wire_services(self._make_config(deps))
-        firmware_service = result["firmware_service"]
-        migration_service = result["migration_service"]
-
-        # Re-loading reassigns _bios_files_index; mutate the new dict and
-        # confirm migration's deferred-read picks up the change.
-        firmware_service.load_bios_registry()
-        firmware_service._bios_files_index["scph5501.bin"] = {
-            "platform": "psx",
-            "description": "PS1 BIOS",
-        }
-
-        assert "scph5501.bin" in migration_service._get_bios_files_index()
-        deps["loop"].close()
-
     def test_migration_service_receives_get_core_name(self, tmp_path):
         """MigrationService must receive the get_core_name callback from wire_services."""
         deps = self._make_deps(tmp_path)
@@ -448,34 +425,6 @@ class TestWireServices:
         assert save_sync_service._state is deps["state"]
         assert migration_service._state is deps["state"]
         assert save_sync_service._state is migration_service._state
-        deps["loop"].close()
-
-    def test_save_service_receives_is_retrodeck_migration_pending(self, tmp_path):
-        """Regression test for #251: SaveService must receive the bound
-        ``migration_service.is_retrodeck_migration_pending`` callback so
-        pre_launch_sync / post_exit_sync can short-circuit while the user
-        still has files at the previous RetroDECK home."""
-        deps = self._make_deps(tmp_path)
-        result = wire_services(self._make_config(deps))
-        save_sync_service = result["save_sync_service"]
-        migration_service = result["migration_service"]
-        # is_retrodeck_migration_pending is consumed by the sync_engine sub-service.
-        assert save_sync_service._sync_engine._is_retrodeck_migration_pending == (
-            migration_service.is_retrodeck_migration_pending
-        )
-        assert save_sync_service._sync_engine._is_retrodeck_migration_pending.__self__ is migration_service  # type: ignore[union-attr]
-        deps["loop"].close()
-
-    def test_download_service_receives_is_retrodeck_migration_pending(self, tmp_path):
-        """Regression test for #251: DownloadService must receive the bound
-        ``migration_service.is_retrodeck_migration_pending`` callback so
-        the download poll loop pauses while a migration is pending."""
-        deps = self._make_deps(tmp_path)
-        result = wire_services(self._make_config(deps))
-        download_service = result["download_service"]
-        migration_service = result["migration_service"]
-        assert download_service._is_retrodeck_migration_pending == migration_service.is_retrodeck_migration_pending
-        assert download_service._is_retrodeck_migration_pending.__self__ is migration_service  # type: ignore[union-attr]
         deps["loop"].close()
 
     def test_save_sync_detect_sort_change_mutates_shared_state(self, tmp_path):

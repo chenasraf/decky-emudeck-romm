@@ -114,7 +114,6 @@ def plugin(tmp_path):
             emit=AsyncMock(),
             get_core_name=lambda core_so: None,
             detect_sort_change=lambda: None,
-            is_retrodeck_migration_pending=lambda: False,
         ),
     )
     p._save_sync_service.init_state()
@@ -135,10 +134,7 @@ def plugin(tmp_path):
     # Store fake_api on plugin for test access
     p._fake_api = fake_api
 
-    # Default migration service mock — no migration pending. Tests that
-    # exercise the @migration_blocked gate override this.
     p._migration_service = MagicMock()
-    p._migration_service.is_retrodeck_migration_pending.return_value = False
 
     # Enable save sync for tests — matches pre-feature-flag behavior
     p._save_sync_state.settings.save_sync_enabled = True
@@ -468,7 +464,6 @@ class TestPostExitSync:
                 state_persister=MagicMock(),
                 settings_persister=MagicMock(),
                 emit=MagicMock(),
-                get_bios_files_index=lambda: {},
                 frontend=FakeFrontend(
                     rom_root=Path("/tmp/roms"),
                     bios_root=Path("/tmp/bios"),

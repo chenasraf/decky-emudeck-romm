@@ -31,7 +31,6 @@ if TYPE_CHECKING:
         DownloadQueueStore,
         EventEmitter,
         Frontend,
-        MigrationPendingFn,
         RommRomReader,
         Sleeper,
         StatePersister,
@@ -48,8 +47,8 @@ class DownloadServiceConfig:
     """Frozen wiring bundle handed to ``DownloadService.__init__``.
 
     Holds the Protocol-typed adapters, the live state dict, runtime
-    infrastructure, time/sleep seams, path providers, and migration-
-    aware callbacks DownloadService needs at construction time.
+    infrastructure, time/sleep seams, and path providers DownloadService
+    needs at construction time.
     """
 
     romm_api: RommRomReader
@@ -65,7 +64,6 @@ class DownloadServiceConfig:
     sleeper: Sleeper
     state_persister: StatePersister
     frontend: Frontend
-    is_retrodeck_migration_pending: MigrationPendingFn
 
 
 class DownloadService:
@@ -85,7 +83,6 @@ class DownloadService:
         self._sleeper = config.sleeper
         self._state_persister = config.state_persister
         self._frontend = config.frontend
-        self._is_retrodeck_migration_pending = config.is_retrodeck_migration_pending
 
         # Owned state
         self._download_in_progress: set = set()
@@ -187,12 +184,6 @@ class DownloadService:
         while True:
             try:
                 await self._sleeper.sleep(2)
-                # Pause polling while a RetroDECK migration is pending — must
-                # short-circuit BEFORE poll_and_clear reads + clears the
-                # request file, otherwise queued requests would be silently
-                # dropped on the floor.
-                if self._is_retrodeck_migration_pending():
-                    continue
                 requests = await self._loop.run_in_executor(None, self._download_queue_io.poll_and_clear, requests_path)
                 if not requests:
                     continue

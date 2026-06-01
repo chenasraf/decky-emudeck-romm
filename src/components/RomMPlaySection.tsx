@@ -94,7 +94,6 @@ interface InfoState {
 
 import { setRommConnectionState, setVersionError, setFrontendUnsupported } from "../utils/connectionState";
 import { useVersionError } from "./VersionErrorCard";
-import { useMigrationStatus } from "./MigrationBlockedPage";
 import { DISPLAY_NAME } from "../branding";
 
 /** Cache-first initial render. Resolves the cached game detail for this appId,
@@ -182,7 +181,6 @@ async function loadCached(
 export const RomMPlaySection: FC<RomMPlaySectionProps> = ({ appId }) => { // NOSONAR(typescript:S3776) — React FC body; decomposed in #392. Holds Steam menu + achievements + save-sync row.
   // Subscribe to version error — re-renders when global state changes
   const versionError = useVersionError();
-  const migration = useMigrationStatus();
 
   // Read playtime from Steam's own overview synchronously (already written by metadataPatches)
   // This avoids an unnecessary render from setting it inside the async effect.
@@ -663,11 +661,6 @@ export const RomMPlaySection: FC<RomMPlaySectionProps> = ({ appId }) => { // NOS
 
   // Version mismatch — render nothing (VersionErrorCard is shown in RomMGameInfoPanel instead)
   if (versionError) {
-    return null;
-  }
-
-  // Pending RetroDECK migration — render nothing (MigrationBlockedCard is shown in RomMGameInfoPanel instead)
-  if (migration.pending) {
     return null;
   }
 

@@ -1,10 +1,13 @@
-"""MigrationService — RetroDECK path and save-sort migration orchestration.
+"""MigrationService — RetroArch save-sort migration orchestration.
 
-Owns the runtime decisions for relocating ROMs, BIOS, and save files
-when the RetroDECK home path changes or RetroArch save sorting flips.
-All raw filesystem I/O is delegated to the ``MigrationFileStore``
-Protocol; conflict resolution, state mutations, and event emission
-remain the service's responsibility.
+Owns the runtime decisions for relocating save files when RetroArch
+save sorting flips. All raw filesystem I/O is delegated to the
+``MigrationFileStore`` Protocol; conflict resolution, state mutations,
+and event emission remain the service's responsibility.
+
+Also hosts the one-shot settings-schema migration applied at plugin
+start (``apply_settings_schema_migrations``) — it shares the same
+state/settings/persistence wiring as the save-sort flow.
 """
 
 from __future__ import annotations
@@ -21,7 +24,6 @@ from domain.save_path import resolve_save_dir
 
 if TYPE_CHECKING:
     import logging
-    from collections.abc import Callable
 
     from services.protocols import (
         CoreNameProviderFn,
@@ -61,7 +63,6 @@ class MigrationServiceConfig:
     state_persister: StatePersister
     settings_persister: SettingsPersister
     emit: EventEmitter
-    get_bios_files_index: Callable[[], dict]
     frontend: Frontend
     get_retroarch_save_sorting: RetroArchSaveSortingProvider
     get_active_core: CoreResolverFn
@@ -69,7 +70,7 @@ class MigrationServiceConfig:
 
 
 class MigrationService:
-    """Handles RetroDECK path change detection and file migration."""
+    """Handles RetroArch save-sort change detection and file migration."""
 
     def __init__(self, *, config: MigrationServiceConfig) -> None:
         self._migration_file_store = config.migration_file_store
@@ -80,7 +81,6 @@ class MigrationService:
         self._state_persister = config.state_persister
         self._settings_persister = config.settings_persister
         self._emit = config.emit
-        self._get_bios_files_index = config.get_bios_files_index
         self._frontend = config.frontend
         self._get_retroarch_save_sorting = config.get_retroarch_save_sorting
         self._get_active_core = config.get_active_core
@@ -92,24 +92,14 @@ class MigrationService:
         self._background_tasks: set[asyncio.Task] = set()
 
     def _spawn_background_task(self, coro) -> asyncio.Task:
-        """Schedule ``coro`` on the plugin loop and track the task for shutdown.
-
-        Wraps ``loop.create_task`` so the resulting task is retained in
-        ``_background_tasks`` until completion. ``shutdown()`` cancels any
-        still-pending entries on plugin unload.
-        """
+        """Schedule ``coro`` on the plugin loop and track the task for shutdown."""
         task = self._loop.create_task(coro)
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
         return task
 
     async def shutdown(self) -> None:
-        """Cancel any in-flight background tasks and await their completion.
-
-        Called from ``main._unload`` so RetroDECK path-change notification
-        coroutines do not leak across the plugin unload boundary. No-op
-        when no tasks are pending.
-        """
+        """Cancel any in-flight background tasks and await their completion."""
         for task in self._background_tasks:
             task.cancel()
         if self._background_tasks:
@@ -140,371 +130,8 @@ class MigrationService:
                 "Settings schema migration v1→v2: cleared last_sync to force full resync (fixes #738 cache corruption)"
             )
 
-    def detect_retrodeck_path_change(self) -> None:
-        """Check if RetroDECK home path changed since last run."""
-        current_home = str(self._frontend.home())
-        stored_home = self._state.get("retrodeck_home_path", "")
-
-        if not current_home or current_home == ".":
-            return
-
-        if not self._migration_file_store.is_dir(current_home):
-            self._logger.warning(f"RetroDECK home path does not exist, skipping: {current_home}")
-            return
-
-        if stored_home == current_home:
-            return
-
-        if not stored_home:
-            # First run — just store the current path, no migration needed
-            self._state["retrodeck_home_path"] = current_home
-            self._state_persister.save_state()
-            return
-
-        # Auto-clear: user reverted RetroDECK to the previous home before migrating.
-        # The "previous" path is now the live one — no migration needed, drop the marker.
-        if current_home == self._state.get("retrodeck_home_path_previous"):
-            previous = self._state.get("retrodeck_home_path_previous", "")
-            self._state.pop("retrodeck_home_path_previous", None)
-            self._state["retrodeck_home_path"] = current_home
-            self._state_persister.save_state()
-            self._logger.info(f"RetroDECK home reverted to previous path; clearing migration marker: {current_home}")
-            # Notify the frontend so any pending migration UI can dismiss itself.
-            # ``cleared: True`` lets the listener distinguish from the path-change emit.
-            self._spawn_background_task(
-                self._emit(
-                    "retrodeck_path_changed",
-                    {
-                        "old_path": previous,
-                        "new_path": current_home,
-                        "cleared": True,
-                    },
-                )
-            )
-            return
-
-        old_home = stored_home
-
-        # Path changed — store both old and new, emit event
-        self._state["retrodeck_home_path_previous"] = old_home
-        self._state["retrodeck_home_path"] = current_home
-        self._state_persister.save_state()
-        self._logger.warning(f"RetroDECK home path changed: {old_home} -> {current_home}")
-        self._spawn_background_task(
-            self._emit(
-                "retrodeck_path_changed",
-                {
-                    "old_path": old_home,
-                    "new_path": current_home,
-                },
-            )
-        )
-
-    def is_retrodeck_migration_pending(self) -> bool:
-        """Return True if a RetroDECK home path migration is pending."""
-        return bool(self._state.get("retrodeck_home_path_previous"))
-
-    def dismiss_retrodeck_migration(self) -> dict:
-        """Dismiss the RetroDECK path migration warning without migrating files."""
-        self._state.pop("retrodeck_home_path_previous", None)
-        self._state_persister.save_state()
-        return {"success": True}
-
-    def _collect_rom_items(self, old_home, new_home):
-        """Collect ROM migration items from installed_roms state."""
-        items = []
-        for entry in self._state["installed_roms"].values():
-            for key in ("file_path", "rom_dir"):
-                path = entry.get(key, "")
-                if not path or not path.startswith(old_home + os.sep):
-                    continue
-                new_path = os.path.join(new_home, os.path.relpath(path, old_home))
-
-                def make_rom_updater(e, k, np):
-                    def update():
-                        e[k] = np
-
-                    return update
-
-                items.append(
-                    (
-                        os.path.basename(path),
-                        path,
-                        new_path,
-                        make_rom_updater(entry, key, new_path),
-                        "rom" if key == "file_path" else "rom_dir",
-                    )
-                )
-        return items
-
-    def _collect_tracked_bios_items(self, old_home, new_home):
-        """Collect tracked BIOS migration items from downloaded_bios state."""
-        items = []
-        for file_name, bios_entry in self._state.get("downloaded_bios", {}).items():
-            file_path = bios_entry.get("file_path", "")
-            if not file_path or not file_path.startswith(old_home + os.sep):
-                continue
-            new_path = os.path.join(new_home, os.path.relpath(file_path, old_home))
-
-            def make_bios_updater(be, np):
-                def update():
-                    be["file_path"] = np
-
-                return update
-
-            items.append(
-                (
-                    file_name,
-                    file_path,
-                    new_path,
-                    make_bios_updater(bios_entry, new_path),
-                    "bios",
-                )
-            )
-        return items
-
-    def _collect_untracked_bios_items(self, old_home):
-        """Collect untracked BIOS migration items (downloaded before state tracking)."""
-        items = []
-        old_bios = os.path.join(old_home, "bios")
-        new_bios = str(self._frontend.bios_root())
-        if not self._migration_file_store.is_dir(old_bios):
-            return items
-        downloaded_bios = self._state.get("downloaded_bios", {})
-        for file_name, reg_entry in self._get_bios_files_index().items():
-            if file_name in downloaded_bios:
-                continue
-            firmware_path = reg_entry.get("firmware_path", file_name)
-            old_file = os.path.join(old_bios, firmware_path)
-            new_file = os.path.join(new_bios, firmware_path)
-            if not self._migration_file_store.exists(old_file):
-                continue
-            items.append((file_name, old_file, new_file, lambda: None, "bios"))
-        return items
-
-    def _collect_save_items(self, old_home):
-        """Collect save file migration items by scanning old saves directory.
-
-        Hidden directories (those whose name begins with ``.``) and the
-        files they contain are skipped: the RomM plugin's ``.romm-backup``
-        sidecars and any ad-hoc user dotdirs must not be migrated.
-        """
-        items = []
-        old_saves = os.path.join(old_home, "saves")
-        new_saves = str(self._frontend.saves())
-        if not self._migration_file_store.is_dir(old_saves):
-            return items
-        for dirpath, _dirs, filenames in self._migration_file_store.walk_files(old_saves):
-            rel_dir = os.path.relpath(dirpath, old_saves)
-            # Skip any descendant of a hidden directory by inspecting the
-            # relative-path segments. ``rel_dir == "."`` for the saves
-            # root itself, which is never hidden.
-            if rel_dir != "." and any(part.startswith(".") for part in rel_dir.split(os.sep)):
-                continue
-            for fname in filenames:
-                if fname.startswith("."):
-                    continue
-                old_file = os.path.join(dirpath, fname)
-                rel = os.path.relpath(old_file, old_saves)
-                new_file = os.path.join(new_saves, rel)
-                items.append((rel, old_file, new_file, lambda: None, "save"))
-        return items
-
-    def _collect_migration_items(self, old_home, new_home):
-        """Collect all files that need migration across ROMs, BIOS, and saves.
-
-        Returns list of (label, old_path, new_path, state_update_fn, kind) tuples.
-        state_update_fn is called after a successful move/skip to update state.
-        """
-        items = []
-        items.extend(self._collect_rom_items(old_home, new_home))
-        items.extend(self._collect_tracked_bios_items(old_home, new_home))
-        items.extend(self._collect_untracked_bios_items(old_home))
-        items.extend(self._collect_save_items(old_home))
-        return items
-
-    def _find_conflicts(self, items):
-        """Return sorted list of labels where both source and destination exist."""
-        conflict_set = set()
-        for label, old_path, new_path, _updater, _kind in items:
-            if self._migration_file_store.exists(new_path) and self._migration_file_store.exists(old_path):
-                conflict_set.add(label)
-        return sorted(conflict_set)
-
-    def _migrate_single_item(self, label, old_path, new_path, state_updater, kind, conflict_strategy, counts, errors):
-        """Migrate a single file/directory item. Updates counts and errors in place."""
-        count_key = kind if kind != "rom_dir" else None
-
-        if not self._migration_file_store.exists(old_path):
-            if self._migration_file_store.exists(new_path):
-                state_updater()
-                if count_key:
-                    counts[count_key] = counts.get(count_key, 0) + 1
-            return
-
-        if self._migration_file_store.exists(new_path):
-            self._migrate_conflict_item(
-                label,
-                old_path,
-                new_path,
-                state_updater,
-                conflict_strategy,
-                count_key,
-                counts,
-                errors,
-            )
-            return
-
-        try:
-            self._migration_file_store.make_dirs(os.path.dirname(new_path))
-            self._migration_file_store.move(old_path, new_path)
-            state_updater()
-            if count_key:
-                counts[count_key] = counts.get(count_key, 0) + 1
-            self._logger.info(f"Migrated {kind}: {old_path} -> {new_path}")
-        except OSError as e:
-            errors.append(f"{label}: {e}")
-            self._logger.error(f"Migration failed: {old_path}: {e}")
-
-    def _migrate_conflict_item(
-        self,
-        label,
-        old_path,
-        new_path,
-        state_updater,
-        conflict_strategy,
-        count_key,
-        counts,
-        errors,
-    ):
-        """Handle migration when destination already exists."""
-        if conflict_strategy == "overwrite":
-            try:
-                if self._migration_file_store.is_dir(new_path):
-                    self._migration_file_store.remove_tree(new_path)
-                else:
-                    self._migration_file_store.remove_file(new_path)
-                self._migration_file_store.make_dirs(os.path.dirname(new_path))
-                self._migration_file_store.move(old_path, new_path)
-                state_updater()
-                if count_key:
-                    counts[count_key] = counts.get(count_key, 0) + 1
-                self._logger.info(f"Migration overwrite: {old_path} -> {new_path}")
-            except OSError as e:
-                errors.append(f"{label}: {e}")
-                self._logger.error(f"Migration overwrite failed: {old_path}: {e}")
-        else:
-            # skip — keep destination, update state
-            state_updater()
-            if count_key:
-                counts[count_key] = counts.get(count_key, 0) + 1
-            self._logger.info(f"Migration skip (exists): {new_path}")
-
-    @staticmethod
-    def _build_migration_result(counts, errors):
-        """Build the result dict from migration counts and errors."""
-        parts = []
-        if counts["rom"]:
-            parts.append(f"{counts['rom']} ROM(s)")
-        if counts["bios"]:
-            parts.append(f"{counts['bios']} BIOS")
-        if counts["save"]:
-            parts.append(f"{counts['save']} save(s)")
-        msg = f"Migrated {', '.join(parts)}" if parts else "No files to migrate"
-        if errors:
-            msg += f" ({len(errors)} error(s))"
-        return {
-            "success": len(errors) == 0,
-            "message": msg,
-            "roms_moved": counts["rom"],
-            "bios_moved": counts["bios"],
-            "saves_moved": counts["save"],
-            "errors": errors,
-        }
-
-    def _migrate_retrodeck_files_io(self, old_home, new_home, conflict_strategy):
-        """Sync helper for migrate_retrodeck_files — FS traversal + moves in executor."""
-        items = self._collect_migration_items(old_home, new_home)
-        conflicts = self._find_conflicts(items)
-
-        # If no strategy given and there are conflicts, return them for user decision
-        if conflict_strategy is None and conflicts:
-            return {
-                "success": False,
-                "needs_confirmation": True,
-                "conflict_count": len(conflicts),
-                "conflicts": conflicts,
-                "message": f"{len(conflicts)} file(s) already exist at destination",
-            }
-
-        counts = {"rom": 0, "bios": 0, "save": 0}
-        errors = []
-
-        for label, old_path, new_path, state_updater, kind in items:
-            self._migrate_single_item(
-                label,
-                old_path,
-                new_path,
-                state_updater,
-                kind,
-                conflict_strategy,
-                counts,
-                errors,
-            )
-
-        # Clear previous path marker after migration
-        if not errors:
-            self._state.pop("retrodeck_home_path_previous", None)
-        self._state_persister.save_state()
-
-        return self._build_migration_result(counts, errors)
-
-    async def migrate_retrodeck_files(self, conflict_strategy=None):
-        """Move downloaded ROMs, BIOS, and save files from old RetroDECK path to new.
-
-        Args:
-            conflict_strategy: None to scan and return conflicts, "overwrite" to
-                replace existing destination files, "skip" to keep existing files
-                and just update state paths.
-        """
-        old_home = self._state.get("retrodeck_home_path_previous", "")
-        new_home = self._state.get("retrodeck_home_path", "")
-
-        if not old_home or not new_home or old_home == new_home:
-            return {"success": False, "message": "No path migration needed"}
-
-        return await self._loop.run_in_executor(
-            None, self._migrate_retrodeck_files_io, old_home, new_home, conflict_strategy
-        )
-
-    def _get_migration_status_io(self, old_home, new_home):
-        """Sync helper for get_migration_status — FS traversal in executor."""
-        items = self._collect_migration_items(old_home, new_home)
-        roms_count = sum(1 for _, _, _, _, kind in items if kind == "rom")
-        bios_count = sum(1 for _, _, _, _, kind in items if kind == "bios")
-        saves_count = sum(1 for _, _, _, _, kind in items if kind == "save")
-
-        return {
-            "pending": True,
-            "old_path": old_home,
-            "new_path": new_home,
-            "roms_count": roms_count,
-            "bios_count": bios_count,
-            "saves_count": saves_count,
-        }
-
-    async def get_migration_status(self):
-        """Return whether a RetroDECK path migration is pending and file counts."""
-        old_home = self._state.get("retrodeck_home_path_previous", "")
-        new_home = self._state.get("retrodeck_home_path", "")
-
-        if not old_home or not new_home or old_home == new_home:
-            return {"pending": False}
-
-        return await self._loop.run_in_executor(None, self._get_migration_status_io, old_home, new_home)
-
     # ---------------------------------------------------------------------------
-    # Save sort change detection and migration
+    # Save-sort change detection and migration
     # ---------------------------------------------------------------------------
 
     def detect_save_sort_change(self) -> None:
@@ -541,6 +168,18 @@ class MigrationService:
             ),
             self._loop,
         )
+
+    async def refresh_state(self) -> dict:
+        """Run the save-sort detection pass and return current migration state.
+
+        Detects any RetroArch save-sort change, then returns the current
+        status payload. The session-finalize round-trip consumes this so
+        the QAM badge updates without a separate callable.
+        """
+        self.detect_save_sort_change()
+        return {
+            "save_sort": await self.get_save_sort_migration_status(),
+        }
 
     def _resolve_retroarch_corename(self, system: str, rom_filename: str) -> tuple[str | None, str | None]:
         """Resolve the RetroArch save subdirectory name for a system/ROM.
@@ -665,19 +304,6 @@ class MigrationService:
             return {"pending": False}
         return await self._loop.run_in_executor(None, self._get_save_sort_migration_status_io, old, new)
 
-    async def refresh_state(self) -> dict:
-        """Run both detection passes and return combined migration state.
-
-        Detects any RetroDECK home-path change and any RetroArch save-sort
-        change, then returns the current status of both migrations.
-        """
-        self.detect_retrodeck_path_change()
-        self.detect_save_sort_change()
-        return {
-            "retrodeck": await self.get_migration_status(),
-            "save_sort": await self.get_save_sort_migration_status(),
-        }
-
     def _resolve_save_sort_conflict(
         self,
         label: str,
@@ -730,6 +356,52 @@ class MigrationService:
             errors.append(f"{label}: {e}")
             self._logger.error(f"Save-sort overwrite failed: {old_path}: {e}")
 
+    def _migrate_save_sort_item(
+        self,
+        label: str,
+        old_path: str,
+        new_path: str,
+        state_updater,
+        counts: dict,
+        errors: list,
+    ) -> None:
+        """Move a single save file when no conflict exists at the destination.
+
+        Save-sort conflicts (both source and destination exist) are pre-routed
+        to ``_resolve_save_sort_conflict``; this helper handles the simple
+        no-conflict move and the source-missing recovery case where the file
+        already lives at the new location.
+        """
+        if not self._migration_file_store.exists(old_path):
+            if self._migration_file_store.exists(new_path):
+                state_updater()
+                counts["save"] = counts.get("save", 0) + 1
+            return
+
+        try:
+            self._migration_file_store.make_dirs(os.path.dirname(new_path))
+            self._migration_file_store.move(old_path, new_path)
+            state_updater()
+            counts["save"] = counts.get("save", 0) + 1
+            self._logger.info(f"Migrated save: {old_path} -> {new_path}")
+        except OSError as e:
+            errors.append(f"{label}: {e}")
+            self._logger.error(f"Migration failed: {old_path}: {e}")
+
+    @staticmethod
+    def _build_save_sort_result(counts: dict, errors: list) -> dict:
+        """Build the result dict from save-sort migration counts and errors."""
+        moved = counts.get("save", 0)
+        msg = f"Migrated {moved} save(s)" if moved else "No files to migrate"
+        if errors:
+            msg += f" ({len(errors)} error(s))"
+        return {
+            "success": len(errors) == 0,
+            "message": msg,
+            "saves_moved": moved,
+            "errors": errors,
+        }
+
     def _migrate_save_sort_files_io(
         self, old_settings: SaveSortSettings, new_settings: SaveSortSettings, conflict_strategy: str | None
     ) -> dict:
@@ -742,17 +414,17 @@ class MigrationService:
             self._state.pop("save_sort_settings_previous", None)
             self._state_persister.save_state()
             return {"success": True, "message": "No save files to migrate", "saves_moved": 0}
-        counts: dict[str, int] = {"rom": 0, "bios": 0, "save": 0}
+        counts: dict[str, int] = {"save": 0}
         errors: list[str] = []
         for label, old_path, new_path, updater, _kind in items:
             if self._migration_file_store.exists(old_path) and self._migration_file_store.exists(new_path):
                 self._resolve_save_sort_conflict(label, old_path, new_path, updater, counts, "save", errors)
             else:
-                self._migrate_single_item(label, old_path, new_path, updater, "save", None, counts, errors)
+                self._migrate_save_sort_item(label, old_path, new_path, updater, counts, errors)
         if not errors:
             self._state.pop("save_sort_settings_previous", None)
             self._state_persister.save_state()
-        return self._build_migration_result(counts, errors)
+        return self._build_save_sort_result(counts, errors)
 
     async def migrate_save_sort_files(self, conflict_strategy: str | None = None) -> dict:
         old = self._state.get("save_sort_settings_previous")

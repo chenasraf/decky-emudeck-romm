@@ -24,7 +24,7 @@ import {
   syncApplyDelta,
   syncCancelPreview,
   clearSyncCache,
-  refreshMigrationState,
+  getSaveSortMigrationStatus,
   getSyncStatus,
   logError,
 } from "../api/backend";
@@ -32,14 +32,12 @@ import { formatBytes } from "../utils/formatters";
 import { getSyncProgress, setSyncProgress as setStoredSyncProgress, onSyncProgressChange } from "../utils/syncProgress";
 import { scrollToTop } from "../utils/scrollHelpers";
 import { getDownloadState } from "../utils/downloadStore";
-import { getMigrationState, onMigrationChange, setMigrationStatus } from "../utils/migrationStore";
 import { getSaveSortMigrationState, onSaveSortMigrationChange, setSaveSortMigrationStatus } from "../utils/saveSortMigrationStore";
 import { requestSyncCancel } from "../utils/syncManager";
 import { setVersionError, setFrontendUnsupported } from "../utils/connectionState";
 import { VersionErrorCard, useVersionError } from "./VersionErrorCard";
 import { FrontendUnsupportedCard, useFrontendUnsupported } from "./FrontendUnsupportedCard";
-import { MigrationBlockedPage } from "./MigrationBlockedPage";
-import type { SyncProgress, SyncStage, SyncStats, SyncPreview, SyncPreviewSummary, DownloadItem, MigrationStatus } from "../types";
+import type { SyncProgress, SyncStage, SyncStats, SyncPreview, SyncPreviewSummary, DownloadItem } from "../types";
 
 type Page = "settings" | "library" | "data" | "downloads";
 
@@ -155,7 +153,6 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
   const [skipPreview, setSkipPreview] = useState(false);
   const [loading, setLoading] = useState(false);
   const [retroarchWarning, setRetroarchWarning] = useState<{ warning: boolean; current?: string } | null>(null);
-  const [migration, setMigration] = useState<MigrationStatus>(getMigrationState());
   const [saveSortMigration, setSaveSortMigration] = useState(getSaveSortMigrationState());
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,12 +165,9 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
   };
 
   useEffect(() => {
-    refreshMigrationState()
-      .then(({ retrodeck, save_sort }) => {
-        setMigrationStatus(retrodeck);
-        setSaveSortMigrationStatus(save_sort);
-      })
-      .catch((e) => logError(`Failed to refresh migration state: ${e}`));
+    getSaveSortMigrationStatus()
+      .then((status) => setSaveSortMigrationStatus(status))
+      .catch((e) => logError(`Failed to refresh save-sort migration state: ${e}`));
     getSyncStats().then(setStats);
     testConnection().then((r) => {
       setConnected(r.success);
@@ -224,11 +218,9 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
       setDownloads([...getDownloadState()]);
     }, 1000);
 
-    const unsubMigration = onMigrationChange(() => setMigration(getMigrationState()));
     const unsubSaveSort = onSaveSortMigrationChange(() => setSaveSortMigration(getSaveSortMigrationState()));
     return () => {
       unsubProgress();
-      unsubMigration();
       unsubSaveSort();
       if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
       if (downloadPollRef.current) clearInterval(downloadPollRef.current);
@@ -350,10 +342,6 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
 
   if (versionError) {
     return <VersionErrorCard message={versionError} compact />;
-  }
-
-  if (migration.pending) {
-    return <MigrationBlockedPage migration={migration} />;
   }
 
   let syncBody: ReactNode;

@@ -1,13 +1,11 @@
 import { callable } from "@decky/api";
-import type { PluginSettings, SyncStats, SyncProgress, DownloadItem, InstalledRom, PlatformSyncSetting, CollectionSyncSetting, RegistryPlatform, FirmwareStatus, FirmwareDownloadResult, BiosStatus, BiosFileStatus, RomMetadata, SaveSyncSettings, SaveStatus, SaveSyncDisplay, SyncConflict, AvailableCore, RommErrorCode, SyncPreview, AchievementSummary, AchievementList, AchievementProgress, SaveSlotSummary, SaveSetupInfo, SlotSavesResponse, SwitchSlotResponse, LaunchVerdict, SlotDeleteInfo, DeleteSlotResult, MigrationStatus, MigrationResult, SaveSortMigrationStatus, RollbackStatus, ListFileVersionsResult, ListDevicesResponse, FrontendUnsupportedPayload } from "../types";
+import type { PluginSettings, SyncStats, SyncProgress, DownloadItem, InstalledRom, PlatformSyncSetting, CollectionSyncSetting, RegistryPlatform, FirmwareStatus, FirmwareDownloadResult, BiosStatus, BiosFileStatus, RomMetadata, SaveSyncSettings, SaveStatus, SaveSyncDisplay, SyncConflict, AvailableCore, RommErrorCode, SyncPreview, AchievementSummary, AchievementList, AchievementProgress, SaveSlotSummary, SaveSetupInfo, SlotSavesResponse, SwitchSlotResponse, LaunchVerdict, SlotDeleteInfo, DeleteSlotResult, MigrationResult, SaveSortMigrationStatus, RollbackStatus, ListFileVersionsResult, ListDevicesResponse, FrontendUnsupportedPayload } from "../types";
 
 export interface BackendResult {
   success: boolean;
   message: string;
   error_code?: RommErrorCode;
   romm_version?: string;
-  /** Set when a callable was rejected because a RetroDECK migration is pending. */
-  blocked_by_migration?: boolean;
   /** Set on ``error_code: "version_unsupported"`` — bootstrap rejected the host frontend's version band. */
   version_unsupported?: FrontendUnsupportedPayload;
 }
@@ -171,18 +169,13 @@ export const checkCoreChange = callable<[number], { changed: boolean; old_core?:
 // Bulk playtime for plugin-load UI update
 export const getAllPlaytime = callable<[], { playtime: Record<string, { total_seconds: number; session_count: number }> }>("get_all_playtime");
 
-// RetroDECK path migration
-export const getMigrationStatus = callable<[], MigrationStatus>("get_migration_status");
-export const migrateRetroDeckFiles = callable<[string | null], MigrationResult>("migrate_retrodeck_files");
-export const dismissRetrodeckMigration = callable<[], { success: boolean }>("dismiss_retrodeck_migration");
-
+// RetroArch save-sort migration
 export const getSaveSortMigrationStatus = callable<[], SaveSortMigrationStatus>("get_save_sort_migration_status");
 export const migrateSaveSortFiles = callable<[string | null], MigrationResult>("migrate_save_sort_files");
 export const dismissSaveSortMigration = callable<[], { success: boolean }>("dismiss_save_sort_migration");
-export const refreshMigrationState = callable<[], { retrodeck: MigrationStatus; save_sort: SaveSortMigrationStatus }>("refresh_migration_state");
 
 // End-of-session orchestration — collapses recordSessionEnd + syncAchievementsAfterSession
-// + postExitSync + refreshMigrationState into a single backend round-trip.
+// + postExitSync + save-sort migration refresh into a single backend round-trip.
 // See SessionLifecycleService in py_modules/services/session_lifecycle.py.
 interface SessionFinalizeSyncResult {
   offline: boolean;
@@ -195,7 +188,6 @@ interface SessionFinalizeSyncResult {
 }
 
 interface SessionFinalizeMigration {
-  retrodeck: MigrationStatus;
   save_sort: SaveSortMigrationStatus;
 }
 
@@ -203,9 +195,9 @@ export interface SessionFinalizeResult {
   total_seconds: number | null;
   sync: SessionFinalizeSyncResult;
   // ``null`` when the backend's migration-state refresh raised — the
-  // frontend then leaves the migration stores untouched (any stale
-  // ``pending`` badge keeps showing), matching the pre-PR behavior
-  // where ``refreshMigrationState().catch`` logged without clearing.
+  // frontend then leaves the save-sort migration store untouched (any
+  // stale ``pending`` badge keeps showing), matching the pre-PR
+  // behavior where the refresh failure logged without clearing.
   migration: SessionFinalizeMigration | null;
 }
 

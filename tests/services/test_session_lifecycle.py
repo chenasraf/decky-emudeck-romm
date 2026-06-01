@@ -90,25 +90,16 @@ class FakeMigrationReader:
         *,
         payload: dict | None = None,
         side_effect: BaseException | None = None,
-        pending: bool = False,
     ) -> None:
-        self.payload: dict = (
-            payload if payload is not None else {"retrodeck": {"pending": False}, "save_sort": {"pending": False}}
-        )
+        self.payload: dict = payload if payload is not None else {"save_sort": {"pending": False}}
         self.side_effect = side_effect
-        self.pending = pending
         self.refresh_calls = 0
-        self.pending_calls = 0
 
     async def refresh_state(self) -> dict:
         self.refresh_calls += 1
         if self.side_effect is not None:
             raise self.side_effect
         return self.payload
-
-    def is_retrodeck_migration_pending(self) -> bool:
-        self.pending_calls += 1
-        return self.pending
 
 
 @pytest.fixture
@@ -440,12 +431,9 @@ class TestFinalizeConflicts:
 
 
 class TestFinalizeMigrationRefresh:
-    def test_typed_pair_returned(self, event_loop, logger):
+    def test_typed_payload_returned(self, event_loop, logger):
         """``refresh_state`` payload is repacked into the typed migration aggregate."""
-        migration_payload = {
-            "retrodeck": {"pending": True, "old_path": "/old", "new_path": "/new"},
-            "save_sort": {"pending": False},
-        }
+        migration_payload = {"save_sort": {"pending": True, "saves_count": 3}}
         migration = FakeMigrationReader(payload=migration_payload)
         service = _make_service(
             playtime_recorder=FakePlaytimeRecorder(),
@@ -458,16 +446,13 @@ class TestFinalizeMigrationRefresh:
         result = event_loop.run_until_complete(service.finalize(99))
         event_loop.run_until_complete(_drain_background_tasks(service))
 
-        assert result.migration.retrodeck == migration_payload["retrodeck"]
+        assert result.migration is not None
         assert result.migration.save_sort == migration_payload["save_sort"]
         assert migration.refresh_calls == 1
 
     def test_refresh_success_returns_populated_aggregate(self, event_loop, logger):
         """Happy path returns a populated ``SessionFinalizeMigration``, not ``None``."""
-        migration_payload = {
-            "retrodeck": {"pending": False},
-            "save_sort": {"pending": False},
-        }
+        migration_payload = {"save_sort": {"pending": False}}
         migration = FakeMigrationReader(payload=migration_payload)
         service = _make_service(
             playtime_recorder=FakePlaytimeRecorder(),
@@ -481,7 +466,6 @@ class TestFinalizeMigrationRefresh:
         event_loop.run_until_complete(_drain_background_tasks(service))
 
         assert isinstance(result.migration, SessionFinalizeMigration)
-        assert result.migration.retrodeck == {"pending": False}
         assert result.migration.save_sort == {"pending": False}
 
     def test_refresh_exception_returns_none(self, event_loop, logger):
@@ -517,8 +501,8 @@ class TestFinalizeMigrationRefresh:
         assert result.migration is None
 
     def test_refresh_partial_payload_keeps_aggregate(self, event_loop, logger):
-        """``refresh_state`` returns a dict with non-dict fields → aggregate present, fields cleared."""
-        migration = FakeMigrationReader(payload={"retrodeck": None, "save_sort": "garbage"})  # type: ignore[arg-type]
+        """``refresh_state`` returns a dict with non-dict field → aggregate present, field cleared."""
+        migration = FakeMigrationReader(payload={"save_sort": "garbage"})  # type: ignore[arg-type]
         service = _make_service(
             playtime_recorder=FakePlaytimeRecorder(),
             post_exit_sync=FakePostExitSync(),
@@ -531,37 +515,9 @@ class TestFinalizeMigrationRefresh:
         event_loop.run_until_complete(_drain_background_tasks(service))
 
         # Outer payload was a dict — the aggregate is still returned, but
-        # each non-dict field falls back to the safe "not pending" default.
+        # the non-dict field falls back to the safe "not pending" default.
         assert isinstance(result.migration, SessionFinalizeMigration)
-        assert result.migration.retrodeck == {"pending": False}
         assert result.migration.save_sort == {"pending": False}
-
-
-class TestFinalizeMigrationGate:
-    def test_pending_migration_skips_post_exit_sync(self, event_loop, logger):
-        """``is_retrodeck_migration_pending=True`` → skip post-exit sync, render failure toast."""
-        post = FakePostExitSync()
-        migration = FakeMigrationReader(pending=True)
-        service = _make_service(
-            playtime_recorder=FakePlaytimeRecorder(),
-            post_exit_sync=post,
-            achievement_sync=FakeAchievementSync(),
-            migration_reader=migration,
-            logger=logger,
-        )
-
-        result = event_loop.run_until_complete(service.finalize(99))
-        event_loop.run_until_complete(_drain_background_tasks(service))
-
-        # Post-exit sync must not be called when migration is pending.
-        assert post.calls == []
-        assert result.sync.offline is False
-        assert result.sync.success is False
-        assert result.sync.toast_title == "RomM Save Sync"
-        assert result.sync.toast_body == "Failed to sync saves after exit"
-        # Playtime + migration refresh still ran.
-        assert result.total_seconds == 3600
-        assert migration.refresh_calls == 1
 
 
 class TestFinalizeAchievementSync:
@@ -616,7 +572,7 @@ class TestFinalizeResultShape:
         ]
         playtime = FakePlaytimeRecorder(payload={"success": True, "total_seconds": 1234})
         post = FakePostExitSync(payload={"success": True, "synced": 2, "conflicts": conflicts})
-        migration = FakeMigrationReader(payload={"retrodeck": {"pending": False}, "save_sort": {"pending": False}})
+        migration = FakeMigrationReader(payload={"save_sort": {"pending": False}})
         service = _make_service(
             playtime_recorder=playtime,
             post_exit_sync=post,
@@ -639,10 +595,7 @@ class TestFinalizeResultShape:
                 toast_body="Saves synced with RomM",
                 conflicts_toast="1 save conflict need resolution",
             ),
-            migration=SessionFinalizeMigration(
-                retrodeck={"pending": False},
-                save_sort={"pending": False},
-            ),
+            migration=SessionFinalizeMigration(save_sort={"pending": False}),
         )
 
 

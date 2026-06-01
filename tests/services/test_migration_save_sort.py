@@ -62,7 +62,6 @@ def _make_service(
             state_persister=save_state_mock,
             settings_persister=MagicMock(),
             emit=MagicMock(),
-            get_bios_files_index=lambda: {},
             frontend=FakeFrontend(
                 rom_root=Path(roms_path),
                 bios_root=tmp_path / "bios",

@@ -19,9 +19,8 @@ import { registerGameDetailPatch, unregisterGameDetailPatch, registerRomMAppId }
 import { registerMetadataPatches, unregisterMetadataPatches, applyAllPlaytime } from "./patches/metadataPatches";
 import { registerLaunchInterceptor, unregisterLaunchInterceptor } from "./utils/launchInterceptor";
 import { hasAnySaveConflict } from "./utils/saveStatus";
-import { getAllMetadataCache, getAppIdRomIdMap, ensureDeviceRegistered, getSaveSyncSettings, getAllPlaytime, getMigrationStatus, getSaveSortMigrationStatus, testConnection, logError, logInfo } from "./api/backend";
+import { getAllMetadataCache, getAppIdRomIdMap, ensureDeviceRegistered, getSaveSyncSettings, getAllPlaytime, getSaveSortMigrationStatus, testConnection, logError, logInfo } from "./api/backend";
 import { createOrUpdateCollections, createOrUpdateRomMCollections, clearPlatformCollection, getHostname } from "./utils/collections";
-import { setMigrationStatus } from "./utils/migrationStore";
 import { setSaveSortMigrationStatus } from "./utils/saveSortMigrationStore";
 import { setVersionError, setFrontendUnsupported } from "./utils/connectionState";
 import { initSessionManager, destroySessionManager } from "./utils/sessionManager";
@@ -168,19 +167,6 @@ export default definePlugin(() => {
       }
     } catch {
       // Silent — other components will retry; don't block startup on connection failure
-    }
-  })();
-
-  // Check for pending RetroDECK path migration on startup. The QAM block page
-  // and game-detail card surface this to the user — no toast needed.
-  (async () => {
-    try {
-      const status = await getMigrationStatus();
-      if (status.pending) {
-        setMigrationStatus(status);
-      }
-    } catch (e) {
-      logError(`Failed to check migration status: ${e}`);
     }
   })();
 
@@ -395,23 +381,6 @@ export default definePlugin(() => {
       handleGlobalDownloadFailure(data, { getDownloadState, updateDownload }, toaster),
   );
 
-  const pathChangedListener = addEventListener<[{ old_path: string; new_path: string; cleared?: boolean }]>(
-    "retrodeck_path_changed",
-    (data) => {
-      // Backend auto-clears the migration when the new path matches a previous
-      // RetroDECK home (round-trip / branch reset). Drop the pending block so
-      // all subscribers re-render without the migration UI.
-      if (data.cleared) {
-        setMigrationStatus({ pending: false });
-        return;
-      }
-      // Path actually changed — refetch authoritative status (file counts).
-      getMigrationStatus()
-        .then((status) => setMigrationStatus(status))
-        .catch((e) => logError(`Failed to refresh migration status: ${e}`));
-    },
-  );
-
   const saveSortChangedListener = addEventListener<
     [{ old_settings: { sort_by_content: boolean; sort_by_core: boolean }; new_settings: { sort_by_content: boolean; sort_by_core: boolean } }]
   >("save_sort_changed", () => {
@@ -450,7 +419,6 @@ export default definePlugin(() => {
       removeEventListener("download_progress", downloadProgressListener);
       removeEventListener("download_complete", downloadCompleteListener);
       removeEventListener("download_failed", downloadFailedListener);
-      removeEventListener("retrodeck_path_changed", pathChangedListener);
       removeEventListener("save_sort_changed", saveSortChangedListener);
       removeEventListener("save_status_updated", saveStatusListener);
     },

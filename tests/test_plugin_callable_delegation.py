@@ -25,12 +25,7 @@ from conftest import _make_testable_plugin
 
 @pytest.fixture
 def plugin():
-    """Bare ``Plugin`` with every service replaced by a ``MagicMock``.
-
-    ``_migration_service.is_retrodeck_migration_pending`` returns False
-    so ``@migration_blocked`` callables fall through to the wrapped
-    method instead of returning the blocked sentinel.
-    """
+    """Bare ``Plugin`` with every service replaced by a ``MagicMock``."""
     p = _make_testable_plugin()
     p._sync_service = MagicMock()
     p._download_service = MagicMock()
@@ -149,20 +144,6 @@ class TestConnectionCallableDelegation:
 
 class TestMigrationCallableDelegation:
     @pytest.mark.asyncio
-    async def test_migrate_retrodeck_files_delegates(self, plugin):
-        plugin._migration_service.migrate_retrodeck_files = AsyncMock(return_value={"ok": True})
-        result = await plugin.migrate_retrodeck_files("overwrite")
-        plugin._migration_service.migrate_retrodeck_files.assert_awaited_once_with("overwrite")
-        assert result == {"ok": True}
-
-    @pytest.mark.asyncio
-    async def test_get_migration_status_delegates(self, plugin):
-        plugin._migration_service.get_migration_status = AsyncMock(return_value={"pending": False})
-        result = await plugin.get_migration_status()
-        plugin._migration_service.get_migration_status.assert_awaited_once_with()
-        assert result == {"pending": False}
-
-    @pytest.mark.asyncio
     async def test_get_save_sort_migration_status_delegates(self, plugin):
         plugin._migration_service.get_save_sort_migration_status = AsyncMock(return_value={"pending": False})
         result = await plugin.get_save_sort_migration_status()
@@ -181,13 +162,6 @@ class TestMigrationCallableDelegation:
         plugin._migration_service.dismiss_save_sort_migration.return_value = {"ok": True}
         result = await plugin.dismiss_save_sort_migration()
         plugin._migration_service.dismiss_save_sort_migration.assert_called_once_with()
-        assert result == {"ok": True}
-
-    @pytest.mark.asyncio
-    async def test_dismiss_retrodeck_migration_delegates(self, plugin):
-        plugin._migration_service.dismiss_retrodeck_migration.return_value = {"ok": True}
-        result = await plugin.dismiss_retrodeck_migration()
-        plugin._migration_service.dismiss_retrodeck_migration.assert_called_once_with()
         assert result == {"ok": True}
 
 
@@ -689,12 +663,6 @@ class TestCallableErrorPropagation:
         plugin._connection_service.test_connection = AsyncMock(side_effect=RuntimeError("down"))
         with pytest.raises(RuntimeError, match="down"):
             await plugin.test_connection()
-
-    @pytest.mark.asyncio
-    async def test_migrate_retrodeck_files_propagates(self, plugin):
-        plugin._migration_service.migrate_retrodeck_files = AsyncMock(side_effect=OSError("io"))
-        with pytest.raises(OSError, match="io"):
-            await plugin.migrate_retrodeck_files()
 
     @pytest.mark.asyncio
     async def test_get_firmware_status_propagates(self, plugin):

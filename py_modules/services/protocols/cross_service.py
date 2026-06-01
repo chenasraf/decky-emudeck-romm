@@ -160,20 +160,15 @@ class SessionAchievementSync(Protocol):
 
 
 class SessionMigrationReader(Protocol):
-    """Migration-state refresh + pending check consumed by SessionLifecycleService.
+    """Migration-state refresh consumed by SessionLifecycleService.
 
-    The composition root satisfies this with ``MigrationService``'s
-    ``refresh_state`` and ``is_retrodeck_migration_pending``. The
-    refresh result is repacked into the typed DTO the frontend feeds
-    into its migration stores; the pending check matches the safety
-    net the ``@migration_blocked`` decorator provides for other
-    callables, gating the destructive post-exit save sync from inside
-    the lifecycle orchestration.
+    The composition root satisfies this with
+    ``MigrationService.refresh_state``. The refresh result is repacked
+    into the typed DTO the frontend feeds into its save-sort migration
+    store.
     """
 
     async def refresh_state(self) -> dict: ...
-
-    def is_retrodeck_migration_pending(self) -> bool: ...
 
 
 class SaveSortChangeFn(Protocol):
@@ -187,14 +182,3 @@ class SaveSortChangeFn(Protocol):
     """
 
     def __call__(self) -> None: ...
-
-
-class MigrationPendingFn(Protocol):
-    """Pending-RetroDECK-migration check consumed by SaveService.
-
-    The composition root satisfies this with
-    ``MigrationService.is_retrodeck_migration_pending``. SaveService
-    gates destructive operations on this signal.
-    """
-
-    def __call__(self) -> bool: ...

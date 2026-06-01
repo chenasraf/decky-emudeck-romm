@@ -59,14 +59,13 @@ class SessionFinalizeSyncResult:
 
 @dataclass(frozen=True)
 class SessionFinalizeMigration:
-    """Migration-status payloads returned from ``MigrationService.refresh_state``.
+    """Migration-status payload returned from ``MigrationService.refresh_state``.
 
-    Repacked into a typed aggregate so the frontend feeds each field
-    into its dedicated store (``migrationStore`` / ``saveSortMigrationStore``)
-    without re-deriving them from a loose dict.
+    Repacked into a typed aggregate so the frontend feeds the save-sort
+    status into ``saveSortMigrationStore`` without re-deriving it from
+    a loose dict.
     """
 
-    retrodeck: dict
     save_sort: dict
 
 
@@ -80,10 +79,10 @@ class SessionFinalizeResult:
     present; its fields encode whatever action the frontend still
     needs to take (toast, event dispatch). ``migration`` is ``None``
     when the migration-state refresh raised — the frontend then leaves
-    the migration stores untouched (any stale ``pending`` badge keeps
-    showing) and logs the failure backend-side. When the refresh
-    succeeds, ``migration`` carries the two typed status payloads the
-    frontend feeds into its stores.
+    the save-sort migration store untouched (any stale ``pending``
+    badge keeps showing) and logs the failure backend-side. When the
+    refresh succeeds, ``migration`` carries the save-sort status
+    payload the frontend feeds into its store.
     """
 
     total_seconds: int | None
@@ -236,24 +235,7 @@ class SessionLifecycleService:
             self._logger.warning(f"SessionLifecycle achievement sync failed for rom_id={rom_id}: {e}")
 
     async def _build_sync_result(self, rom_id: int) -> SessionFinalizeSyncResult:
-        """Run post-exit sync and render the resulting toast strings.
-
-        Honours the ``@migration_blocked`` gate: when a RetroDECK
-        migration is pending the destructive post-exit sync is skipped
-        and rendered as the standard "failed to sync saves after exit"
-        toast.
-        """
-        if self._migration_reader.is_retrodeck_migration_pending():
-            return SessionFinalizeSyncResult(
-                offline=False,
-                success=False,
-                synced=None,
-                conflicts=[],
-                toast_title=_TOAST_TITLE,
-                toast_body=_TOAST_BODY_FAILED,
-                conflicts_toast=None,
-            )
-
+        """Run post-exit sync and render the resulting toast strings."""
         try:
             result = await self._post_exit_sync.post_exit_sync(rom_id)
         except Exception as e:
@@ -289,12 +271,12 @@ class SessionLifecycleService:
         )
 
     async def _refresh_migration(self) -> SessionFinalizeMigration | None:
-        """Re-detect migration state and return the typed status pair.
+        """Re-detect migration state and return the typed status payload.
 
         Returns ``None`` on refresh failure (exception or non-dict
-        payload) — the frontend then leaves the migration stores
-        untouched (any stale ``pending`` badge keeps showing) and the
-        failure is logged backend-side.
+        payload) — the frontend then leaves the save-sort migration
+        store untouched (any stale ``pending`` badge keeps showing) and
+        the failure is logged backend-side.
         """
         try:
             payload = await self._migration_reader.refresh_state()
@@ -304,9 +286,7 @@ class SessionLifecycleService:
 
         if not isinstance(payload, dict):
             return None
-        retrodeck = payload.get("retrodeck")
         save_sort = payload.get("save_sort")
         return SessionFinalizeMigration(
-            retrodeck=retrodeck if isinstance(retrodeck, dict) else {"pending": False},
             save_sort=save_sort if isinstance(save_sort, dict) else {"pending": False},
         )

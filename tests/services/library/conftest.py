@@ -122,10 +122,7 @@ def plugin(tmp_path):
             artwork_remover=artwork_service,
         ),
     )
-    # Default migration service mock — no migration pending. Tests that need
-    # to exercise the @migration_blocked gate override this.
     p._migration_service = MagicMock()
-    p._migration_service.is_retrodeck_migration_pending.return_value = False
     return p
 
 

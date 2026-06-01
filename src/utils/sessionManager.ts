@@ -14,7 +14,6 @@ import {
   logInfo,
   logError,
 } from "../api/backend";
-import { setMigrationStatus } from "./migrationStore";
 import { setSaveSortMigrationStatus } from "./saveSortMigrationStore";
 import { updatePlaytimeDisplay } from "../patches/metadataPatches";
 
@@ -114,14 +113,12 @@ async function handleGameStop(): Promise<void> {
       toaster.toast({ title: "RomM Save Sync", body: result.sync.conflicts_toast });
     }
 
-    // Migration store updates — backend ran refresh_state, frontend just
-    // feeds the typed payloads into the stores. When backend refresh
-    // failed (``migration == null``) leave the stores untouched, matching
-    // the pre-PR ``refreshMigrationState().catch`` behavior where a
-    // refresh failure logged a warning without clearing any stale
-    // "pending" badge.
+    // Save-sort migration store update — backend ran refresh_state, frontend
+    // feeds the typed payload into the store. When backend refresh failed
+    // (``migration == null``) leave the store untouched, matching the pre-PR
+    // behavior where a refresh failure logged a warning without clearing any
+    // stale "pending" badge.
     if (result.migration) {
-      setMigrationStatus(result.migration.retrodeck);
       setSaveSortMigrationStatus(result.migration.save_sort);
     }
   } catch (e) {

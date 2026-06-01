@@ -28,7 +28,6 @@ import * as connectionState from "../utils/connectionState";
 import * as sectionRefresh from "../utils/sectionRefresh";
 import * as playSectionUtils from "../utils/playSection";
 import { useVersionError } from "./VersionErrorCard";
-import { useMigrationStatus } from "./MigrationBlockedPage";
 
 // Type-only import — vi.mock("./CustomPlayButton", ...) below replaces the
 // runtime impl, but pinning the captured-props shape to the real component
@@ -38,9 +37,6 @@ import type { CustomPlayButton } from "./CustomPlayButton";
 // ----- Sibling hook mocks -----
 vi.mock("./VersionErrorCard", () => ({
   useVersionError: vi.fn(() => null),
-}));
-vi.mock("./MigrationBlockedPage", () => ({
-  useMigrationStatus: vi.fn(() => ({ pending: false })),
 }));
 
 // ----- CustomPlayButton — capture props per render -----
@@ -213,9 +209,8 @@ describe("RomMPlaySection", () => {
     installDomEventListenerSpy();
 
     // resetAllMocks wipes module-mock impls — re-stub below.
-    // Default sibling-hook stubs — no version error, no migration pending.
+    // Default sibling-hook stub — no version error.
     vi.mocked(useVersionError).mockReturnValue(null);
-    vi.mocked(useMigrationStatus).mockReturnValue({ pending: false });
 
     // Re-stub the playSection helpers (they were reset by resetAllMocks).
     vi.mocked(playSectionUtils.applySaveSyncDisplay).mockReturnValue({
@@ -281,14 +276,7 @@ describe("RomMPlaySection", () => {
       expect(container.firstChild).toBeNull();
     });
 
-    it("returns null when migration is pending", async () => {
-      vi.mocked(useMigrationStatus).mockReturnValue({ pending: true });
-      const { container } = render(<RomMPlaySection appId={testAppId} />);
-      await flushAsync();
-      expect(container.firstChild).toBeNull();
-    });
-
-    it("renders the play-section row with CustomPlayButton when neither gate fires", async () => {
+    it("renders the play-section row with CustomPlayButton when the version-error gate is clear", async () => {
       const { queryByTestId } = render(<RomMPlaySection appId={testAppId} />);
       await flushAsync();
       expect(queryByTestId("play-button")).not.toBeNull();

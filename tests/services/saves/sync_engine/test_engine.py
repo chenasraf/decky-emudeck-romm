@@ -319,8 +319,8 @@ class TestPreLaunchSync:
         assert result["synced"] == 0
 
     @pytest.mark.asyncio
-    async def test_pre_launch_sync_invokes_detect_sort_change_before_migration_gate(self, tmp_path):
-        """detect_sort_change is called before the _is_save_sort_changed gate (#238)."""
+    async def test_pre_launch_sync_invokes_detect_sort_change_before_sort_gate(self, tmp_path):
+        """detect_sort_change is called before the is_save_sort_changed gate (#238)."""
         order: list[str] = []
 
         def fake_detect() -> None:
@@ -505,52 +505,6 @@ class TestCheckSaveStatusBackground:
 
         # Should not raise
         await svc.check_save_status_background(42)
-
-
-class TestMigrationPendingGuards:
-    """The defense-in-depth migration-pending guards in pre_launch_sync and
-    post_exit_sync. The decorator on the public callable is the primary gate;
-    this in-engine guard catches a future caller that bypasses it (engine.py
-    lines 286-292 / 340-347)."""
-
-    @pytest.mark.asyncio
-    async def test_pre_launch_sync_returns_blocked_when_migration_pending(self, tmp_path):
-        """pre_launch_sync must short-circuit with blocked_by_migration=True."""
-        svc, fake = make_service(
-            tmp_path,
-            is_retrodeck_migration_pending=lambda: True,
-        )
-        svc._save_sync_state.settings.save_sync_enabled = True
-        svc._save_sync_state.device_id = "test-device"
-        _install_rom(svc, tmp_path)
-        _create_save(tmp_path, content=b"unsyncable")
-
-        result = await svc.pre_launch_sync(42)
-
-        assert result["success"] is False
-        assert result["blocked_by_migration"] is True
-        assert result["synced"] == 0
-        # No upload/download initiated — the guard fired before sync ran.
-        assert not any(c[0] in ("upload_save", "download_save_content") for c in fake.call_log)
-
-    @pytest.mark.asyncio
-    async def test_post_exit_sync_returns_blocked_when_migration_pending(self, tmp_path):
-        """post_exit_sync must short-circuit with blocked_by_migration=True."""
-        svc, fake = make_service(
-            tmp_path,
-            is_retrodeck_migration_pending=lambda: True,
-        )
-        svc._save_sync_state.settings.save_sync_enabled = True
-        svc._save_sync_state.device_id = "test-device"
-        _install_rom(svc, tmp_path)
-        _create_save(tmp_path, content=b"unsyncable")
-
-        result = await svc.post_exit_sync(42)
-
-        assert result["success"] is False
-        assert result["blocked_by_migration"] is True
-        assert result["synced"] == 0
-        assert not any(c[0] in ("upload_save", "download_save_content") for c in fake.call_log)
 
 
 class TestPostExitServerOfflineGuard:

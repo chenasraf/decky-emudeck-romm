@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { toaster } from "@decky/api";
 import * as backend from "../api/backend";
 import * as gameDetailPatch from "../patches/gameDetailPatch";
-import * as migrationStore from "./migrationStore";
 import { registerLaunchInterceptor, unregisterLaunchInterceptor } from "./launchInterceptor";
 import type { LaunchVerdict } from "../types";
-import { DISPLAY_NAME } from "../branding";
 
 // The interceptor pulls in `../patches/gameDetailPatch` which transitively
 // imports from `@decky/ui` and `react`. The global `@decky/ui` mock in
@@ -18,18 +16,8 @@ vi.mock("../patches/gameDetailPatch", () => ({
 
 vi.mock("../api/backend", () => ({
   evaluateLaunch: vi.fn(),
-  refreshMigrationState: vi.fn(),
   logInfo: vi.fn(),
   logError: vi.fn(),
-}));
-
-vi.mock("./migrationStore", () => ({
-  getMigrationState: vi.fn(),
-  setMigrationStatus: vi.fn(),
-}));
-
-vi.mock("./saveSortMigrationStore", () => ({
-  setSaveSortMigrationStatus: vi.fn(),
 }));
 
 type GameActionHandler = (
@@ -69,14 +57,6 @@ describe("launchInterceptor", () => {
     });
 
     vi.mocked(gameDetailPatch.isRomMAppId).mockReturnValue(true);
-    vi.mocked(migrationStore.getMigrationState).mockReturnValue({
-      pending: false,
-      reason: null,
-    } as unknown as ReturnType<typeof migrationStore.getMigrationState>);
-    vi.mocked(backend.refreshMigrationState).mockResolvedValue({
-      retrodeck: { pending: false, reason: null },
-      save_sort: { pending: false, reason: null },
-    } as unknown as Awaited<ReturnType<typeof backend.refreshMigrationState>>);
   });
 
   afterEach(() => {
@@ -187,24 +167,6 @@ describe("launchInterceptor", () => {
       const handler = captureHandler();
       await handler(1, "9999", "LaunchApp", 0);
 
-      expect(backend.evaluateLaunch).not.toHaveBeenCalled();
-    });
-
-    it("blocks launch when a RetroDECK migration is pending", async () => {
-      vi.mocked(migrationStore.getMigrationState).mockReturnValue({
-        pending: true,
-        reason: null,
-      } as unknown as ReturnType<typeof migrationStore.getMigrationState>);
-
-      registerLaunchInterceptor();
-      const handler = captureHandler();
-      await handler(55, "1234", "LaunchApp", 0);
-
-      expect(SteamClient.Apps.CancelGameAction).toHaveBeenCalledWith(55);
-      expect(toaster.toast).toHaveBeenCalledWith({
-        title: DISPLAY_NAME,
-        body: "Pending RetroDECK migration. Open the plugin QAM to migrate or dismiss.",
-      });
       expect(backend.evaluateLaunch).not.toHaveBeenCalled();
     });
   });

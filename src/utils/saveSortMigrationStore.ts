@@ -3,8 +3,8 @@
  *
  * Updated by:
  *   - plugin load init in index.tsx (getSaveSortMigrationStatus callable)
- *   - refreshMigrationState return value in MainPage, RomMGameInfoPanel,
- *     launchInterceptor, sessionManager
+ *   - getSaveSortMigrationStatus return value in MainPage, RomMGameInfoPanel
+ *   - sessionManager (after finalize_game_session round-trip)
  *   - clearSaveSortMigration() from SettingsPage after successful migration
  *
  * Read by:

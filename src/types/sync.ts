@@ -92,7 +92,6 @@ export interface SyncPreview {
   changed_names: string[];
   preview_id: string;
   message?: string;
-  blocked_by_migration?: boolean;
 }
 
 interface SyncPlanUnit {

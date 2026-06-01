@@ -86,7 +86,6 @@ class SaveService:
                 hostname_provider=config.hostname_provider,
                 plugin_version=plugin_version,
                 detect_sort_change=config.detect_sort_change,
-                is_retrodeck_migration_pending=config.is_retrodeck_migration_pending,
             ),
         )
 
