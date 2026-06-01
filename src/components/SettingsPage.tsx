@@ -19,7 +19,6 @@ import {
   updateSaveSyncSettings,
   syncAllSaves,
   saveLogLevel,
-  saveFrontendSetting,
   fixRetroarchInputDriver,
   ensureDeviceRegistered,
   listDevices,
@@ -28,7 +27,7 @@ import {
   dismissSaveSortMigration,
   logError,
 } from "../api/backend";
-import type { SaveSortMigrationStatus, RegisteredDevice, FrontendChoice } from "../types";
+import type { SaveSortMigrationStatus, RegisteredDevice } from "../types";
 import { getSaveSortMigrationState, setSaveSortMigrationStatus as setStoreSaveSortStatus, clearSaveSortMigration, onSaveSortMigrationChange } from "../utils/saveSortMigrationStore";
 import { scrollToTop } from "../utils/scrollHelpers";
 import type { SaveSyncSettings as SaveSyncSettingsType, RetroArchInputCheck } from "../types";
@@ -40,7 +39,6 @@ import { SaveSyncSection } from "./settings/SaveSyncSection";
 import { RegisteredDevicesSection } from "./settings/RegisteredDevicesSection";
 import { ControllerSection } from "./settings/ControllerSection";
 import { AdvancedSection } from "./settings/AdvancedSection";
-import { FrontendSection } from "./settings/FrontendSection";
 import { DISPLAY_NAME } from "../branding";
 
 interface SettingsPageProps {
@@ -87,9 +85,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
   // Advanced state
   const [logLevel, setLogLevel] = useState("warn");
 
-  // Frontend state
-  const [frontend, setFrontend] = useState<FrontendChoice>("auto");
-
   useEffect(() => {
     getSettings().then((s) => {
       // Apply any pending edits that survived a remount, fall back to backend values
@@ -100,7 +95,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
       setSgdbApiKey(s.sgdb_api_key_masked);
       setSteamInputMode(s.steam_input_mode || "default");
       setLogLevel(s.log_level ?? "warn");
-      setFrontend(s.frontend ?? "auto");
       if (s.retroarch_input_check) {
         setRetroarchWarning(s.retroarch_input_check);
       }
@@ -368,14 +362,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
     saveLogLevel(level);
   };
 
-  // --- Frontend handler ---
-  const handleFrontendChange = (value: FrontendChoice) => {
-    setFrontend(value);
-    saveFrontendSetting(value).catch((e) => {
-      logError(`Failed to save frontend setting: ${e}`);
-    });
-  };
-
   // --- Save sort migration handlers ---
   const handleMigrateSaveSort = async () => {
     setSaveSortMigrating(true);
@@ -473,10 +459,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
         onModeChange={handleSteamInputModeChange}
         onApplyMode={handleApplySteamInput}
         onFixInputDriver={handleFixInputDriver}
-      />
-      <FrontendSection
-        frontend={frontend}
-        onFrontendChange={handleFrontendChange}
       />
       <AdvancedSection
         logLevel={logLevel}
