@@ -207,9 +207,6 @@ class Plugin:
     async def save_log_level(self, level):
         return self._settings_service.save_log_level(level)
 
-    async def save_frontend_setting(self, value):
-        return self._settings_service.save_frontend_setting(value)
-
     async def save_steam_input_setting(self, mode):
         return self._settings_service.save_steam_input_setting(mode)
 

@@ -684,7 +684,6 @@ _MIGRATION_BLOCKED_WHITELIST: set[str] = {
     "frontend_log",
     "debug_log",
     "save_log_level",
-    "save_frontend_setting",
     "save_steam_input_setting",
     "apply_steam_input_setting",
     "fix_retroarch_input_driver",

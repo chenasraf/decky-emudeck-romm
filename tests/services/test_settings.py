@@ -428,36 +428,3 @@ class TestSaveCollectionPlatformGroups:
     def test_coerces_falsy(self, service, settings):
         service.save_collection_platform_groups(0)  # type: ignore[arg-type]
         assert settings["collection_create_platform_groups"] is False
-
-
-# ── save_frontend_setting ──────────────────────────────────────────────
-
-
-class TestSaveFrontendSetting:
-    @pytest.mark.parametrize("value", ["auto", "emudeck", "retrodeck", "custom"])
-    def test_valid_values(self, service, settings, settings_persister, value):
-        result = service.save_frontend_setting(value)
-        assert result == {"success": True}
-        assert settings["frontend"] == value
-        settings_persister.save_settings.assert_called_once_with()
-
-    def test_invalid_value_rejected(self, service, settings, settings_persister):
-        result = service.save_frontend_setting("dolphin")
-        assert result["success"] is False
-        assert "Invalid frontend" in result["message"]
-        assert "frontend" not in settings
-        settings_persister.save_settings.assert_not_called()
-
-    def test_empty_string_rejected(self, service, settings):
-        result = service.save_frontend_setting("")
-        assert result["success"] is False
-        assert "frontend" not in settings
-
-    def test_get_settings_defaults_frontend_to_auto(self, service, settings):
-        result = service.get_settings()
-        assert result["frontend"] == "auto"
-
-    def test_get_settings_returns_persisted_frontend(self, service, settings):
-        settings["frontend"] = "emudeck"
-        result = service.get_settings()
-        assert result["frontend"] == "emudeck"
