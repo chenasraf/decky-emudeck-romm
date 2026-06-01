@@ -84,7 +84,14 @@ describe("LibraryPage", () => {
     const { findByText } = render(<LibraryPage onBack={vi.fn()} />);
     const next = await findByText("Next");
     fireEvent.click(next);
-    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 30));
+    await waitFor(() =>
+      expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith({
+        platform_ids: null,
+        search: null,
+        limit: 30,
+        offset: 30,
+      }),
+    );
   });
 
   it("disables Previous on the first page", async () => {
@@ -125,7 +132,14 @@ describe("LibraryPage", () => {
     const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
     const pill = await findByTestId("library-pill-7");
     fireEvent.click(pill);
-    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([7], null, 30, 0));
+    await waitFor(() =>
+      expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith({
+        platform_ids: [7],
+        search: null,
+        limit: 30,
+        offset: 0,
+      }),
+    );
   });
 
   it("toggles a pill off and clears the platform filter on second click", async () => {
@@ -137,9 +151,23 @@ describe("LibraryPage", () => {
     const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
     const pill = await findByTestId("library-pill-9");
     fireEvent.click(pill);
-    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([9], null, 30, 0));
+    await waitFor(() =>
+      expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith({
+        platform_ids: [9],
+        search: null,
+        limit: 30,
+        offset: 0,
+      }),
+    );
     fireEvent.click(pill);
-    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 0));
+    await waitFor(() =>
+      expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith({
+        platform_ids: null,
+        search: null,
+        limit: 30,
+        offset: 0,
+      }),
+    );
   });
 
   it("updates the card label as download_progress events arrive", async () => {
@@ -250,7 +278,7 @@ describe("LibraryPage", () => {
     await waitFor(
       () => {
         const last = vi.mocked(browseRoms).mock.calls.at(-1);
-        expect(last?.[1]).toBe("mario");
+        expect(last?.[0]?.search).toBe("mario");
       },
       { timeout: 1000 },
     );

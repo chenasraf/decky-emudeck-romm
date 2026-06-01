@@ -23,6 +23,13 @@ export interface BrowseRom {
   cover_mime?: string;
 }
 
+export interface BrowseRomsArgs {
+  platform_ids?: number[] | null;
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
 export interface BrowseRomsResult {
   success: boolean;
   items: BrowseRom[];

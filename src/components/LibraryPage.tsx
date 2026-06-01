@@ -112,12 +112,12 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
     setState("loading");
     setErrorMsg("");
     try {
-      const result = await browseRoms(
-        ids.length > 0 ? ids : null,
-        search.trim() || null,
-        PAGE_SIZE,
-        pageIndex * PAGE_SIZE,
-      );
+      const result = await browseRoms({
+        platform_ids: ids.length > 0 ? ids : null,
+        search: search.trim() || null,
+        limit: PAGE_SIZE,
+        offset: pageIndex * PAGE_SIZE,
+      });
       if (!result.success) {
         setErrorMsg(result.message ?? "Couldn't reach RomM");
         setState("error");

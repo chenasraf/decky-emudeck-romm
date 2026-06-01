@@ -322,8 +322,14 @@ class Plugin:
     async def save_platform_sync_mode(self, platform_id, mode):
         return self._sync_service.save_platform_sync_mode(platform_id, mode)
 
-    async def browse_roms(self, platform_ids=None, search=None, limit=30, offset=0):
-        return await self._browse_service.browse_roms(platform_ids, search, limit, offset)
+    async def browse_roms(self, opts=None):
+        opts = opts or {}
+        return await self._browse_service.browse_roms(
+            opts.get("platform_ids"),
+            opts.get("search"),
+            int(opts.get("limit") or 30),
+            int(opts.get("offset") or 0),
+        )
 
     async def set_all_platforms_sync(self, enabled):
         return await self._sync_service.set_all_platforms_sync(enabled)
