@@ -142,7 +142,7 @@ class RommRomReader(Protocol):
 
         Returns paginated response {"items": [...], "total": N} from
         /api/roms with repeated ?platform_ids= params (RomM accepts the
-        param multiple times) and an optional ?search= filter.
+        param multiple times) and an optional ?search_term= filter.
         """
         ...
 

@@ -67,7 +67,7 @@ class TestBrowseRoms:
         api, client = _make_api()
         client.request.return_value = {"items": [], "total": 0}
         api.browse_roms(None, "super mario", limit=30, offset=0)
-        client.request.assert_called_once_with("/api/roms?search=super%20mario&limit=30&offset=0")
+        client.request.assert_called_once_with("/api/roms?search_term=super%20mario&limit=30&offset=0")
 
     def test_omits_platform_and_search_when_unset(self):
         api, client = _make_api()

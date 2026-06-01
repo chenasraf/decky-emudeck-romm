@@ -56,7 +56,7 @@ class RommApiAdapter:
         for pid in platform_ids or []:
             params.append(f"platform_ids={pid}")
         if search:
-            params.append(f"search={urllib.parse.quote(search, safe='')}")
+            params.append(f"search_term={urllib.parse.quote(search, safe='')}")
         params.append(f"limit={limit}")
         params.append(f"offset={offset}")
         return self._client.request("/api/roms?" + "&".join(params))
