@@ -329,10 +329,16 @@ def bootstrap(
     _enforce_frontend_compatibility(frontend)
     retroarch_config = RetroArchConfigAdapter(user_home=user_home, logger=logger)
     retroarch_core_info = RetroArchCoreInfoAdapter(user_home=user_home, logger=logger)
+    # ES-DE on EmuDeck lives at ``~/ES-DE/`` (native install, not bundled
+    # in a Flatpak). The CoreResolver's gamelist-override read/write code
+    # joins ``<es_de_home>/ES-DE/...``, so passing ``user_home`` yields
+    # the right target. ``_FLATPAK_SYSTEMS_DIR`` in es_de_config remains
+    # RetroDECK-shaped and is dead on EmuDeck-only installs; the full
+    # ES-DE-aware refactor lands in Phase 6/7.
     core_resolver = CoreResolver(
         plugin_dir=plugin_dir,
         logger=logger,
-        get_retrodeck_home=lambda: str(frontend.home()),
+        get_retrodeck_home=lambda: user_home,
     )
     gamelist_editor = GamelistXmlEditorAdapter(logger=logger)
     # Persistence + migration round-trip through bare ``dict`` because

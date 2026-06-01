@@ -64,7 +64,12 @@ class RommHttpAdapter:
     # ------------------------------------------------------------------
 
     def load_platform_map(self) -> dict:
-        """Load the platform slug -> RetroDECK system mapping from config.json."""
+        """Load the platform slug -> system mapping from config.json.
+
+        ``defaults/config.json`` ships empty today; Sprint 4 will land
+        ``defaults/platform_map_emudeck.json`` and route this loader
+        through ``Frontend.system_slug`` instead.
+        """
         # Check plugin root first (Decky CLI moves defaults/ contents to root),
         # then defaults/ subdirectory (dev deploys via mise run deploy)
         root_path = os.path.join(self._plugin_dir, "config.json")

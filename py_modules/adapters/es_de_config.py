@@ -37,11 +37,13 @@ _ES_SYSTEMS_CANDIDATES = [
 class CoreResolver:
     """Resolves active RetroArch cores for ES-DE systems.
 
-    Reads ``es_systems.xml`` from the RetroDECK flatpak install, falls back
-    to a bundled ``core_defaults.json``, and honours per-system /
-    per-game overrides written into ``gamelist.xml``. Caches its file
-    reads as instance attributes; call :meth:`reset_cache` after editing
-    the underlying files.
+    Reads ``es_systems.xml`` if present (RetroDECK-shaped Flatpak path
+    only — dead on EmuDeck-only installs, full ES-DE-aware refactor in
+    Phase 6/7), falls back to a bundled ``core_defaults.json``, and
+    honours per-system / per-game overrides written into
+    ``gamelist.xml`` under ``<es_de_home>/ES-DE/gamelists/<system>/``.
+    Caches its file reads as instance attributes; call
+    :meth:`reset_cache` after editing the underlying files.
 
     Implements the ``CoreInfoProvider`` Protocol structurally.
     """
