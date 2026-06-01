@@ -83,31 +83,6 @@ def plugin():
     return p
 
 
-class TestResolveSystem:
-    """``platform_map`` ships empty until Sprint 4 lands the EmuDeck map.
-
-    Tests inject a synthetic map directly into the adapter's cache so
-    the resolver lookup can be exercised without depending on shipped
-    map content.
-    """
-
-    def test_exact_slug_match(self, plugin):
-        plugin._http_adapter._platform_map = {"ps": "psx", "snes": "snes"}
-        result = plugin._http_adapter.resolve_system("ps")
-        assert result == "psx"
-
-    def test_fs_slug_fallback(self, plugin):
-        # A slug not in the map but its fs_slug is
-        plugin._http_adapter._platform_map = {"n64": "n64"}
-        result = plugin._http_adapter.resolve_system("nonexistent-slug", "n64")
-        assert result == "n64"
-
-    def test_fallback_returns_slug_as_is(self, plugin):
-        plugin._http_adapter._platform_map = {}
-        result = plugin._http_adapter.resolve_system("totally-unknown-platform")
-        assert result == "totally-unknown-platform"
-
-
 class TestRommDownloadUrlEncoding:
     def test_encodes_spaces_in_cover_path(self, plugin, tmp_path):
         """Cover paths from RomM contain unencoded spaces in timestamps.
@@ -336,15 +311,6 @@ class TestRommUploadMultipart:
         assert b"\0" not in body.split(b"\r\n\r\n")[0]  # not in headers
         # The sanitized filename should still appear
         assert b'filename="evilInjected-Header: bad.srm"' in body
-
-
-class TestPlatformMap:
-    def test_loads_config_json_returns_dict(self, plugin):
-        # The EmuDeck-specific platform_map ships in Sprint 4 via
-        # ``defaults/platform_map_emudeck.json``; for now ``config.json``
-        # has no map and ``load_platform_map`` returns ``{}``.
-        pm = plugin._http_adapter.load_platform_map()
-        assert isinstance(pm, dict)
 
 
 # ============================================================================

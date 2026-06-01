@@ -25,12 +25,18 @@ from services.library import LibraryService, LibraryServiceConfig
 from services.rom_removal import RomRemovalService, RomRemovalServiceConfig
 
 
-def _frontend(*, roms: str | None = None, bios: str | None = None) -> FakeFrontend:
+def _frontend(
+    *,
+    roms: str | None = None,
+    bios: str | None = None,
+    slug_overrides: dict[str, str] | None = None,
+) -> FakeFrontend:
     """Build a FakeFrontend with the legacy str-based kwargs the download tests were written against."""
     return FakeFrontend(
         rom_root=Path(roms) if roms is not None else Path("/tmp/r"),
         bios_root=Path(bios) if bios is not None else Path("/tmp/b"),
         save_root=Path("/tmp/s"),
+        slug_overrides=slug_overrides,
     )
 
 
@@ -40,7 +46,6 @@ def plugin():
     p.settings = {"romm_url": "", "romm_user": "", "romm_pass": "", "enabled_platforms": {}}
     p._http_adapter = MagicMock()
     p._romm_api = MagicMock()
-    p._resolve_system = MagicMock(side_effect=lambda slug, fs_slug=None: fs_slug or slug)
     p._state = make_default_plugin_state()
     p._metadata_cache = {}
 
@@ -78,7 +83,6 @@ def plugin():
             state=p._state,
             download_file_store=DownloadFileAdapter(),
             download_queue=DownloadQueueAdapter(),
-            resolve_system=p._resolve_system,
             loop=asyncio.get_event_loop(),
             logger=decky.logger,
             runtime_dir=decky.DECKY_PLUGIN_RUNTIME_DIR,
@@ -156,6 +160,84 @@ class TestStartDownload:
         assert 42 in plugin._download_service._download_queue
         assert plugin._download_service._download_queue[42]["status"] == "downloading"
         assert len(_create_task_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_uses_frontend_system_slug_for_rename(self, plugin, tmp_path):
+        """End-to-end: ``platform_slug = "ps"`` resolves to EmuDeck's
+        ``psx`` subdirectory via ``frontend.system_slug``. Regression
+        guard for the most user-visible Sprint 4 rename.
+        """
+        from unittest.mock import AsyncMock
+
+        import decky
+
+        decky.DECKY_USER_HOME = str(tmp_path)
+        plugin._download_service._frontend = _frontend(
+            roms=str(tmp_path / "Emulation" / "roms"),
+            slug_overrides={"ps": "psx"},
+        )
+
+        rom_detail = {
+            "id": 7,
+            "name": "FFVII",
+            "fs_name": "ffvii.bin",
+            "fs_size_bytes": 1024,
+            "platform_slug": "ps",
+            "platform_name": "PlayStation",
+        }
+
+        plugin._download_service._loop = MagicMock()
+        plugin._download_service._loop.run_in_executor = AsyncMock(return_value=rom_detail)
+        captured_dirs: list[str] = []
+        plugin._download_service._download_file_store.disk_free = lambda _path: 500 * 1024 * 1024
+        original_make_dirs = plugin._download_service._download_file_store.make_dirs
+        plugin._download_service._download_file_store.make_dirs = lambda p: (
+            captured_dirs.append(p),
+            original_make_dirs(p),
+        )[1]
+        plugin._download_service._loop.create_task = lambda coro: (coro.close(), MagicMock())[1]
+
+        await plugin.start_download(7)
+
+        # Destination dir is rooted at the EmuDeck-style ``psx`` slug, NOT ``ps``.
+        assert any(d.endswith("/psx") for d in captured_dirs), captured_dirs
+
+    @pytest.mark.asyncio
+    async def test_falls_through_to_platform_fs_slug_when_primary_unmapped(self, plugin, tmp_path):
+        """When the primary ``platform_slug`` has no rename, but the
+        secondary ``platform_fs_slug`` does, the secondary resolution
+        wins. Mirrors the pre-rip-out resolver's fallback rule.
+        """
+        from unittest.mock import AsyncMock
+
+        plugin._download_service._frontend = _frontend(
+            roms=str(tmp_path / "Emulation" / "roms"),
+            slug_overrides={"playstation": "psx"},
+        )
+
+        rom_detail = {
+            "id": 8,
+            "name": "FFVIII",
+            "fs_name": "ffviii.bin",
+            "fs_size_bytes": 1024,
+            "platform_slug": "unknown-primary",
+            "platform_fs_slug": "playstation",
+            "platform_name": "PlayStation",
+        }
+        plugin._download_service._loop = MagicMock()
+        plugin._download_service._loop.run_in_executor = AsyncMock(return_value=rom_detail)
+        captured_dirs: list[str] = []
+        plugin._download_service._download_file_store.disk_free = lambda _path: 500 * 1024 * 1024
+        original_make_dirs = plugin._download_service._download_file_store.make_dirs
+        plugin._download_service._download_file_store.make_dirs = lambda p: (
+            captured_dirs.append(p),
+            original_make_dirs(p),
+        )[1]
+        plugin._download_service._loop.create_task = lambda coro: (coro.close(), MagicMock())[1]
+
+        await plugin.start_download(8)
+
+        assert any(d.endswith("/psx") for d in captured_dirs), captured_dirs
 
     @pytest.mark.asyncio
     async def test_rejects_already_downloading(self, plugin):

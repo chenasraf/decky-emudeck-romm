@@ -60,40 +60,6 @@ class RommHttpAdapter:
         self._user_agent = user_agent
 
     # ------------------------------------------------------------------
-    # Platform map
-    # ------------------------------------------------------------------
-
-    def load_platform_map(self) -> dict:
-        """Load the platform slug -> system mapping from config.json.
-
-        ``defaults/config.json`` ships empty today; Sprint 4 will land
-        ``defaults/platform_map_emudeck.json`` and route this loader
-        through ``Frontend.system_slug`` instead.
-        """
-        # Check plugin root first (Decky CLI moves defaults/ contents to root),
-        # then defaults/ subdirectory (dev deploys via mise run deploy)
-        root_path = os.path.join(self._plugin_dir, "config.json")
-        dev_path = os.path.join(self._plugin_dir, "defaults", "config.json")
-        config_path = root_path if os.path.exists(root_path) else dev_path
-        with open(config_path) as f:
-            config = json.load(f)
-        return config.get("platform_map", {})
-
-    def resolve_system(self, platform_slug: str, platform_fs_slug: str | None = None) -> str:
-        """Resolve a RomM platform slug to a RetroDECK system name.
-
-        Lazy-loads and caches ``_platform_map`` on first call.
-        """
-        if not hasattr(self, "_platform_map"):
-            self._platform_map = self.load_platform_map()
-        platform_map = self._platform_map
-        if platform_slug in platform_map:
-            return platform_map[platform_slug]
-        if platform_fs_slug and platform_fs_slug in platform_map:
-            return platform_map[platform_fs_slug]
-        return platform_slug
-
-    # ------------------------------------------------------------------
     # SSL / Auth helpers
     # ------------------------------------------------------------------
 

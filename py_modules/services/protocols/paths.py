@@ -15,12 +15,6 @@ from __future__ import annotations
 from typing import Protocol
 
 
-class SystemResolver(Protocol):
-    """Resolve a RomM platform slug to a RetroDECK system path."""
-
-    def __call__(self, platform_slug: str, platform_fs_slug: str | None = None) -> str: ...
-
-
 class RetroArchSaveSortingProvider(Protocol):
     """Return RetroArch save sorting settings as (sort_by_content, sort_by_core)."""
 

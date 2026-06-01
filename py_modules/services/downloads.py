@@ -34,7 +34,6 @@ if TYPE_CHECKING:
         RommRomReader,
         Sleeper,
         StatePersister,
-        SystemResolver,
     )
 
 _DOWNLOAD_QUEUE_MAX_TERMINAL = 50
@@ -55,7 +54,6 @@ class DownloadServiceConfig:
     state: PluginState
     download_file_store: DownloadFileStore
     download_queue: DownloadQueueStore
-    resolve_system: SystemResolver
     loop: asyncio.AbstractEventLoop
     logger: logging.Logger
     runtime_dir: str
@@ -74,7 +72,6 @@ class DownloadService:
         self._state = config.state
         self._download_file_store = config.download_file_store
         self._download_queue_io = config.download_queue
-        self._resolve_system = config.resolve_system
         self._loop = config.loop
         self._logger = config.logger
         self._runtime_dir = config.runtime_dir
@@ -210,8 +207,19 @@ class DownloadService:
             return error_response(e)
 
         platform_slug = rom_detail.get("platform_slug", "")
-        platform_fs_slug = rom_detail.get("platform_fs_slug")
-        system = self._resolve_system(platform_slug, platform_fs_slug)
+        # ``platform_fs_slug`` is the secondary RomM slug shape (the
+        # filesystem-tagged variant). When the primary slug doesn't
+        # resolve to a known EmuDeck folder we try the fs slug; both
+        # routes go through the same ``Frontend.system_slug`` lookup
+        # so the resolution rule is centralized.
+        console_id = rom_detail.get("console_id")
+        system = self._frontend.system_slug(platform_slug, console_id)
+        if system == platform_slug:
+            fs_slug = rom_detail.get("platform_fs_slug")
+            if fs_slug:
+                fs_resolved = self._frontend.system_slug(fs_slug, console_id)
+                if fs_resolved != fs_slug:
+                    system = fs_resolved
 
         roms_dir = os.path.join(str(self._frontend.roms()), system)
         file_name, files_missing = resolve_local_file_name(rom_detail)

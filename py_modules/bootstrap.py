@@ -584,7 +584,6 @@ def wire_services(cfg: WiringConfig) -> dict:
             state=cfg.stores.state,
             download_file_store=cfg.adapters.download_file_store,
             download_queue=cfg.adapters.download_queue,
-            resolve_system=cfg.adapters.http_adapter.resolve_system,
             loop=cfg.runtime.loop,
             logger=cfg.runtime.logger,
             runtime_dir=cfg.runtime.runtime_dir,

@@ -70,7 +70,6 @@ from services.protocols.paths import (
     RetroArchConfigReader,
     RetroArchCoreInfoReader,
     RetroArchSaveSortingProvider,
-    SystemResolver,
 )
 from services.protocols.persistence import (
     FirmwareCachePersister,
@@ -160,6 +159,5 @@ __all__ = [
     "StatePersister",
     "SteamConfigStore",
     "SteamGridDbApi",
-    "SystemResolver",
     "UuidGen",
 ]
