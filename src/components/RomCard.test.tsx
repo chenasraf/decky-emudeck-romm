@@ -96,11 +96,24 @@ describe("RomCard", () => {
     await waitFor(() => expect(vi.mocked(startDownload)).toHaveBeenCalledWith(5));
   });
 
-  it("honors a controlled queued prop set by the parent", () => {
-    const { getByTestId } = render(<RomCard rom={{ id: 1 }} queued />);
+  it("renders Queued when progress is 0 (queued, no progress yet)", () => {
+    const { getByTestId } = render(<RomCard rom={{ id: 1 }} progress={0} />);
     const btn = getByTestId("rom-card-download") as HTMLButtonElement;
     expect(btn.textContent).toBe("Queued");
     expect(btn.disabled).toBe(true);
+  });
+
+  it("renders Downloading X% when progress is between 0 and 1", () => {
+    const { getByTestId } = render(<RomCard rom={{ id: 1 }} progress={0.42} />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    expect(btn.textContent).toBe("Downloading 42%");
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("rounds the progress percentage", () => {
+    const { getByTestId } = render(<RomCard rom={{ id: 1 }} progress={0.876} />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    expect(btn.textContent).toBe("Downloading 88%");
   });
 
   it("clears local pending when the parent confirms via installed", async () => {

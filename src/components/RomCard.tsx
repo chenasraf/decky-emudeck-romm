@@ -15,20 +15,25 @@ import type { BrowseRom } from "../types/browse";
 interface RomCardProps {
   rom: BrowseRom;
   installed?: boolean;
-  queued?: boolean;
+  /** Download progress fraction (0..1). ``undefined`` = not in flight,
+   * ``0`` = just queued (no progress yet), ``0 < x < 1`` = downloading,
+   * ``1`` = complete (the parent normally clears this immediately on
+   * ``download_complete``). */
+  progress?: number;
   onDownloadQueued?: (rom: BrowseRom) => void;
 }
 
 export const RomCard: FC<RomCardProps> = ({
   rom,
   installed = false,
-  queued: queuedProp = false,
+  progress,
   onDownloadQueued,
 }) => {
   // Local optimistic state for the ~ms window between tap and the parent's
-  // queued-set update via download_progress / handleDownloadQueued.
+  // first progress event arriving via handleDownloadQueued.
   const [localPending, setLocalPending] = useState(false);
-  const queued = queuedProp || localPending;
+  const inFlight = progress !== undefined;
+  const queued = inFlight || localPending;
 
   const cover = rom.cover_base64;
   const mime = rom.cover_mime ?? "image/jpeg";
@@ -50,13 +55,24 @@ export const RomCard: FC<RomCardProps> = ({
     }
   };
 
-  // Clear local pending once the parent confirms via queued (download_progress)
+  // Clear local pending once the parent confirms via progress (download_progress)
   // or installed (download_complete).
   useEffect(() => {
-    if (localPending && (queuedProp || installed)) {
+    if (localPending && (inFlight || installed)) {
       setLocalPending(false);
     }
-  }, [localPending, queuedProp, installed]);
+  }, [localPending, inFlight, installed]);
+
+  const buttonLabel = (() => {
+    if (queued) {
+      if (progress !== undefined && progress > 0) {
+        return `Downloading ${Math.round(progress * 100)}%`;
+      }
+      return "Queued";
+    }
+    if (installed) return "Installed — Re-download";
+    return "Download";
+  })();
 
   return (
     <div data-testid="rom-card" style={{ display: "flex", flexDirection: "column", padding: "4px" }}>
@@ -115,7 +131,7 @@ export const RomCard: FC<RomCardProps> = ({
           cursor: queued ? "default" : "pointer",
         }}
       >
-        {queued ? "Queued" : installed ? "Installed — Re-download" : "Download"}
+        {buttonLabel}
       </button>
     </div>
   );

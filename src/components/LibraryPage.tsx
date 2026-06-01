@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, TextField } from "@decky/ui";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { browseRoms, getInstalledRomIds, getPlatforms } from "../api/backend";
-import type { BrowseRom, DownloadCompleteEvent, DownloadFailedEvent, PlatformSyncSetting } from "../types";
+import type { BrowseRom, DownloadCompleteEvent, DownloadFailedEvent, DownloadProgressEvent, PlatformSyncSetting } from "../types";
 import { RomCard } from "./RomCard";
 import { useDebounce } from "../utils/useDebounce";
 
@@ -35,7 +35,9 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, SEARCH_DEBOUNCE_MS);
   const [installedIds, setInstalledIds] = useState<Set<number>>(new Set());
-  const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set());
+  // Map rom_id → progress fraction (0..1). Presence implies "in flight";
+  // 0 means just queued (no progress yet), <1 means downloading.
+  const [downloadProgress, setDownloadProgress] = useState<Map<number, number>>(new Map());
 
   useEffect(() => {
     getPlatforms()
@@ -52,15 +54,25 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
       });
   }, []);
 
-  // Listen for backend download lifecycle events so per-card "Queued" state
-  // resolves when the download lands (or fails). The Library tab is the
-  // only place that surfaces ad-hoc downloads triggered from a RomCard —
-  // other listeners (CustomPlayButton, DownloadQueue) cover their own flows.
+  // Listen for backend download lifecycle events so per-card state resolves
+  // as the download moves through Queued → Downloading X% → Installed (or
+  // Failed). The Library tab is the only place that surfaces ad-hoc downloads
+  // triggered from a RomCard — other listeners (CustomPlayButton, DownloadQueue)
+  // cover their own flows.
   useEffect(() => {
+    const onProgress = addEventListener<[DownloadProgressEvent]>("download_progress", (evt) => {
+      setDownloadProgress((prev) => {
+        const current = prev.get(evt.rom_id);
+        if (current === evt.progress) return prev;
+        const next = new Map(prev);
+        next.set(evt.rom_id, evt.progress);
+        return next;
+      });
+    });
     const onComplete = addEventListener<[DownloadCompleteEvent]>("download_complete", (evt) => {
-      setQueuedIds((prev) => {
+      setDownloadProgress((prev) => {
         if (!prev.has(evt.rom_id)) return prev;
-        const next = new Set(prev);
+        const next = new Map(prev);
         next.delete(evt.rom_id);
         return next;
       });
@@ -72,25 +84,26 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
       });
     });
     const onFailed = addEventListener<[DownloadFailedEvent]>("download_failed", (evt) => {
-      setQueuedIds((prev) => {
+      setDownloadProgress((prev) => {
         if (!prev.has(evt.rom_id)) return prev;
-        const next = new Set(prev);
+        const next = new Map(prev);
         next.delete(evt.rom_id);
         return next;
       });
       toaster.toast({ title: "Download failed", body: `${evt.rom_name}: ${evt.error_message}` });
     });
     return () => {
+      removeEventListener("download_progress", onProgress);
       removeEventListener("download_complete", onComplete);
       removeEventListener("download_failed", onFailed);
     };
   }, []);
 
   const handleDownloadQueued = useCallback((rom: BrowseRom) => {
-    setQueuedIds((prev) => {
+    setDownloadProgress((prev) => {
       if (prev.has(rom.id)) return prev;
-      const next = new Set(prev);
-      next.add(rom.id);
+      const next = new Map(prev);
+      next.set(rom.id, 0);
       return next;
     });
   }, []);
@@ -217,7 +230,7 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
                     key={rom.id}
                     rom={rom}
                     installed={installedIds.has(rom.id)}
-                    queued={queuedIds.has(rom.id)}
+                    progress={downloadProgress.get(rom.id)}
                     onDownloadQueued={handleDownloadQueued}
                   />
                 ))}

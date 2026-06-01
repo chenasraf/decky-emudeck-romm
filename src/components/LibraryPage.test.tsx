@@ -6,7 +6,7 @@ import { act, render, waitFor, fireEvent } from "@testing-library/react";
 import { emitDeckyEvent } from "../test-utils/decky-api-mock";
 import { LibraryPage } from "./LibraryPage";
 import { browseRoms, getInstalledRomIds, getPlatforms, startDownload } from "../api/backend";
-import type { DownloadCompleteEvent, DownloadFailedEvent } from "../types";
+import type { DownloadCompleteEvent, DownloadFailedEvent, DownloadProgressEvent } from "../types";
 
 vi.mock("../api/backend", () => ({
   browseRoms: vi.fn(),
@@ -140,6 +140,42 @@ describe("LibraryPage", () => {
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([9], null, 30, 0));
     fireEvent.click(pill);
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 0));
+  });
+
+  it("updates the card label as download_progress events arrive", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({
+      success: true,
+      total: 1,
+      items: [{ id: 99, name: "Sonic" }],
+    });
+    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const btn = (await findByTestId("rom-card-download")) as HTMLButtonElement;
+    act(() => {
+      emitDeckyEvent<[DownloadProgressEvent]>("download_progress", {
+        rom_id: 99,
+        rom_name: "Sonic",
+        platform_name: "MD",
+        file_name: "sonic.bin",
+        status: "downloading",
+        progress: 0.33,
+        bytes_downloaded: 33,
+        total_bytes: 100,
+      });
+    });
+    await waitFor(() => expect(btn.textContent).toBe("Downloading 33%"));
+    act(() => {
+      emitDeckyEvent<[DownloadProgressEvent]>("download_progress", {
+        rom_id: 99,
+        rom_name: "Sonic",
+        platform_name: "MD",
+        file_name: "sonic.bin",
+        status: "downloading",
+        progress: 0.91,
+        bytes_downloaded: 91,
+        total_bytes: 100,
+      });
+    });
+    await waitFor(() => expect(btn.textContent).toBe("Downloading 91%"));
   });
 
   it("flips a card from Download to Installed when download_complete fires", async () => {
