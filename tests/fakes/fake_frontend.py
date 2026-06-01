@@ -34,6 +34,7 @@ class FakeFrontend:
         detect: bool = True,
         version: str | None = "fake:1",
         compatible: bool = True,
+        slug_overrides: dict[str, str] | None = None,
     ) -> None:
         # ``rom_root`` / ``save_root`` are the BASE trees; per-system
         # methods append the slug. ``home`` defaults to the parent of
@@ -47,6 +48,14 @@ class FakeFrontend:
         self._detect = detect
         self._version = version
         self._compatible = compatible
+        # ``slug_overrides`` is the test-time stand-in for
+        # ``defaults/platform_map_emudeck.json``: anything in the dict
+        # wins over identity. Tests that need to assert per-slug
+        # translation (``ps`` → ``psx``, etc.) seed this directly.
+        self._slug_overrides = slug_overrides or {}
+
+    def system_slug(self, romm_slug: str, console_id: int | None = None) -> str:
+        return self._slug_overrides.get(romm_slug, romm_slug)
 
     def roms(self) -> Path:
         return self._rom_root

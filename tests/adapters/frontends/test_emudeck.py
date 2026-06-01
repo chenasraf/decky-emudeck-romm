@@ -205,3 +205,86 @@ class TestCompatible:
         _write_versions_json(tmp_path, synthetic)
         adapter = _make_adapter(tmp_path)
         assert adapter.compatible() is False
+
+
+def _write_platform_map(plugin_dir: Path, data: dict) -> None:
+    defaults_dir = plugin_dir / "defaults"
+    defaults_dir.mkdir(parents=True, exist_ok=True)
+    (defaults_dir / "platform_map_emudeck.json").write_text(json.dumps(data))
+
+
+def _make_adapter_with_map(tmp_path, plugin_dir: Path) -> EmuDeckFrontendAdapter:
+    return EmuDeckFrontendAdapter(
+        user_home=str(tmp_path),
+        logger=logging.getLogger("test"),
+        plugin_dir=str(plugin_dir),
+    )
+
+
+class TestSystemSlug:
+    def test_identity_fallback_when_no_plugin_dir(self, tmp_path):
+        adapter = _make_adapter(tmp_path)
+        # plugin_dir=None → empty map → every slug returns unchanged.
+        assert adapter.system_slug("snes") == "snes"
+        assert adapter.system_slug("totally-unknown") == "totally-unknown"
+
+    def test_rename_via_shipped_map(self, tmp_path):
+        plugin_dir = tmp_path / "plugin"
+        _write_platform_map(plugin_dir, {"ps": "psx", "3ds": "n3ds"})
+        adapter = _make_adapter_with_map(tmp_path, plugin_dir)
+        assert adapter.system_slug("ps") == "psx"
+        assert adapter.system_slug("3ds") == "n3ds"
+
+    def test_unmapped_slug_falls_back_to_identity(self, tmp_path):
+        plugin_dir = tmp_path / "plugin"
+        _write_platform_map(plugin_dir, {"ps": "psx"})
+        adapter = _make_adapter_with_map(tmp_path, plugin_dir)
+        assert adapter.system_slug("nes") == "nes"
+
+    def test_console_id_ignored_in_sprint_4(self, tmp_path):
+        # Phase 4's region-aware lookup reserves console_id; Sprint 4
+        # ignores it. Asserting current behavior so a future change
+        # surfaces here loudly.
+        plugin_dir = tmp_path / "plugin"
+        _write_platform_map(plugin_dir, {"snes": "snes"})
+        adapter = _make_adapter_with_map(tmp_path, plugin_dir)
+        assert adapter.system_slug("snes", console_id=42) == "snes"
+
+    def test_comment_key_skipped(self, tmp_path):
+        plugin_dir = tmp_path / "plugin"
+        _write_platform_map(plugin_dir, {"_comment": "documentation", "ps": "psx"})
+        adapter = _make_adapter_with_map(tmp_path, plugin_dir)
+        # ``_comment`` key was filtered out → identity fallback.
+        assert adapter.system_slug("_comment") == "_comment"
+
+    def test_malformed_json_logs_warning_and_returns_empty_map(self, tmp_path, caplog):
+        plugin_dir = tmp_path / "plugin"
+        defaults_dir = plugin_dir / "defaults"
+        defaults_dir.mkdir(parents=True)
+        (defaults_dir / "platform_map_emudeck.json").write_text("not valid json")
+        with caplog.at_level(logging.WARNING):
+            adapter = _make_adapter_with_map(tmp_path, plugin_dir)
+        assert adapter.system_slug("ps") == "ps"  # identity fallback
+        assert any("platform_map_emudeck.json" in r.message for r in caplog.records)
+
+    def test_shipped_map_resolves_key_renames(self, tmp_path):
+        # End-to-end against the actual shipped map. plugin_dir points
+        # at the repo root so the loader finds the real JSON.
+        repo_root = Path(__file__).resolve().parents[3]
+        assert (repo_root / "defaults" / "platform_map_emudeck.json").is_file(), (
+            "shipped platform map missing"
+        )
+        adapter = EmuDeckFrontendAdapter(
+            user_home=str(tmp_path),
+            logger=logging.getLogger("test"),
+            plugin_dir=str(repo_root),
+        )
+        assert adapter.system_slug("ps") == "psx"
+        assert adapter.system_slug("3ds") == "n3ds"
+        assert adapter.system_slug("super-nintendo") == "snes"
+        assert adapter.system_slug("mame") == "arcade"
+        # Identity for slugs already matching EmuDeck.
+        assert adapter.system_slug("snes") == "snes"
+        assert adapter.system_slug("n64") == "n64"
+        # Unknown slug → identity fallback.
+        assert adapter.system_slug("totally-unknown-platform") == "totally-unknown-platform"

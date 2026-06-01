@@ -91,6 +91,7 @@ class TestProtocolConformance:
             "roms",
             "saves",
             "home",
+            "system_slug",
             "rom_root",
             "bios_root",
             "save_root",
@@ -107,3 +108,24 @@ class TestProtocolConformance:
         assert isinstance(fake_frontend.rom_root("x"), Path)
         assert isinstance(fake_frontend.bios_root(), Path)
         assert isinstance(fake_frontend.save_root("x"), Path)
+
+
+class TestSystemSlug:
+    def test_identity_by_default(self, fake_frontend):
+        # Default fake has no slug_overrides; every slug returns unchanged.
+        assert fake_frontend.system_slug("ps") == "ps"
+        assert fake_frontend.system_slug("snes") == "snes"
+
+    def test_slug_overrides_applied(self, tmp_path):
+        f = FakeFrontend(
+            rom_root=tmp_path / "r",
+            bios_root=tmp_path / "b",
+            save_root=tmp_path / "s",
+            slug_overrides={"ps": "psx", "3ds": "n3ds"},
+        )
+        assert f.system_slug("ps") == "psx"
+        assert f.system_slug("3ds") == "n3ds"
+        assert f.system_slug("snes") == "snes"  # unmapped → identity
+
+    def test_console_id_accepted_but_ignored(self, fake_frontend):
+        assert fake_frontend.system_slug("snes", console_id=42) == "snes"

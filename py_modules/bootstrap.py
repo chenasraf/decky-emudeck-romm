@@ -322,7 +322,9 @@ def bootstrap(
     settings = migrate_settings(settings)
     persistence.save_settings(settings)
 
-    frontend = EmuDeckFrontendAdapter(user_home=user_home, logger=logger)
+    frontend = EmuDeckFrontendAdapter(
+        user_home=user_home, plugin_dir=plugin_dir, logger=logger
+    )
     # Version-band gate runs immediately after instantiation so an
     # untested EmuDeck release fails fast at startup rather than silently
     # corrupting paths during a sync run.

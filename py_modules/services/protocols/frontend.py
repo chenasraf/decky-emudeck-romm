@@ -60,11 +60,30 @@ class Frontend(Protocol):
         """
         ...
 
+    def system_slug(self, romm_slug: str, console_id: int | None = None) -> str:
+        """Translate a RomM platform slug to this frontend's native system folder name.
+
+        Most slugs match identity (RomM ``snes`` → frontend ``snes``).
+        Some differ — EmuDeck calls PlayStation ``psx`` where RomM
+        uses ``ps``, and EmuDeck splits Nintendo 3DS as ``n3ds`` where
+        RomM uses ``3ds``. Implementations look up against a frontend-
+        specific map and fall back to identity when the slug is
+        unmapped.
+
+        ``console_id`` is a forward-compat hook for region-disambiguation
+        (e.g. RomM's per-region PlayStation IDs that map to different
+        EmuDeck folders). Sprint 4 ignores it; Phase 4's emulator-
+        picker UX will wire it through.
+        """
+        ...
+
     def rom_root(self, system: str) -> Path:
         """Directory the frontend expects ROMs for ``system`` to live in.
 
         Convenience wrapper over :meth:`roms` — equivalent to
-        ``self.roms() / system``.
+        ``self.roms() / system``. Callers that hold a raw RomM platform
+        slug should compose :meth:`system_slug` first to translate to
+        the frontend's native folder name.
         """
         ...
 

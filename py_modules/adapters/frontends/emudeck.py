@@ -28,6 +28,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+_PLATFORM_MAP_FILENAME = "platform_map_emudeck.json"
+
 # Observed on the 2026-05-24 dev-Deck sample (see docs/architecture/emudeck-layout.md).
 # Tight band of one — widen as more samples come in. Composite of
 # {tracked_emu}:{schema_version} pairs, sorted, comma-joined.
@@ -59,9 +61,43 @@ class EmuDeckFrontendAdapter:
     _MIN_TESTED_VERSION = _OBSERVED_SCHEMA_SIGNATURE
     _MAX_TESTED_VERSION = _OBSERVED_SCHEMA_SIGNATURE
 
-    def __init__(self, *, user_home: str, logger: logging.Logger) -> None:
+    def __init__(
+        self,
+        *,
+        user_home: str,
+        logger: logging.Logger,
+        plugin_dir: str | None = None,
+    ) -> None:
         self._user_home = user_home
         self._logger = logger
+        self._plugin_dir = plugin_dir
+        # Read the platform map once at construction. ``plugin_dir=None``
+        # (tests that construct bare) yields an empty map → identity
+        # fallback everywhere. Production bootstrap always threads it in.
+        self._platform_map: dict[str, str] = self._load_platform_map()
+
+    # ---- platform map -------------------------------------------------
+
+    def _load_platform_map(self) -> dict[str, str]:
+        if self._plugin_dir is None:
+            return {}
+        # Decky CLI moves ``defaults/`` contents to the plugin root; dev
+        # deploys via ``mise run deploy`` keep them under ``defaults/``.
+        root_path = os.path.join(self._plugin_dir, _PLATFORM_MAP_FILENAME)
+        dev_path = os.path.join(self._plugin_dir, "defaults", _PLATFORM_MAP_FILENAME)
+        config_path = root_path if os.path.isfile(root_path) else dev_path
+        try:
+            with open(config_path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return {}
+        except (OSError, json.JSONDecodeError) as exc:
+            self._logger.warning(f"Failed to read {config_path}: {exc}")
+            return {}
+        # Drop the ``_comment`` sentinel + any non-string entries; the
+        # map is keyed by RomM platform slug, valued by EmuDeck folder
+        # name. Console-ID-disambiguated entries land in Phase 4.
+        return {k: v for k, v in data.items() if isinstance(v, str) and not k.startswith("_")}
 
     # ---- path resolution ---------------------------------------------
 
@@ -109,6 +145,10 @@ class EmuDeckFrontendAdapter:
         return Path(self._user_home) / ".var" / "app" / _RETROARCH_FLATPAK_ID
 
     # ---- Frontend Protocol -------------------------------------------
+
+    def system_slug(self, romm_slug: str, console_id: int | None = None) -> str:  # noqa: ARG002
+        # ``console_id`` reserved for Phase 4's region-aware lookup.
+        return self._platform_map.get(romm_slug, romm_slug)
 
     def roms(self) -> Path:
         return Path(self._roms_path())
