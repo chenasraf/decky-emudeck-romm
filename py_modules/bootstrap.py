@@ -25,7 +25,6 @@ from adapters.download_queue import DownloadQueueAdapter
 from adapters.es_de_config import CoreResolver, GamelistXmlEditorAdapter
 from adapters.firmware_file import FirmwareFileAdapter
 from adapters.frontends.emudeck import EmuDeckFrontendAdapter
-from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
 from adapters.hostname import HostnameAdapter
 from adapters.metadata_cache_store import MetadataCacheStoreAdapter
 from adapters.migration_file import MigrationFileAdapter
@@ -118,41 +117,6 @@ def _default_state() -> PluginState:
     even if the underlying default ever changes.
     """
     return make_default_plugin_state()
-
-
-def _select_frontend(
-    *,
-    setting: str,
-    user_home: str,
-    logger: logging.Logger,
-) -> Frontend:
-    """Pick a ``Frontend`` per ``setting → autodetect → fallback`` chain.
-
-    Explicit ``"emudeck"`` / ``"retrodeck"`` skip autodetect. ``"auto"``
-    (the default) and ``"custom"`` fall through to autodetect: EmuDeck
-    first (so EmuDeck users on a host with a leftover RetroDECK install
-    land on the right adapter), RetroDECK second, RetroDECK as the
-    final fallback (upstream default, won't break existing installs).
-
-    ``"custom"`` logs a warning that path overrides are not yet wired —
-    the UI exposes the option, but the implementation is Phase 2+ work.
-    """
-    if setting == "emudeck":
-        return EmuDeckFrontendAdapter(user_home=user_home, logger=logger)
-    if setting == "retrodeck":
-        return RetroDeckFrontendAdapter(user_home=user_home, logger=logger)
-    if setting == "custom":
-        logger.warning(
-            "Custom frontend path overrides are coming in a later release; "
-            "falling back to autodetect for now."
-        )
-    emudeck = EmuDeckFrontendAdapter(user_home=user_home, logger=logger)
-    if emudeck.detect():
-        return emudeck
-    retrodeck = RetroDeckFrontendAdapter(user_home=user_home, logger=logger)
-    if retrodeck.detect():
-        return retrodeck
-    return retrodeck
 
 
 def _enforce_frontend_compatibility(frontend: Frontend) -> None:
@@ -358,13 +322,9 @@ def bootstrap(
     settings = migrate_settings(settings)
     persistence.save_settings(settings)
 
-    frontend = _select_frontend(
-        setting=settings.get("frontend", "auto"),
-        user_home=user_home,
-        logger=logger,
-    )
-    # Version-band gate runs immediately after frontend selection so an
-    # untested release fails fast at startup rather than silently
+    frontend = EmuDeckFrontendAdapter(user_home=user_home, logger=logger)
+    # Version-band gate runs immediately after instantiation so an
+    # untested EmuDeck release fails fast at startup rather than silently
     # corrupting paths during a sync run.
     _enforce_frontend_compatibility(frontend)
     retroarch_config = RetroArchConfigAdapter(user_home=user_home, logger=logger)

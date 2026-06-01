@@ -5,6 +5,7 @@ import logging
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from bootstrap import (
     AdapterBundle,
     BootstrapResult,
@@ -32,7 +33,7 @@ from fakes.fake_sgdb_artwork_cache import FakeSgdbArtworkCache
 from fakes.system_time import FakeClock, FakeSleeper, FakeUuidGen
 from models.state import ShortcutRegistryEntry, make_default_plugin_state
 
-from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
+from adapters.frontends.emudeck import EmuDeckFrontendAdapter
 from adapters.metadata_cache_store import MetadataCacheStoreAdapter
 from adapters.registry_store import RegistryStoreAdapter
 from adapters.romm.http import RommHttpAdapter
@@ -57,6 +58,16 @@ def _bootstrap_for(tmp_path) -> BootstrapResult:
         user_home=str(tmp_path / "home"),
         logger=logging.getLogger("test"),
     )
+
+
+@pytest.fixture(autouse=True)
+def _stub_emudeck_compatible(monkeypatch):
+    """Tests run against synthetic tmp_path homes where EmuDeck's
+    ``versions.json`` is absent, so the production strict policy
+    reports ``compatible() is False``. Stub to True for the happy-path
+    suite; tests that exercise the incompatible branch override per-test.
+    """
+    monkeypatch.setattr(EmuDeckFrontendAdapter, "compatible", lambda self: True)
 
 
 class TestBootstrap:
@@ -84,10 +95,10 @@ class TestBootstrap:
         result = _bootstrap_for(tmp_path)
         assert isinstance(result.adapters.romm_api, RommApiAdapter)
 
-    def test_returns_retrodeck_frontend_adapter(self, tmp_path):
-        """Bootstrap instantiates the RetroDECK paths adapter for the callbacks bundle."""
+    def test_returns_emudeck_frontend_adapter(self, tmp_path):
+        """Bootstrap instantiates the EmuDeck frontend adapter for the callbacks bundle."""
         result = _bootstrap_for(tmp_path)
-        assert isinstance(result.callbacks.frontend, RetroDeckFrontendAdapter)
+        assert isinstance(result.callbacks.frontend, EmuDeckFrontendAdapter)
 
     def test_returns_core_info_provider_on_adapters(self, tmp_path):
         """``core_info_provider`` (CoreResolver) is bundled with adapters, not callbacks.
@@ -497,44 +508,36 @@ class TestWireServices:
 
 
 class TestFrontendCompatibility:
-    """Bootstrap refuses to wire when the chosen frontend is out of band.
+    """Bootstrap refuses to wire when EmuDeck reports an out-of-band version.
 
-    RetroDECK reports ``compatible() == True`` unconditionally this
-    sprint, so the raise path is exercised by monkey-patching the
-    adapter method to flip the verdict.
+    The autouse ``_stub_emudeck_compatible`` fixture forces ``compatible
+    == True`` by default; these tests override per-case to flip the
+    verdict and assert the raise + payload shape.
     """
 
     def test_raises_when_frontend_reports_incompatible(self, tmp_path, monkeypatch):
-        import pytest
-
-        from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
         from lib.errors import FrontendUnsupportedError
 
-        monkeypatch.setattr(RetroDeckFrontendAdapter, "compatible", lambda self: False)
+        monkeypatch.setattr(EmuDeckFrontendAdapter, "compatible", lambda self: False)
         with pytest.raises(FrontendUnsupportedError) as excinfo:
             _bootstrap_for(tmp_path)
-        assert excinfo.value.frontend == "RetroDeck"
-        # RetroDECK has no version surface — detected == None is preserved.
-        assert excinfo.value.detected is None
+        assert excinfo.value.frontend == "EmuDeck"
 
-    def test_payload_carries_tested_band_when_class_exposes_constants(
+    def test_payload_carries_tested_band_from_class_constants(
         self, tmp_path, monkeypatch
     ):
-        import pytest
-
-        from adapters.frontends.retrodeck import RetroDeckFrontendAdapter
         from lib.errors import FrontendUnsupportedError
 
-        monkeypatch.setattr(RetroDeckFrontendAdapter, "compatible", lambda self: False)
-        monkeypatch.setattr(RetroDeckFrontendAdapter, "_MIN_TESTED_VERSION", "v1", raising=False)
-        monkeypatch.setattr(RetroDeckFrontendAdapter, "_MAX_TESTED_VERSION", "v3", raising=False)
+        monkeypatch.setattr(EmuDeckFrontendAdapter, "compatible", lambda self: False)
+        monkeypatch.setattr(EmuDeckFrontendAdapter, "_MIN_TESTED_VERSION", "v1", raising=False)
+        monkeypatch.setattr(EmuDeckFrontendAdapter, "_MAX_TESTED_VERSION", "v3", raising=False)
         with pytest.raises(FrontendUnsupportedError) as excinfo:
             _bootstrap_for(tmp_path)
         assert excinfo.value.expected_min == "v1"
         assert excinfo.value.expected_max == "v3"
 
     def test_no_raise_when_frontend_reports_compatible(self, tmp_path):
-        # Sanity check — the default RetroDECK path is permissive so
-        # the existing wiring still completes without surprises.
+        # The autouse fixture already stubs compatible() to True, so
+        # bootstrap completes without raising.
         result = _bootstrap_for(tmp_path)
         assert result is not None
