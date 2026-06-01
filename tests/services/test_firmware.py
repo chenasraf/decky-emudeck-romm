@@ -176,6 +176,39 @@ class TestFirmwareDestPath:
             assert dest == os.path.join(str(tmp_path), "retrodeck", "bios", "fw.bin")
 
 
+class TestBiosWritesUseFrontendBiosRoot:
+    """Regression guard for B23 (Sprint 4): every BIOS destination path
+    routes through ``Frontend.bios_root()`` end-to-end. If a future
+    refactor accidentally bypasses the seam (e.g. hardcoded
+    ``~/retrodeck/bios`` re-introduced), the path assertions below
+    catch it.
+    """
+
+    def test_dest_path_uses_emudeck_bios_root(self, fw, tmp_path):
+        emudeck_bios = tmp_path / "Emulation" / "bios"
+        fw._frontend = _frontend(bios=str(emudeck_bios))
+        # Registry-known entry routes via firmware_path.
+        fw._bios_files_index["dc_boot.bin"] = {
+            "description": "Dreamcast BIOS",
+            "required": True,
+            "firmware_path": "dc/dc_boot.bin",
+            "platform": "dc",
+        }
+        firmware = {"file_name": "dc_boot.bin", "file_path": "bios/dc/dc_boot.bin"}
+        dest = fw._firmware_dest_path(firmware)
+        assert dest == str(emudeck_bios / "dc" / "dc_boot.bin")
+        assert str(emudeck_bios) in dest
+        # No leftover RetroDECK shape in the resolved path.
+        assert "retrodeck" not in dest
+
+    def test_dest_path_falls_back_to_emudeck_bios_root_for_unknown_files(self, fw, tmp_path):
+        emudeck_bios = tmp_path / "Emulation" / "bios"
+        fw._frontend = _frontend(bios=str(emudeck_bios))
+        firmware = {"file_name": "unknown.bin", "file_path": "bios/unknown.bin"}
+        dest = fw._firmware_dest_path(firmware)
+        assert dest == str(emudeck_bios / "unknown.bin")
+
+
 class TestGetFirmwareStatus:
     @pytest.mark.asyncio
     async def test_returns_grouped_platforms(self, fw, tmp_path):
