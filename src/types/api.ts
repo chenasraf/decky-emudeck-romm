@@ -64,6 +64,7 @@ export interface PluginSettings {
   retroarch_input_check?: RetroArchInputCheck;
   collection_create_platform_groups?: boolean;
   create_shortcuts?: boolean;
+  platform_sync_modes?: Record<string, "manual" | "automatic">;
 }
 
 export interface RomMetadata {

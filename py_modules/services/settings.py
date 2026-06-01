@@ -105,6 +105,7 @@ class SettingsService:
             "romm_allow_insecure_ssl": self._settings.get("romm_allow_insecure_ssl", False),
             "collection_create_platform_groups": self._settings.get("collection_create_platform_groups", False),
             "create_shortcuts": bool(self._settings.get("create_shortcuts", False)),
+            "platform_sync_modes": dict(self._settings.get("platform_sync_modes", {})),
         }
 
     def save_create_shortcuts(self, enabled: bool) -> dict:

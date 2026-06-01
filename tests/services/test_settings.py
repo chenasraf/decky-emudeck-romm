@@ -157,6 +157,16 @@ class TestGetSettings:
         result = service.get_settings()
         assert result["create_shortcuts"] is True
 
+    def test_platform_sync_modes_round_trips(self, service, settings):
+        settings["platform_sync_modes"] = {"1": "automatic", "2": "manual"}
+        result = service.get_settings()
+        assert result["platform_sync_modes"] == {"1": "automatic", "2": "manual"}
+
+    def test_platform_sync_modes_defaults_to_empty_dict(self, service, settings):
+        settings.pop("platform_sync_modes", None)
+        result = service.get_settings()
+        assert result["platform_sync_modes"] == {}
+
 
 class TestSaveCreateShortcuts:
     def test_persists_enabled(self, service, settings, settings_persister):

@@ -13,6 +13,7 @@ import {
 import {
   getPlatforms,
   savePlatformSync,
+  savePlatformSyncMode,
   setAllPlatformsSync,
   getCollections,
   saveCollectionSync,
@@ -94,6 +95,7 @@ export const LibrarySettingsPage: FC<LibrarySettingsPageProps> = ({ onBack }) =>
   const [syncPlatforms, setSyncPlatforms] = useState<PlatformSyncSetting[]>([]);
   const [syncLoading, setSyncLoading] = useState(true);
   const [syncError, setSyncError] = useState(false);
+  const [syncModes, setSyncModes] = useState<Record<string, "manual" | "automatic">>({});
 
   // --- Collections tab state ---
   const [collections, setCollections] = useState<CollectionSyncSetting[]>([]);
@@ -112,15 +114,16 @@ export const LibrarySettingsPage: FC<LibrarySettingsPageProps> = ({ onBack }) =>
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const biosLoaded = useRef(false);
 
-  // Load sync platforms on mount
+  // Load sync platforms + sync modes on mount
   useEffect(() => {
-    getPlatforms()
-      .then((result) => {
-        if (result.success) {
-          setSyncPlatforms(result.platforms);
+    Promise.all([getPlatforms(), getSettings()])
+      .then(([platformsResult, settingsResult]) => {
+        if (platformsResult.success) {
+          setSyncPlatforms(platformsResult.platforms);
         } else {
           setSyncError(true);
         }
+        setSyncModes(settingsResult.platform_sync_modes ?? {});
       })
       .catch(() => setSyncError(true))
       .finally(() => setSyncLoading(false));
@@ -191,6 +194,19 @@ export const LibrarySettingsPage: FC<LibrarySettingsPageProps> = ({ onBack }) =>
       await setAllPlatformsSync(enabled);
     } catch {
       setSyncPlatforms(previous);
+    }
+  };
+
+  const handleSyncModeChange = async (id: number, mode: "manual" | "automatic") => {
+    const previous = syncModes[String(id)] ?? "manual";
+    setSyncModes((prev) => ({ ...prev, [String(id)]: mode }));
+    try {
+      const res = await savePlatformSyncMode(id, mode);
+      if (!res.success) {
+        setSyncModes((prev) => ({ ...prev, [String(id)]: previous }));
+      }
+    } catch {
+      setSyncModes((prev) => ({ ...prev, [String(id)]: previous }));
     }
   };
 
@@ -283,18 +299,39 @@ export const LibrarySettingsPage: FC<LibrarySettingsPageProps> = ({ onBack }) =>
             Disable All
           </ButtonItem>
         </PanelSectionRow>
-        {syncPlatforms.map((platform) => (
-          <PanelSectionRow key={platform.id}>
-            <ToggleField
-              label={platform.name}
-              description={`${platform.rom_count} ROMs`}
-              checked={platform.sync_enabled}
-              onChange={(value: boolean) =>
-                handleToggle(platform.id, value)
-              }
-            />
-          </PanelSectionRow>
-        ))}
+        {syncPlatforms.map((platform) => {
+          const mode = syncModes[String(platform.id)] ?? "manual";
+          return (
+            <PanelSectionRow key={platform.id}>
+              <ToggleField
+                label={platform.name}
+                description={`${platform.rom_count} ROMs`}
+                checked={platform.sync_enabled}
+                onChange={(value: boolean) =>
+                  handleToggle(platform.id, value)
+                }
+              />
+              {platform.sync_enabled && (
+                <DropdownItem
+                  label="Sync mode"
+                  description={
+                    mode === "automatic"
+                      ? "Auto-download on Sync Library"
+                      : "Manual — browse + tap to download"
+                  }
+                  rgOptions={[
+                    { data: "manual", label: "Manual" },
+                    { data: "automatic", label: "Automatic" },
+                  ]}
+                  selectedOption={mode}
+                  onChange={(option: { data: "manual" | "automatic" }) =>
+                    handleSyncModeChange(platform.id, option.data)
+                  }
+                />
+              )}
+            </PanelSectionRow>
+          );
+        })}
       </>
     );
   };

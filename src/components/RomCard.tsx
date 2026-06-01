@@ -1,26 +1,26 @@
 /**
- * Library tab grid card. Renders cover thumbnail + title + a Download
- * placeholder; F10 wires the placeholder to ``start_download``.
- *
- * Cover loading: each card calls ``get_browse_cover_base64`` on mount
- * (poor-man's lazy-load — the backend LRU dedupes within a sprint of
- * pagination). The grid below the fold paints placeholders first, real
- * art swaps in as covers resolve.
+ * Library tab grid card. Renders cover thumbnail + title + Download CTA.
+ * Cover loading uses ``get_browse_cover_base64`` (backend LRU-cached); the
+ * Download button calls ``start_download``. Per-card live queue state is
+ * deferred to Sprint 6 — for now we show a transient "Queued" badge on
+ * tap and rely on the LibraryPage's Refresh button to re-poll if needed.
  */
 
 import { useState, useEffect, FC } from "react";
-import { getBrowseCoverBase64 } from "../api/backend";
+import { toaster } from "@decky/api";
+import { getBrowseCoverBase64, startDownload } from "../api/backend";
 import type { BrowseRom } from "../types/browse";
 
 interface RomCardProps {
   rom: BrowseRom;
-  onDownload?: (rom: BrowseRom) => void;
+  onDownloadQueued?: (rom: BrowseRom) => void;
 }
 
-export const RomCard: FC<RomCardProps> = ({ rom }) => {
+export const RomCard: FC<RomCardProps> = ({ rom, onDownloadQueued }) => {
   const [coverData, setCoverData] = useState<string | null>(null);
   const [coverMime, setCoverMime] = useState<string>("image/jpeg");
   const [coverLoaded, setCoverLoaded] = useState(false);
+  const [queued, setQueued] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +40,23 @@ export const RomCard: FC<RomCardProps> = ({ rom }) => {
       cancelled = true;
     };
   }, [rom.id]);
+
+  const handleDownload = async () => {
+    setQueued(true);
+    try {
+      const res = await startDownload(rom.id);
+      if (res.success) {
+        toaster.toast({ title: "Download queued", body: rom.name ?? `ROM ${rom.id}` });
+        onDownloadQueued?.(rom);
+      } else {
+        setQueued(false);
+        toaster.toast({ title: "Download failed", body: res.message ?? "Could not queue download" });
+      }
+    } catch (e) {
+      setQueued(false);
+      toaster.toast({ title: "Download failed", body: String(e) });
+    }
+  };
 
   return (
     <div data-testid="rom-card" style={{ display: "flex", flexDirection: "column", padding: "4px" }}>
@@ -80,6 +97,23 @@ export const RomCard: FC<RomCardProps> = ({ rom }) => {
       >
         {rom.name ?? `ROM ${rom.id}`}
       </div>
+      <button
+        data-testid="rom-card-download"
+        onClick={() => void handleDownload()}
+        disabled={queued}
+        style={{
+          marginTop: "4px",
+          padding: "2px 6px",
+          fontSize: "10px",
+          borderRadius: "3px",
+          border: "1px solid rgba(255,255,255,0.2)",
+          background: queued ? "rgba(76,175,80,0.2)" : "transparent",
+          color: "inherit",
+          cursor: queued ? "default" : "pointer",
+        }}
+      >
+        {queued ? "Queued" : "Download"}
+      </button>
     </div>
   );
 };

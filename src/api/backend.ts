@@ -66,6 +66,7 @@ export const evaluateLaunch = callable<[number], LaunchVerdict>("evaluate_launch
 export const removeRom = callable<[number], BackendResult>("remove_rom");
 export const getPlatforms = callable<[], { success: boolean; platforms: PlatformSyncSetting[] }>("get_platforms");
 export const savePlatformSync = callable<[number, boolean], { success: boolean; message: string }>("save_platform_sync");
+export const savePlatformSyncMode = callable<[number, "manual" | "automatic"], { success: boolean; message?: string }>("save_platform_sync_mode");
 export const setAllPlatformsSync = callable<[boolean], { success: boolean; message: string }>("set_all_platforms_sync");
 export const getCollections = callable<[], { success: boolean; collections: CollectionSyncSetting[]; message?: string; error_code?: RommErrorCode }>("get_collections");
 export const saveCollectionSync = callable<[string, boolean], { success: boolean }>("save_collection_sync");

@@ -239,7 +239,9 @@ describe("LibrarySettingsPage", () => {
         await Promise.resolve();
       });
       expect(vi.mocked(backend.getCollections)).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(backend.getSettings)).toHaveBeenCalledTimes(1);
+      // getSettings is called once on mount (for platform sync_modes) and again
+      // when the Collections tab lazy-loads.
+      expect(vi.mocked(backend.getSettings)).toHaveBeenCalledTimes(2);
     });
 
     it("clicking the BIOS tab lazy-loads getFirmwareStatus", async () => {

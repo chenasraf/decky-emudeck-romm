@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { render, waitFor, fireEvent } from "@testing-library/react";
+import { toaster } from "@decky/api";
 import { RomCard } from "./RomCard";
-import { getBrowseCoverBase64 } from "../api/backend";
+import { getBrowseCoverBase64, startDownload } from "../api/backend";
 
 vi.mock("../api/backend", () => ({
   getBrowseCoverBase64: vi.fn(),
+  startDownload: vi.fn(),
 }));
 
 describe("RomCard", () => {
@@ -50,5 +52,44 @@ describe("RomCard", () => {
     await waitFor(() => expect(getBrowseCoverBase64).toHaveBeenCalledWith(1));
     rerender(<RomCard rom={{ id: 2 }} />);
     await waitFor(() => expect(getBrowseCoverBase64).toHaveBeenCalledWith(2));
+  });
+
+  it("calls startDownload and switches to Queued on tap", async () => {
+    vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
+    vi.mocked(startDownload).mockResolvedValue({ success: true });
+    const { getByTestId } = render(<RomCard rom={{ id: 42, name: "Zelda" }} />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(vi.mocked(startDownload)).toHaveBeenCalledWith(42));
+    await waitFor(() => expect(btn.textContent).toBe("Queued"));
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("reverts to Download and toasts when start_download returns success=false", async () => {
+    vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
+    vi.mocked(startDownload).mockResolvedValue({ success: false, message: "queue full" });
+    const { getByTestId } = render(<RomCard rom={{ id: 1, name: "X" }} />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.textContent).toBe("Download"));
+    expect(btn.disabled).toBe(false);
+    const toastMock = vi.mocked(toaster).toast;
+    const calls = toastMock.mock.calls.map((c) => c[0]);
+    expect(calls.some((c) => c?.title === "Download failed" && c?.body === "queue full")).toBe(true);
+  });
+
+  it("reverts to Download and toasts on a startDownload rejection (post-catch state)", async () => {
+    vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
+    vi.mocked(startDownload).mockRejectedValue(new Error("network gone"));
+    const { getByTestId } = render(<RomCard rom={{ id: 1, name: "Y" }} />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.textContent).toBe("Download"));
+    expect(btn.disabled).toBe(false);
+    const toastMock = vi.mocked(toaster).toast;
+    const calls = toastMock.mock.calls.map((c) => c[0]);
+    expect(
+      calls.some((c) => c?.title === "Download failed" && String(c?.body).includes("network gone")),
+    ).toBe(true);
   });
 });
