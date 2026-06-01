@@ -2,9 +2,11 @@
  * LibraryPage tests — F7 state scaffolding + F8 grid + pagination.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor, fireEvent } from "@testing-library/react";
+import { act, render, waitFor, fireEvent } from "@testing-library/react";
+import { emitDeckyEvent } from "../test-utils/decky-api-mock";
 import { LibraryPage } from "./LibraryPage";
 import { browseRoms, getInstalledRomIds, getPlatforms, startDownload } from "../api/backend";
+import type { DownloadCompleteEvent, DownloadFailedEvent } from "../types";
 
 vi.mock("../api/backend", () => ({
   browseRoms: vi.fn(),
@@ -138,6 +140,48 @@ describe("LibraryPage", () => {
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([9], null, 30, 0));
     fireEvent.click(pill);
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 0));
+  });
+
+  it("flips a card from Download to Installed when download_complete fires", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({
+      success: true,
+      total: 1,
+      items: [{ id: 42, name: "Zelda" }],
+    });
+    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const btn = (await findByTestId("rom-card-download")) as HTMLButtonElement;
+    expect(btn.dataset.installed).toBe("false");
+    act(() => {
+      emitDeckyEvent<[DownloadCompleteEvent]>("download_complete", {
+        rom_id: 42,
+        rom_name: "Zelda",
+        platform_name: "N64",
+        file_path: "/Emulation/roms/n64/zelda.z64",
+      });
+    });
+    await waitFor(() => expect(btn.dataset.installed).toBe("true"));
+  });
+
+  it("clears the Queued badge when download_failed fires", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({
+      success: true,
+      total: 1,
+      items: [{ id: 7, name: "Mario" }],
+    });
+    vi.mocked(startDownload).mockResolvedValue({ success: true });
+    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const btn = (await findByTestId("rom-card-download")) as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.textContent).toBe("Queued"));
+    act(() => {
+      emitDeckyEvent<[DownloadFailedEvent]>("download_failed", {
+        rom_id: 7,
+        rom_name: "Mario",
+        platform_name: "N64",
+        error_message: "timeout",
+      });
+    });
+    await waitFor(() => expect(btn.textContent).toBe("Download"));
   });
 
   it("marks ROMs in the installed set with the Installed badge", async () => {

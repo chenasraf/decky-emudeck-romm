@@ -6,10 +6,11 @@
  * debounced search; F10 wires the per-card Download CTA.
  */
 
-import { useState, useEffect, FC } from "react";
+import { useState, useEffect, useCallback, FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, TextField } from "@decky/ui";
+import { addEventListener, removeEventListener, toaster } from "@decky/api";
 import { browseRoms, getInstalledRomIds, getPlatforms } from "../api/backend";
-import type { BrowseRom, PlatformSyncSetting } from "../types";
+import type { BrowseRom, DownloadCompleteEvent, DownloadFailedEvent, PlatformSyncSetting } from "../types";
 import { RomCard } from "./RomCard";
 import { useDebounce } from "../utils/useDebounce";
 
@@ -34,6 +35,7 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, SEARCH_DEBOUNCE_MS);
   const [installedIds, setInstalledIds] = useState<Set<number>>(new Set());
+  const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     getPlatforms()
@@ -48,6 +50,49 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
       .catch(() => {
         /* without an installed-set, every card shows Download — acceptable */
       });
+  }, []);
+
+  // Listen for backend download lifecycle events so per-card "Queued" state
+  // resolves when the download lands (or fails). The Library tab is the
+  // only place that surfaces ad-hoc downloads triggered from a RomCard —
+  // other listeners (CustomPlayButton, DownloadQueue) cover their own flows.
+  useEffect(() => {
+    const onComplete = addEventListener<[DownloadCompleteEvent]>("download_complete", (evt) => {
+      setQueuedIds((prev) => {
+        if (!prev.has(evt.rom_id)) return prev;
+        const next = new Set(prev);
+        next.delete(evt.rom_id);
+        return next;
+      });
+      setInstalledIds((prev) => {
+        if (prev.has(evt.rom_id)) return prev;
+        const next = new Set(prev);
+        next.add(evt.rom_id);
+        return next;
+      });
+    });
+    const onFailed = addEventListener<[DownloadFailedEvent]>("download_failed", (evt) => {
+      setQueuedIds((prev) => {
+        if (!prev.has(evt.rom_id)) return prev;
+        const next = new Set(prev);
+        next.delete(evt.rom_id);
+        return next;
+      });
+      toaster.toast({ title: "Download failed", body: `${evt.rom_name}: ${evt.error_message}` });
+    });
+    return () => {
+      removeEventListener("download_complete", onComplete);
+      removeEventListener("download_failed", onFailed);
+    };
+  }, []);
+
+  const handleDownloadQueued = useCallback((rom: BrowseRom) => {
+    setQueuedIds((prev) => {
+      if (prev.has(rom.id)) return prev;
+      const next = new Set(prev);
+      next.add(rom.id);
+      return next;
+    });
   }, []);
 
   const load = async (pageIndex: number, ids: number[], search: string) => {
@@ -172,6 +217,8 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
                     key={rom.id}
                     rom={rom}
                     installed={installedIds.has(rom.id)}
+                    queued={queuedIds.has(rom.id)}
+                    onDownloadQueued={handleDownloadQueued}
                   />
                 ))}
               </div>

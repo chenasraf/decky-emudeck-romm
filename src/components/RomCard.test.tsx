@@ -95,4 +95,21 @@ describe("RomCard", () => {
     fireEvent.click(btn);
     await waitFor(() => expect(vi.mocked(startDownload)).toHaveBeenCalledWith(5));
   });
+
+  it("honors a controlled queued prop set by the parent", () => {
+    const { getByTestId } = render(<RomCard rom={{ id: 1 }} queued />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    expect(btn.textContent).toBe("Queued");
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("clears local pending when the parent confirms via installed", async () => {
+    vi.mocked(startDownload).mockResolvedValue({ success: true });
+    const { getByTestId, rerender } = render(<RomCard rom={{ id: 1, name: "Z" }} />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.textContent).toBe("Queued"));
+    rerender(<RomCard rom={{ id: 1, name: "Z" }} installed />);
+    await waitFor(() => expect(btn.textContent).toContain("Installed"));
+  });
 });

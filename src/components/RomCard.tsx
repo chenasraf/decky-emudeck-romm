@@ -7,7 +7,7 @@
  * queue state (Queued/Downloading%/Updates) is deferred to Sprint 6.
  */
 
-import { useState, FC } from "react";
+import { useState, useEffect, FC } from "react";
 import { toaster } from "@decky/api";
 import { startDownload } from "../api/backend";
 import type { BrowseRom } from "../types/browse";
@@ -15,31 +15,48 @@ import type { BrowseRom } from "../types/browse";
 interface RomCardProps {
   rom: BrowseRom;
   installed?: boolean;
+  queued?: boolean;
   onDownloadQueued?: (rom: BrowseRom) => void;
 }
 
-export const RomCard: FC<RomCardProps> = ({ rom, installed = false, onDownloadQueued }) => {
-  const [queued, setQueued] = useState(false);
+export const RomCard: FC<RomCardProps> = ({
+  rom,
+  installed = false,
+  queued: queuedProp = false,
+  onDownloadQueued,
+}) => {
+  // Local optimistic state for the ~ms window between tap and the parent's
+  // queued-set update via download_progress / handleDownloadQueued.
+  const [localPending, setLocalPending] = useState(false);
+  const queued = queuedProp || localPending;
 
   const cover = rom.cover_base64;
   const mime = rom.cover_mime ?? "image/jpeg";
 
   const handleDownload = async () => {
-    setQueued(true);
+    setLocalPending(true);
     try {
       const res = await startDownload(rom.id);
       if (res.success) {
         toaster.toast({ title: "Download queued", body: rom.name ?? `ROM ${rom.id}` });
         onDownloadQueued?.(rom);
       } else {
-        setQueued(false);
+        setLocalPending(false);
         toaster.toast({ title: "Download failed", body: res.message ?? "Could not queue download" });
       }
     } catch (e) {
-      setQueued(false);
+      setLocalPending(false);
       toaster.toast({ title: "Download failed", body: String(e) });
     }
   };
+
+  // Clear local pending once the parent confirms via queued (download_progress)
+  // or installed (download_complete).
+  useEffect(() => {
+    if (localPending && (queuedProp || installed)) {
+      setLocalPending(false);
+    }
+  }, [localPending, queuedProp, installed]);
 
   return (
     <div data-testid="rom-card" style={{ display: "flex", flexDirection: "column", padding: "4px" }}>
