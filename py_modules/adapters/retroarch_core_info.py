@@ -7,16 +7,13 @@ under ``sort_savefiles_enable``), ``supported_extensions``,
 ``firmware_count``, ``database``, ``display_name``, and more.
 
 The adapter resolves the file by probing a small list of candidate
-directories under the RetroDECK Flatpak install tree (system-wide and
-per-user), opens the file, and delegates parsing to
+directories under the standalone RetroArch Flatpak install
+(``org.libretro.RetroArch``, system-wide and per-user), opens the
+file, and delegates parsing to
 :func:`domain.retroarch_core_info.parse_core_info`. Results (including
 ``None`` for missing files) are cached per-instance; no TTL — ``.info``
 files only change when the Flatpak is updated, which in practice tears
 down the plugin process anyway.
-
-Only RetroDECK paths are probed today; standalone RetroArch installs
-and other launchers are out of scope for now. See the decisions log in
-the ``Config Source Parsers`` wiki page for the rationale.
 """
 
 from __future__ import annotations
@@ -31,22 +28,15 @@ class RetroArchCoreInfoAdapter:
     """Adapter for reading RetroArch per-core .info metadata files."""
 
     _SYSTEM_CORES_DIR = (
-        "/var/lib/flatpak/app/net.retrodeck.retrodeck/current/active"
-        "/files/retrodeck/components/retroarch/rd_extras/cores"
+        "/var/lib/flatpak/app/org.libretro.RetroArch/current/active"
+        "/files/lib/libretro"
     )
     _USER_CORES_SUFFIX = os.path.join(
-        ".local",
-        "share",
-        "flatpak",
+        ".var",
         "app",
-        "net.retrodeck.retrodeck",
-        "current",
-        "active",
-        "files",
-        "retrodeck",
-        "components",
+        "org.libretro.RetroArch",
+        "config",
         "retroarch",
-        "rd_extras",
         "cores",
     )
 

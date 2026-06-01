@@ -21,18 +21,11 @@ _SNES9X_INFO = (
 def _user_cores_dir(user_home: Path) -> Path:
     return (
         user_home
-        / ".local"
-        / "share"
-        / "flatpak"
+        / ".var"
         / "app"
-        / "net.retrodeck.retrodeck"
-        / "current"
-        / "active"
-        / "files"
-        / "retrodeck"
-        / "components"
+        / "org.libretro.RetroArch"
+        / "config"
         / "retroarch"
-        / "rd_extras"
         / "cores"
     )
 

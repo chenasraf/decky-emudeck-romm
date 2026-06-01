@@ -185,7 +185,6 @@ class SteamConfigAdapter:
     def check_retroarch_input_driver(self) -> dict | None:
         """Check if RetroArch input_driver is set to a problematic value."""
         candidates = [
-            "~/.var/app/net.retrodeck.retrodeck/config/retroarch/retroarch.cfg",
             "~/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg",
             "~/.config/retroarch/retroarch.cfg",
         ]

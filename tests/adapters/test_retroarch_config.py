@@ -21,7 +21,7 @@ class TestRetroArchSaveSorting:
         assert sort_by_core is False
 
     def test_reads_sort_by_content_false(self, tmp_path):
-        cfg_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        cfg_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         cfg_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "retroarch.cfg").write_text(
             'sort_savefiles_by_content_enable = "false"\nsort_savefiles_enable = "false"\n'
@@ -32,7 +32,7 @@ class TestRetroArchSaveSorting:
         assert sort_by_core is False
 
     def test_reads_sort_by_core_true(self, tmp_path):
-        cfg_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        cfg_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         cfg_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "retroarch.cfg").write_text(
             'sort_savefiles_by_content_enable = "true"\nsort_savefiles_enable = "true"\n'
@@ -43,7 +43,7 @@ class TestRetroArchSaveSorting:
         assert sort_by_core is True
 
     def test_mixed_settings(self, tmp_path):
-        cfg_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        cfg_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         cfg_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "retroarch.cfg").write_text(
             'sort_savefiles_by_content_enable = "false"\nsort_savefiles_enable = "true"\n'
@@ -73,7 +73,7 @@ class TestRetroArchSaveSorting:
 
     def test_ignores_unrelated_cfg_lines(self, tmp_path):
         """Cfg lines that don't match either sort key are skipped cleanly."""
-        cfg_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        cfg_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         cfg_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "retroarch.cfg").write_text(
             "# RetroArch configuration\n"
@@ -90,7 +90,7 @@ class TestRetroArchSaveSorting:
     def test_cfg_line_order_does_not_matter(self, tmp_path):
         """``sort_savefiles_enable`` appears before ``sort_savefiles_by_content_enable``
         — parsing order does not change the result."""
-        cfg_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        cfg_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         cfg_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "retroarch.cfg").write_text(
             'sort_savefiles_enable = "true"\nsort_savefiles_by_content_enable = "false"\n'
@@ -105,7 +105,7 @@ class TestOsErrorHandling:
     def test_permission_error_logs_and_returns_defaults(self, tmp_path, caplog):
         """The only candidate file raises PermissionError — adapter logs a
         warning and returns RetroDECK defaults instead of crashing."""
-        cfg_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        cfg_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         cfg_dir.mkdir(parents=True, exist_ok=True)
         cfg_file = cfg_dir / "retroarch.cfg"
         cfg_file.write_text('sort_savefiles_enable = "true"\n')
@@ -128,14 +128,14 @@ class TestOsErrorHandling:
     def test_permission_error_on_first_candidate_tries_second(self, tmp_path, caplog):
         """First candidate raises PermissionError; second candidate exists with
         readable content — adapter falls through and reads the second file."""
-        # First (RetroDECK) candidate is the one we'll deny
-        first_dir = tmp_path / ".var" / "app" / "net.retrodeck.retrodeck" / "config" / "retroarch"
+        # First (EmuDeck Flatpak) candidate is the one we'll deny
+        first_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
         first_dir.mkdir(parents=True, exist_ok=True)
         first_file = first_dir / "retroarch.cfg"
         first_file.write_text('sort_savefiles_enable = "false"\n')
 
-        # Second (standalone Flatpak) candidate with the value we expect to read
-        second_dir = tmp_path / ".var" / "app" / "org.libretro.RetroArch" / "config" / "retroarch"
+        # Second (native ``~/.config/retroarch/``) candidate with the value we expect to read
+        second_dir = tmp_path / ".config" / "retroarch"
         second_dir.mkdir(parents=True, exist_ok=True)
         (second_dir / "retroarch.cfg").write_text('sort_savefiles_enable = "true"\n')
 
