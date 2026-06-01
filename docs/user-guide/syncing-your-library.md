@@ -2,6 +2,17 @@
 
 Syncing fetches your RomM game library and creates Non-Steam shortcuts in Steam for every game. After syncing, your games appear in the Steam Library with cover art, metadata, and organized into collections.
 
+## Where ROMs Land
+
+The plugin downloads ROMs into your EmuDeck `roms/` tree — the canonical EmuDeck layout that ES-DE and your installed emulators expect to find ROMs in:
+
+- **Internal SSD**: `~/Emulation/roms/<system>/<filename>`
+- **SD card**: `/run/media/deck/<sd-label>/Emulation/roms/<system>/<filename>`
+
+The plugin reads `~/.config/EmuDeck/settings.sh` to discover where your `emulationPath` lives, so SD-card installs (where EmuDeck rewrites the path to a `/run/media/...` mount) are picked up automatically.
+
+The `<system>` folder name is translated from the RomM platform slug via `defaults/platform_map_emudeck.json`. Most slugs pass through unchanged (`snes`, `n64`, `gba`); a few rename: RomM's `ps` becomes EmuDeck's `psx`, `3ds` becomes `n3ds`, and the `mame*` / `fbneo` / `cps*` family defaults to `arcade`. See [EmuDeck Filesystem Layout — ROMs](../architecture/emudeck-layout.md#roms) for the full mapping.
+
 ## How Sync Works
 
 1. The plugin fetches all ROMs from your RomM server (filtered by your enabled platforms)

@@ -37,7 +37,14 @@ The dedicated BIOS management page shows all platforms that have firmware files 
 
 <!-- Screenshot: BIOS Manager page showing platforms with download counts and Download All buttons -->
 
-BIOS files are downloaded to your EmuDeck bios directory (e.g. `~/Emulation/bios/`). Some platforms use subdirectories — for example, Dreamcast BIOS goes into `bios/dc/` and PS2 BIOS goes into `bios/pcsx2/bios/`. The plugin handles the correct placement automatically. See [EmuDeck Filesystem Layout](../architecture/emudeck-layout.md#bios) for the canonical paths.
+BIOS files are downloaded to your EmuDeck bios directory:
+
+- **Internal SSD**: `~/Emulation/bios/`
+- **SD card**: `/run/media/deck/<sd-label>/Emulation/bios/`
+
+Some platforms use subdirectories — for example, Dreamcast BIOS goes into `bios/dc/` and PS2 BIOS goes into `bios/pcsx2/bios/`. The plugin handles the correct placement automatically. The `bios_registry.json` per-file relative paths are frontend-agnostic, so a BIOS dropped in the right `bios/` subfolder is found regardless of how you got it there.
+
+See [EmuDeck Filesystem Layout — BIOS](../architecture/emudeck-layout.md#bios) for the canonical paths and the [open TODO](../architecture/emudeck-layout.md#open-todos-need-a-second-sample-or-an-emudeck-source-dive) on whether EmuDeck mirrors writes into Flatpak-specific subdirs (e.g. `bios/citra-flatpak/`) automatically.
 
 ## Which Systems Need BIOS?
 

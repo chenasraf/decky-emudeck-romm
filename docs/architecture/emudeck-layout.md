@@ -39,6 +39,8 @@ There is **no single `EmuDeck version` string on disk**. The closest things:
 
 ## ROMs
 
+User-facing reference: [Syncing Your Library — Where ROMs Land](../user-guide/syncing-your-library.md#where-roms-land).
+
 `$romsPath` is a flat list of per-system directories. Observed on this install (~150 system slugs — only the meaningful ones listed; the long tail is in `inventory.out`):
 
 | EmuDeck slug | Console | RomM equivalent (best guess) |
@@ -79,6 +81,8 @@ A platform-slug-mapping table (`defaults/platform_map_emudeck.json`) lands in Ph
 - EmuDeck `psx` vs. RomM `ps` — slug rename in the table.
 
 ## BIOS
+
+User-facing reference: [BIOS Management](../user-guide/bios-management.md).
 
 `$emulationPath/bios/` mixes bare files and per-system subdirs:
 
