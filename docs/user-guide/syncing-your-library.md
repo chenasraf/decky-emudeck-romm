@@ -13,21 +13,32 @@ The plugin reads `~/.config/EmuDeck/settings.sh` to discover where your `emulati
 
 The `<system>` folder name is translated from the RomM platform slug via `defaults/platform_map_emudeck.json`. Most slugs pass through unchanged (`snes`, `n64`, `gba`); a few rename: RomM's `ps` becomes EmuDeck's `psx`, `3ds` becomes `n3ds`, and the `mame*` / `fbneo` / `cps*` family defaults to `arcade`. See [EmuDeck Filesystem Layout — ROMs](../architecture/emudeck-layout.md#roms) for the full mapping.
 
-## How Sync Works
+## Manual by default, Automatic if you opt in
 
-1. The plugin fetches all ROMs from your RomM server (filtered by your enabled platforms)
+This fork is a browse-first client: by default, **no platform auto-syncs**. The Library tab lets you pick individual ROMs and download them on demand. If you want a whole platform's library to download in the background — the upstream "sync everything" behavior — flip that platform's **Sync mode** to `Automatic` on the Platforms page.
+
+- `Manual` (default): the platform appears in the Library tab for browsing and on-demand download; **Sync Library** ignores it.
+- `Automatic`: **Sync Library** downloads the platform's full library in one batch, the same way upstream `decky-romm-sync` does.
+
+You can mix modes: some platforms on `Automatic` for the "just have everything" path, others on `Manual` for "only what I tap."
+
+## How Sync Works (Automatic platforms)
+
+1. The plugin fetches all ROMs from your RomM server (filtered to platforms with sync mode `Automatic`)
 2. For each ROM, a Non-Steam shortcut is created in Steam via the SteamClient API — no restart required
 3. Cover art from RomM is applied as the portrait grid image
 4. If you have a SteamGridDB API key configured, hero banners, logos, and wide grid images are also fetched
 5. Metadata (description, developer, genres, release date) is cached and displayed in the plugin's custom game detail panel
 6. Steam collections are created per platform (e.g. "RomM: Game Boy Advance (steamdeck)")
 
-## Starting a Sync
+## Starting an Automatic Sync
 
 1. Open the QAM and navigate to the plugin
 2. Tap **Sync Library** on the main page
 3. A progress bar shows the sync status
 4. When complete, a summary appears (e.g. "Added 42 games from 5 platforms")
+
+If every platform is set to `Manual` (the default), **Sync Library** finishes immediately with nothing to do. That's expected — head to the Library tab and tap **Download** on the ROMs you want.
 
 ![RomM Sync QAM panel with connection status and the Sync Library button](../assets/screenshot-qam.jpg)
 
@@ -37,13 +48,13 @@ You can tap **Cancel Sync** to stop mid-sync. Games already added will remain.
 
 ## Per-Platform Toggles
 
-Not every platform in your RomM library needs to be synced to Steam. Use the **Platforms** page to enable or disable individual platforms.
+Use the **Platforms** page to enable platforms and pick a sync mode per platform.
 
 1. From the main page, tap **Platforms**
 2. Each platform shows its name and ROM count
-3. Toggle platforms on or off
-4. Use **Enable All** / **Disable All** for bulk changes
-5. Only enabled platforms are included in the next sync
+3. Toggle platforms on or off (disabled platforms don't appear in the Library tab either)
+4. For enabled platforms, choose **Sync mode**: `Manual` (browse + on-demand) or `Automatic` (full-library download on Sync)
+5. Use **Enable All** / **Disable All** for bulk changes
 
 <!-- Screenshot: Platforms page with toggle switches and ROM counts -->
 

@@ -231,17 +231,29 @@ class LibraryFetcher:
     # ── ROM fetch pipeline ───────────────────────────────────────
 
     async def _fetch_enabled_platforms(self):
-        """Fetch and filter platforms by enabled_platforms setting."""
+        """Fetch and filter platforms by enabled_platforms + sync-mode setting.
+
+        Platforms whose ``platform_sync_modes`` entry resolves to ``"manual"``
+        (the default for any platform not in the dict) are dropped — the
+        library sync only auto-downloads platforms the user explicitly
+        flipped to ``"automatic"``.
+        """
         platforms = await self._loop.run_in_executor(None, self._romm_api.list_platforms)
         if not isinstance(platforms, list):
             self._logger.error(f"Unexpected platforms response type: {type(platforms).__name__}")
             return []
 
         enabled = self._settings.get("enabled_platforms", {})
+        modes = self._settings.get("platform_sync_modes", {})
         no_prefs = len(enabled) == 0
         self._logger.info(f"Platform filter: {len(enabled)} prefs saved, no_prefs={no_prefs}")
         self._logger.info(f"Enabled platforms: {[k for k, v in enabled.items() if v]}")
-        platforms = [p for p in platforms if enabled.get(str(p["id"]), no_prefs)]
+        platforms = [
+            p
+            for p in platforms
+            if enabled.get(str(p["id"]), no_prefs)
+            and modes.get(str(p["id"]), "manual") == "automatic"
+        ]
         self._logger.info(f"Syncing {len(platforms)} platforms: {[p['name'] for p in platforms]}")
         return platforms
 

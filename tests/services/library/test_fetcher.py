@@ -55,6 +55,7 @@ class TestFetchEnabledPlatforms:
         ]
         plugin.settings["enabled_platforms"] = {"1": True, "2": False, "3": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "manual", "3": "automatic"}
         result = await plugin._sync_service._fetcher._fetch_enabled_platforms()
         assert len(result) == 2
         names = [p["name"] for p in result]
@@ -63,16 +64,35 @@ class TestFetchEnabledPlatforms:
         assert "SNES" not in names
 
     @pytest.mark.asyncio
-    async def test_all_enabled_when_no_prefs(self, plugin, fake_romm_api):
+    async def test_no_platforms_sync_when_modes_default_to_manual(self, plugin, fake_romm_api):
+        """Phase 3 default: with no platform_sync_modes set, every platform is treated as
+        Manual and dropped from the auto-sync list — even if enabled_platforms is empty."""
         _wire_fake(plugin, fake_romm_api)
         fake_romm_api.platforms = [
             {"id": 1, "name": "N64", "slug": "n64"},
             {"id": 2, "name": "SNES", "slug": "snes"},
         ]
         plugin.settings["enabled_platforms"] = {}
-
+        plugin.settings["platform_sync_modes"] = {}
         result = await plugin._sync_service._fetcher._fetch_enabled_platforms()
-        assert len(result) == 2
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_manual_mode_platforms_dropped(self, plugin, fake_romm_api):
+        """Enabled platforms with mode=='manual' are still dropped — Phase 3 gate."""
+        _wire_fake(plugin, fake_romm_api)
+        fake_romm_api.platforms = [
+            {"id": 1, "name": "N64", "slug": "n64"},
+            {"id": 2, "name": "SNES", "slug": "snes"},
+            {"id": 3, "name": "GBA", "slug": "gba"},
+        ]
+        plugin.settings["enabled_platforms"] = {"1": True, "2": True, "3": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "manual", "3": "automatic"}
+        result = await plugin._sync_service._fetcher._fetch_enabled_platforms()
+        names = [p["name"] for p in result]
+        assert "N64" in names
+        assert "GBA" in names
+        assert "SNES" not in names
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_non_list_response(self, plugin, fake_romm_api):
@@ -322,6 +342,7 @@ class TestBuildWorkQueueErrorPaths:
         """Lines 375-377: user-collection fetch raises => warning logged, treated as empty."""
         _wire_fake(plugin, fake_romm_api)
         plugin.settings["enabled_platforms"] = {}
+        plugin.settings["platform_sync_modes"] = {}
         plugin.settings["enabled_collections"] = {"42": True}
 
         fake_romm_api.list_collections_side_effect = RuntimeError("user collections boom")
@@ -341,6 +362,7 @@ class TestBuildWorkQueueErrorPaths:
         """Lines 382-384: franchise-collection fetch raises => warning logged, treated as empty."""
         _wire_fake(plugin, fake_romm_api)
         plugin.settings["enabled_platforms"] = {}
+        plugin.settings["platform_sync_modes"] = {}
         plugin.settings["enabled_collections"] = {"7": True}
 
         fake_romm_api.collections = [{"id": "7", "name": "Faves", "slug": "faves", "rom_count": 4}]
@@ -356,6 +378,7 @@ class TestBuildWorkQueueErrorPaths:
         """Lines 389 + 403: collections returned by the API but not in enabled_ids are filtered out."""
         _wire_fake(plugin, fake_romm_api)
         plugin.settings["enabled_platforms"] = {}
+        plugin.settings["platform_sync_modes"] = {}
         # Only the "1" user collection and "100" franchise collection are enabled.
         plugin.settings["enabled_collections"] = {"1": True, "100": True}
 

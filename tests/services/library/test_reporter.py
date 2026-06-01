@@ -22,6 +22,7 @@ class TestGetSyncStats:
         }
         plugin._state["last_sync"] = "2025-01-01T00:00:00"
         plugin.settings["enabled_platforms"] = {"1": True, "2": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "automatic"}
         plugin.settings["enabled_collections"] = {"3": True}
 
         stats = await plugin.get_sync_stats()

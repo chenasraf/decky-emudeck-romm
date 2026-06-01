@@ -192,6 +192,7 @@ class TestSyncPreview:
         )
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         # Set up registry: rom 1 unchanged, rom 2 changed name
         plugin._state["shortcut_registry"] = {
             "1": {"app_id": 1001, "name": "Game A", "platform_name": "N64", "platform_slug": "n64", "fs_name": "a.z64"},
@@ -224,6 +225,7 @@ class TestSyncPreview:
         )
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         result = await plugin.sync_preview()
         assert plugin._sync_service._pending_delta is not None
         assert plugin._sync_service._pending_delta.preview_id == result["preview_id"]
@@ -270,6 +272,7 @@ class TestSyncPreview:
         )
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         # Wrap the metadata service so we can assert no record_unit_metadata
         # call lands during preview.
         record_mock = MagicMock()
@@ -305,6 +308,7 @@ class TestSyncPreview:
         )
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         await plugin.sync_preview()
         assert plugin._sync_service._sync_state == SyncState.IDLE
 
@@ -581,6 +585,7 @@ class TestSyncPreviewErrorHandling:
         fake_romm_api.list_platforms_side_effect = RuntimeError("Something broke")
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         result = await plugin._sync_service.sync_preview()
         assert result["success"] is False
         assert "error_code" in result
@@ -598,6 +603,7 @@ class TestSyncPreviewErrorHandling:
         fake_romm_api.list_platforms_side_effect = asyncio.CancelledError("cancelled")
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         with pytest.raises(asyncio.CancelledError):
             await plugin._sync_service.sync_preview()
         assert plugin._sync_service._sync_state == SyncState.IDLE
@@ -616,6 +622,7 @@ class TestBuildWorkQueue:
     async def test_returns_empty_when_nothing_enabled(self, plugin, fake_romm_api):
         _use_fake_romm(plugin, fake_romm_api)
         plugin.settings["enabled_platforms"] = {}
+        plugin.settings["platform_sync_modes"] = {}
         plugin.settings["enabled_collections"] = {}
 
         units = await plugin._sync_service._fetcher.build_work_queue()
@@ -630,6 +637,7 @@ class TestBuildWorkQueue:
             {"id": 3, "name": "GBA", "slug": "gba", "rom_count": 5},
         ]
         plugin.settings["enabled_platforms"] = {"1": True, "2": False, "3": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "manual", "3": "automatic"}
         plugin.settings["enabled_collections"] = {}
 
         units = await plugin._sync_service._fetcher.build_work_queue()
@@ -646,6 +654,7 @@ class TestBuildWorkQueue:
             {"id": 9, "name": "Metroid", "rom_count": 8, "is_virtual": True}
         ]
         plugin.settings["enabled_platforms"] = {"1": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin.settings["enabled_collections"] = {"7": True, "9": True}
 
         units = await plugin._sync_service._fetcher.build_work_queue()
@@ -766,6 +775,7 @@ class TestDoSyncPerUnit:
         _use_fake_romm(plugin, fake_romm_api)
         # No platforms enabled → empty work queue.
         plugin.settings["enabled_platforms"] = {}
+        plugin.settings["platform_sync_modes"] = {}
         plugin.settings["enabled_collections"] = {}
         plugin._sync_service._sync_state = SyncState.RUNNING
 
@@ -795,6 +805,7 @@ class TestDoSyncPerUnit:
         fake_romm_api.platforms = [{"id": 1, "name": "N64", "slug": "n64", "rom_count": 2}]
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
         plugin._sync_service._orchestrator._wait_for_unit_complete = _fake_wait_set_event
         plugin._sync_service._sync_state = SyncState.RUNNING
@@ -835,6 +846,7 @@ class TestDoSyncPerUnit:
         plugin._state["shortcut_registry"] = {}
         plugin.settings["enabled_platforms"] = {"1": True, "2": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
 
         async def fake_wait(_unit, event):
@@ -878,6 +890,7 @@ class TestDoSyncPerUnit:
         fake_romm_api.platforms = [{"id": 1, "name": "N64", "slug": "n64", "rom_count": 1}]
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         download_artwork = AsyncMock(return_value={})
         plugin._sync_service._orchestrator._download_artwork = download_artwork
         wait_mock = AsyncMock(return_value={})
@@ -928,6 +941,7 @@ class TestDoSyncPerUnit:
         fake_romm_api.platforms = [{"id": 1, "name": "N64", "slug": "n64", "rom_count": 1}]
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
         plugin._sync_service._orchestrator._wait_for_unit_complete = AsyncMock(return_value={})
         plugin._sync_service._reporter.commit_unit_results = AsyncMock()  # type: ignore[method-assign]
@@ -967,6 +981,7 @@ class TestDoSyncPerUnit:
         plugin._state["shortcut_registry"] = {}
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         download_artwork = AsyncMock(return_value={10: "/grid/a.png"})
         plugin._sync_service._orchestrator._download_artwork = download_artwork
         plugin._sync_service._orchestrator._wait_for_unit_complete = _fake_wait_set_event
@@ -1010,6 +1025,7 @@ class TestDoSyncPerUnit:
         plugin._state["shortcut_registry"] = {}
         plugin.settings["enabled_platforms"] = {"1": True, "2": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
 
         async def fake_wait(_u, event):
@@ -1050,6 +1066,7 @@ class TestDoSyncPerUnit:
         plugin._state["shortcut_registry"] = {}
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
         plugin._sync_service._orchestrator._wait_for_unit_complete = _fake_wait_set_event
         plugin._sync_service._sync_state = SyncState.RUNNING
@@ -1100,6 +1117,7 @@ class TestDoSyncPerUnit:
         plugin._state["shortcut_registry"] = {}
         plugin.settings["enabled_platforms"] = {"1": True, "2": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
 
         async def fake_wait(_u, event):
@@ -1290,6 +1308,7 @@ class TestDoSyncPerUnitErrors:
         # CancelledError exactly like an asyncio cancel would propagate.
         fake_romm_api.list_platforms_side_effect = asyncio.CancelledError()
         plugin.settings["enabled_platforms"] = {"1": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._sync_state = SyncState.RUNNING
         plugin._sync_service._current_sync_id = "sync-cancel-build"
 
@@ -1314,6 +1333,7 @@ class TestDoSyncPerUnitErrors:
         _use_fake_romm(plugin, fake_romm_api)
         fake_romm_api.list_platforms_side_effect = RuntimeError("RomM down")
         plugin.settings["enabled_platforms"] = {"1": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._sync_state = SyncState.RUNNING
 
         # Should NOT raise — outer flow swallows the exception after emitting an error.
@@ -1344,6 +1364,7 @@ class TestDoSyncPerUnitErrors:
         fake_romm_api.platforms = [{"id": 1, "name": "N64", "slug": "n64", "rom_count": 1}]
         fake_romm_api.list_roms_side_effect = RuntimeError("boom")
         plugin.settings["enabled_platforms"] = {"1": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._sync_state = SyncState.RUNNING
 
         await plugin._sync_service._orchestrator._do_sync_per_unit()
@@ -1394,6 +1415,7 @@ class TestDoSyncPerUnitErrors:
         # Mid-pagination failure — the bug scenario from #630.
         fake_romm_api.list_roms_side_effect = RuntimeError("HTTP 500 on page 2")
         plugin.settings["enabled_platforms"] = {"1": True}
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._sync_state = SyncState.RUNNING
 
         await plugin._sync_service._orchestrator._do_sync_per_unit()
@@ -1440,6 +1462,7 @@ class TestDoSyncPerUnitErrors:
         ]
         plugin.settings["enabled_platforms"] = {"1": True, "2": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
         plugin._sync_service._sync_state = SyncState.CANCELLING
 
@@ -1481,6 +1504,7 @@ class TestSyncOneUnitCollectionAndCancel:
         fake_romm_api.roms[2]["name"] = "B"
         fake_romm_api.roms[2]["platform_name"] = "N64"
         plugin.settings["enabled_platforms"] = {}
+        plugin.settings["platform_sync_modes"] = {}
         plugin.settings["enabled_collections"] = {"7": True}
 
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
@@ -1840,6 +1864,7 @@ class TestRegression738CacheCorruption:
         fake_romm_api.platforms = [{"id": 1, "name": "N64", "slug": "n64", "rom_count": 3}]
         plugin.settings["enabled_platforms"] = {"1": True}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic"}
         plugin._sync_service._orchestrator._download_artwork = AsyncMock(return_value={})
 
         async def fake_wait(_u, event):

@@ -73,6 +73,7 @@ class TestGetPlatforms:
         plugin._sync_service._loop = mock_loop
         plugin.settings["enabled_platforms"] = {"1": True, "2": False}
 
+        plugin.settings["platform_sync_modes"] = {"1": "automatic", "2": "manual"}
         result = await plugin._sync_service.get_platforms()
         assert result["platforms"][0]["sync_enabled"] is True
         assert result["platforms"][1]["sync_enabled"] is False
@@ -86,6 +87,7 @@ class TestGetPlatforms:
         plugin._sync_service._loop = mock_loop
         plugin.settings["enabled_platforms"] = {}
 
+        plugin.settings["platform_sync_modes"] = {}
         result = await plugin._sync_service.get_platforms()
         assert result["platforms"][0]["sync_enabled"] is True
 
