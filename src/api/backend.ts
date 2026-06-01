@@ -126,6 +126,7 @@ export const getBiosStatus = callable<
 export const setSystemCore = callable<[string, string], { success: boolean; message?: string; bios_status?: BiosStatus }>("set_system_core");
 export const setGameCore = callable<[string, string, string], { success: boolean; message?: string; bios_status?: BiosStatus }>("set_game_core");
 export const saveLogLevel = callable<[string], { success: boolean }>("save_log_level");
+export const saveCreateShortcuts = callable<[boolean], { success: boolean }>("save_create_shortcuts");
 export const debugLog = callable<[string], void>("debug_log");
 const frontendLog = callable<[string, string], void>("frontend_log");
 export const logInfo = (msg: string) => { frontendLog("info", msg); };

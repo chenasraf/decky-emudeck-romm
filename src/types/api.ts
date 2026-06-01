@@ -63,6 +63,7 @@ export interface PluginSettings {
   romm_allow_insecure_ssl: boolean;
   retroarch_input_check?: RetroArchInputCheck;
   collection_create_platform_groups?: boolean;
+  create_shortcuts?: boolean;
 }
 
 export interface RomMetadata {

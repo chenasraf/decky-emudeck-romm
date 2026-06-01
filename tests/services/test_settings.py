@@ -147,6 +147,35 @@ class TestGetSettings:
         assert result["sgdb_api_key_masked"] == "••••"
         assert "longkey" not in str(result)
 
+    def test_create_shortcuts_defaults_false(self, service, settings):
+        settings.pop("create_shortcuts", None)
+        result = service.get_settings()
+        assert result["create_shortcuts"] is False
+
+    def test_create_shortcuts_round_trips_when_enabled(self, service, settings):
+        settings["create_shortcuts"] = True
+        result = service.get_settings()
+        assert result["create_shortcuts"] is True
+
+
+class TestSaveCreateShortcuts:
+    def test_persists_enabled(self, service, settings, settings_persister):
+        result = service.save_create_shortcuts(True)
+        assert result == {"success": True}
+        assert settings["create_shortcuts"] is True
+        settings_persister.save_settings.assert_called_once_with()
+
+    def test_persists_disabled(self, service, settings, settings_persister):
+        settings["create_shortcuts"] = True
+        result = service.save_create_shortcuts(False)
+        assert result == {"success": True}
+        assert settings["create_shortcuts"] is False
+        settings_persister.save_settings.assert_called_once_with()
+
+    def test_coerces_truthy(self, service, settings):
+        service.save_create_shortcuts(1)
+        assert settings["create_shortcuts"] is True
+
     def test_empty_sgdb_key_returns_empty_mask(self, service, settings):
         settings["steamgriddb_api_key"] = ""
         result = service.get_settings()

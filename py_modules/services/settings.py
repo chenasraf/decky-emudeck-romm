@@ -104,7 +104,19 @@ class SettingsService:
             "log_level": self._settings.get("log_level", "warn"),
             "romm_allow_insecure_ssl": self._settings.get("romm_allow_insecure_ssl", False),
             "collection_create_platform_groups": self._settings.get("collection_create_platform_groups", False),
+            "create_shortcuts": bool(self._settings.get("create_shortcuts", False)),
         }
+
+    def save_create_shortcuts(self, enabled: bool) -> dict:
+        """Toggle the Steam-shortcut creation flag.
+
+        When ``False`` (the Phase 3 default), the frontend sync handler
+        skips ``AddShortcut``/``Set*`` calls — ROM downloads still proceed,
+        only the Steam-side mirroring is suppressed.
+        """
+        self._settings["create_shortcuts"] = bool(enabled)
+        self._settings_persister.save_settings()
+        return {"success": True}
 
     # ── Log level ────────────────────────────────────────────────────────
 

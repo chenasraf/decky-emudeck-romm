@@ -207,6 +207,9 @@ class Plugin:
     async def save_steam_input_setting(self, mode):
         return self._settings_service.save_steam_input_setting(mode)
 
+    async def save_create_shortcuts(self, enabled):
+        return self._settings_service.save_create_shortcuts(enabled)
+
     async def apply_steam_input_setting(self):
         return self._settings_service.apply_steam_input_setting()
 

@@ -27,6 +27,7 @@ DEFAULT_SETTINGS: dict = {
     "enabled_platforms": {},
     "platform_sync_modes": {},
     "enabled_collections": {},
+    "create_shortcuts": False,
     "collection_create_platform_groups": False,
     "steam_input_mode": "default",
     "steamgriddb_api_key": "",

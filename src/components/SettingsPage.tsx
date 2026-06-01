@@ -19,6 +19,7 @@ import {
   updateSaveSyncSettings,
   syncAllSaves,
   saveLogLevel,
+  saveCreateShortcuts,
   fixRetroarchInputDriver,
   ensureDeviceRegistered,
   listDevices,
@@ -84,6 +85,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
 
   // Advanced state
   const [logLevel, setLogLevel] = useState("warn");
+  const [createShortcuts, setCreateShortcuts] = useState(false);
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -95,6 +97,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
       setSgdbApiKey(s.sgdb_api_key_masked);
       setSteamInputMode(s.steam_input_mode || "default");
       setLogLevel(s.log_level ?? "warn");
+      setCreateShortcuts(s.create_shortcuts ?? false);
       if (s.retroarch_input_check) {
         setRetroarchWarning(s.retroarch_input_check);
       }
@@ -362,6 +365,11 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
     saveLogLevel(level);
   };
 
+  const handleCreateShortcutsChange = (enabled: boolean) => {
+    setCreateShortcuts(enabled);
+    saveCreateShortcuts(enabled).catch((e) => logError(`Failed to save create_shortcuts: ${e}`));
+  };
+
   // --- Save sort migration handlers ---
   const handleMigrateSaveSort = async () => {
     setSaveSortMigrating(true);
@@ -462,7 +470,9 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
       />
       <AdvancedSection
         logLevel={logLevel}
+        createShortcuts={createShortcuts}
         onLogLevelChange={handleLogLevelChange}
+        onCreateShortcutsChange={handleCreateShortcutsChange}
       />
     </>
   );

@@ -1,6 +1,6 @@
 import { addEventListener } from "@decky/api";
 import type { SyncAddItem, SyncApplyUnitData } from "../types";
-import { getArtworkBase64, reportUnitResults, syncHeartbeat, logInfo, logError } from "../api/backend";
+import { getArtworkBase64, getSettings, reportUnitResults, syncHeartbeat, logInfo, logError } from "../api/backend";
 import { getExistingRomMShortcuts, addShortcut } from "./steamShortcuts";
 import { updateSyncProgress } from "./syncProgress";
 
@@ -143,6 +143,24 @@ export function initUnitSyncManager(): ReturnType<typeof addEventListener> {
 
       const total = data.shortcuts.length;
       logInfo(`sync_apply_unit received: ${data.unit_type}=${data.unit_name} (${data.unit_index + 1}/${data.total_units}), ${total} shortcuts`);
+
+      let createShortcuts = false;
+      try {
+        const s = await getSettings();
+        createShortcuts = s.create_shortcuts ?? false;
+      } catch (e) {
+        logError(`Failed to read create_shortcuts setting, defaulting to off: ${e}`);
+      }
+
+      if (!createShortcuts) {
+        logInfo(`sync_apply_unit: create_shortcuts=off, skipping shortcut + artwork phase for ${data.unit_name}`);
+        try {
+          await reportUnitResults(romIdToAppId);
+        } catch (e) {
+          logError(`Failed to report unit results for ${data.unit_name}: ${e}`);
+        }
+        return;
+      }
 
       updateSyncProgress({
         running: true,
