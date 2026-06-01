@@ -19,6 +19,48 @@ from bootstrap import (
 from lib.errors import FrontendUnsupportedError
 
 
+class _UnreadyResult(dict):
+    """Dict-and-awaitable returned by service stubs when the plugin is unready.
+
+    Returned by :class:`_UnreadyServiceProxy` so both ``return self._x_service.foo()``
+    and ``return await self._x_service.foo()`` callable shapes resolve to the
+    same canonical version_unsupported payload without crashing on
+    ``await dict`` or returning an un-awaited coroutine.
+    """
+
+    def __await__(self):
+        if False:
+            yield
+        return self
+
+
+class _UnreadyServiceProxy:
+    """Stand-in for a service when ``bootstrap`` rejected the frontend version.
+
+    Any attribute lookup returns a callable that ignores its arguments and
+    yields the canonical ``version_unsupported`` failure shape. Plugin
+    attaches this to every ``_*_service`` slot so callables surface a
+    friendly error instead of ``AttributeError``.
+    """
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def __getattr__(self, _name):
+        def _stub(*_args, **_kwargs):
+            return _UnreadyResult({
+                "success": False,
+                "error_code": "version_unsupported",
+                "message": (
+                    f"Plugin not ready — {self._payload.get('frontend', 'frontend')} "
+                    "version is outside the supported range."
+                ),
+                "version_unsupported": self._payload,
+            })
+
+        return _stub
+
+
 class Plugin:
     settings: dict
     loop: asyncio.AbstractEventLoop
@@ -100,6 +142,21 @@ class Plugin:
                 "plugin refuses to operate. Update your frontend or open an issue."
             )
             await decky.emit("frontend_unsupported", self._frontend_unsupported)
+            # Wire every service slot to a sentinel proxy so callables surface
+            # the canonical version_unsupported response instead of crashing
+            # with AttributeError when the frontend is opened on an
+            # unsupported host (e.g. dev playground).
+            _proxy = _UnreadyServiceProxy(self._frontend_unsupported)
+            for _slot in (
+                "_save_sync_service", "_playtime_service", "_sync_service",
+                "_browse_service", "_download_service", "_rom_removal_service",
+                "_firmware_service", "_sgdb_service", "_metadata_service",
+                "_achievements_service", "_migration_service", "_game_detail_service",
+                "_artwork_service", "_shortcut_removal_service", "_settings_service",
+                "_core_service", "_connection_service", "_startup_healing_service",
+                "_launch_gate_service", "_session_lifecycle_service",
+            ):
+                setattr(self, _slot, _proxy)
             return
         self.settings = result.stores.settings
         self._debug_logger = result.handles.debug_logger

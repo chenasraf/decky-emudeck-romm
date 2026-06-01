@@ -706,3 +706,29 @@ class TestFrontendUnsupportedSurfacing:
         result = await plugin.test_connection()
         assert result == {"success": True}
         plugin._connection_service.test_connection.assert_awaited_once()
+
+
+class TestUnreadyServiceProxy:
+    """The proxy that replaces every _*_service slot when the frontend is rejected."""
+
+    def test_returns_canonical_version_unsupported_dict(self):
+        from main import _UnreadyServiceProxy
+
+        payload = {"frontend": "EmuDeck", "detected": None, "expected_min": "x", "expected_max": "x"}
+        proxy = _UnreadyServiceProxy(payload)
+        result = proxy.any_method_name(1, 2, key="value")
+        assert result["success"] is False
+        assert result["error_code"] == "version_unsupported"
+        assert result["version_unsupported"] == payload
+        assert "EmuDeck" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_result_is_also_awaitable(self):
+        """Both `return X.foo()` and `return await X.foo()` callable shapes must resolve cleanly."""
+        from main import _UnreadyServiceProxy
+
+        payload = {"frontend": "EmuDeck"}
+        proxy = _UnreadyServiceProxy(payload)
+        result = await proxy.something()
+        assert result["success"] is False
+        assert result["error_code"] == "version_unsupported"

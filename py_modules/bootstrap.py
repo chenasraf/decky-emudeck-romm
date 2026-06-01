@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from typing import cast
 
@@ -128,7 +129,13 @@ def _enforce_frontend_compatibility(frontend: Frontend) -> None:
     band. Bootstrap converts that into a typed error the plugin
     entrypoint catches, surfacing both a Decky-side toast and a
     ``version_unsupported`` field on the connection-check response.
+
+    Dev playground bypass: setting the ``DECKY_EMUDECK_ROMM_BYPASS_COMPAT=1``
+    env var skips the gate so the browser playground can exercise the UI
+    on hosts without an EmuDeck install. Never set on a real Deck.
     """
+    if os.environ.get("DECKY_EMUDECK_ROMM_BYPASS_COMPAT") == "1":
+        return
     if frontend.compatible():
         return
     name = type(frontend).__name__.removesuffix("FrontendAdapter") or "frontend"

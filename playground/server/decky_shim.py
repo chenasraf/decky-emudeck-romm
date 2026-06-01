@@ -28,6 +28,11 @@ DECKY_PLUGIN_RUNTIME_DIR = str(_RUNTIME_DIR)
 DECKY_PLUGIN_LOG_DIR = str(_LOG_DIR)
 DECKY_USER_HOME = os.path.expanduser("~")
 
+# Skip the EmuDeck version-band gate so the playground runs on hosts without
+# a real EmuDeck install. Never set on a Steam Deck — production should hit
+# the strict compat check in py_modules/bootstrap.py.
+os.environ.setdefault("DECKY_EMUDECK_ROMM_BYPASS_COMPAT", "1")
+
 logger = logging.getLogger("decky")
 logger.setLevel(logging.DEBUG)
 if not logger.handlers:
