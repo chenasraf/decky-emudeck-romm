@@ -4,11 +4,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@testing-library/react";
 import { LibraryPage } from "./LibraryPage";
-import { browseRoms, getBrowseCoverBase64 } from "../api/backend";
+import { browseRoms, getBrowseCoverBase64, getPlatforms } from "../api/backend";
 
 vi.mock("../api/backend", () => ({
   browseRoms: vi.fn(),
   getBrowseCoverBase64: vi.fn(),
+  getPlatforms: vi.fn(),
 }));
 
 const _makeRoms = (n: number) =>
@@ -18,6 +19,7 @@ describe("LibraryPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
+    vi.mocked(getPlatforms).mockResolvedValue({ success: true, platforms: [] });
   });
 
   it("shows the spinner while browseRoms is in flight", () => {
@@ -94,5 +96,65 @@ describe("LibraryPage", () => {
     const meta = await findByTestId("library-pagination");
     expect(meta.textContent).toContain("Page 1 of 3");
     expect(meta.textContent).toContain("75 ROMs");
+  });
+
+  it("only shows pills for enabled platforms", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: [], total: 0 });
+    vi.mocked(getPlatforms).mockResolvedValue({
+      success: true,
+      platforms: [
+        { id: 1, name: "N64", slug: "n64", rom_count: 10, sync_enabled: true },
+        { id: 2, name: "SNES", slug: "snes", rom_count: 5, sync_enabled: false },
+      ],
+    });
+    const { findByTestId, queryByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    expect(await findByTestId("library-pill-1")).toBeDefined();
+    expect(queryByTestId("library-pill-2")).toBeNull();
+  });
+
+  it("re-queries browse_roms with the selected platform id when a pill is tapped", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: [], total: 0 });
+    vi.mocked(getPlatforms).mockResolvedValue({
+      success: true,
+      platforms: [{ id: 7, name: "GBA", slug: "gba", rom_count: 4, sync_enabled: true }],
+    });
+    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const pill = await findByTestId("library-pill-7");
+    fireEvent.click(pill);
+    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([7], null, 30, 0));
+  });
+
+  it("toggles a pill off and clears the platform filter on second click", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: [], total: 0 });
+    vi.mocked(getPlatforms).mockResolvedValue({
+      success: true,
+      platforms: [{ id: 9, name: "PS1", slug: "ps", rom_count: 100, sync_enabled: true }],
+    });
+    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const pill = await findByTestId("library-pill-9");
+    fireEvent.click(pill);
+    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([9], null, 30, 0));
+    fireEvent.click(pill);
+    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 0));
+  });
+
+  it("debounces search-box input before re-querying browse_roms", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: [], total: 0 });
+    const { container } = render(<LibraryPage onBack={vi.fn()} />);
+    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenCalled());
+    const initialCalls = vi.mocked(browseRoms).mock.calls.length;
+
+    const input = container.querySelector("input[data-testid='text-field']") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "mario" } });
+    // Immediately after the keystroke, browse_roms hasn't been re-issued yet.
+    expect(vi.mocked(browseRoms).mock.calls.length).toBe(initialCalls);
+    // After the 300ms debounce window the post-debounce call lands with the new term.
+    await waitFor(
+      () => {
+        const last = vi.mocked(browseRoms).mock.calls.at(-1);
+        expect(last?.[1]).toBe("mario");
+      },
+      { timeout: 1000 },
+    );
   });
 });
