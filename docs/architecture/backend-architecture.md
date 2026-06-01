@@ -101,7 +101,7 @@ Two services are large enough to be decomposed into sub-service packages (`servi
 | `downloads.py` | DownloadService — ZIP extraction, M3U, fcntl-locked queue, progress |
 | `firmware.py` | FirmwareService — BIOS registry, downloads, per-core filtering |
 | `session_lifecycle.py` | SessionLifecycleService — post-exit orchestration (playtime + post-exit save sync + achievement sync + migration refresh) |
-| `migration.py` | MigrationService — RetroDECK path-change detection + file migration, save-sort change detection + conflict resolution |
+| `migration.py` | MigrationService — save-sort change detection + conflict resolution, settings-schema migrations |
 | `steamgrid.py` | SteamGridService — SteamGridDB fetch, cache, icons |
 | `artwork.py` | ArtworkService — cover art download, staging, cleanup |
 | `game_detail.py` | GameDetailService — game detail page data aggregation |
@@ -163,8 +163,8 @@ Adapters own all I/O and implement the Protocols defined in `services/protocols/
 | `registry_store.py` | `RegistryStoreAdapter` — shortcut registry reads/writes |
 | `metadata_cache_store.py` | `MetadataCacheStoreAdapter` — metadata cache reads/writes |
 | `download_file.py` / `download_queue.py` | `DownloadFileAdapter` / `DownloadQueueAdapter` — download filesystem + fcntl-locked queue |
-| `firmware_file.py` / `migration_file.py` / `rom_files.py` / `save_file.py` | per-subtree filesystem adapters (BIOS, RetroDECK migration, ROM removal, local saves) |
-| `retrodeck_paths.py` | `RetroDeckPathsAdapter` — reads `retrodeck.json` for ROMs/saves/BIOS/home paths |
+| `firmware_file.py` / `migration_file.py` / `rom_files.py` / `save_file.py` | per-subtree filesystem adapters (BIOS, save-sort migration, ROM removal, local saves) |
+| `frontends/emudeck.py` | `EmuDeckFrontendAdapter` — implements the `Frontend` Protocol against EmuDeck's `~/Emulation/` layout |
 | `retroarch_config.py` | `RetroArchConfigAdapter` — reads `retroarch.cfg` save-sort flags |
 | `retroarch_core_info.py` | `RetroArchCoreInfoAdapter` — reads RetroArch `.info` files (`corename`, metadata) |
 | `es_de_config.py` | `CoreResolver` + `GamelistXmlEditorAdapter` — ES-DE `es_systems.xml` / `gamelist.xml` |

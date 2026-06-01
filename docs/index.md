@@ -2,14 +2,13 @@
 
 # EmuDeck RomM Sync
 
-> **EmuDeck-focused fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). Today
-> the plugin still ships identical to upstream's behaviour; the EmuDeck-specific changes are landing in phases — see
-> the project [README](https://github.com/chenasraf/decky-emudeck-romm#roadmap) for the roadmap.
+> **EmuDeck-only fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync) — that's
+> the RetroDECK plugin, this is the EmuDeck plugin. See the project
+> [README](https://github.com/chenasraf/decky-emudeck-romm#roadmap) for the roadmap.
 
 A [Decky Loader](https://decky.xyz/) plugin that syncs your self-hosted [RomM](https://github.com/rommapp/romm) ROM
-library into your Steam Deck. Browse and download ROMs from the QAM, manage BIOS files, keep saves in sync, and
-launch through your emulation frontend — [RetroDECK](https://retrodeck.net/) today;
-[EmuDeck](https://www.emudeck.com/) support is the target of the rewrite.
+library into your Steam Deck under an [EmuDeck](https://www.emudeck.com/) install. Browse and download ROMs from the
+QAM, manage BIOS files, and keep saves in sync.
 
 - Browse your entire RomM library directly from Steam's Gaming Mode
 - Download ROMs on-demand with cover art, hero banners, logos, and metadata
@@ -25,9 +24,8 @@ launch through your emulation frontend — [RetroDECK](https://retrodeck.net/) t
 3. **[Syncing Your Library](user-guide/syncing-your-library.md)** — How sync works, per-platform toggles, collections, artwork
 4. **[Managing Games](user-guide/managing-games.md)** — Game detail panel, downloading ROMs, uninstalling, refreshing metadata
 5. **[BIOS Management](user-guide/bios-management.md)** — What BIOS files are, checking status, downloading per-platform
-6. **[RetroDECK Path Migration](user-guide/retrodeck-path-migration.md)** — Moving your RetroDECK installation between storage locations
-7. **[Save Sync](user-guide/save-sync.md)** — Auto-sync, conflict resolution modes, manual sync, failed sync retries
-8. **[Troubleshooting](user-guide/troubleshooting.md)** — Common issues, fixes, Danger Zone explained
+6. **[Save Sync](user-guide/save-sync.md)** — Auto-sync, conflict resolution modes, manual sync, failed sync retries
+7. **[Troubleshooting](user-guide/troubleshooting.md)** — Common issues, fixes, Danger Zone explained
 
 ## Technical Reference
 

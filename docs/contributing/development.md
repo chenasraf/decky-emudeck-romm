@@ -112,7 +112,7 @@ py_modules/
     downloads.py                     # DownloadService — ROM downloads, ZIP/M3U, fcntl queue
     firmware.py                      # FirmwareService — BIOS registry + downloads
     session_lifecycle.py             # SessionLifecycleService — post-exit orchestration
-    migration.py                     # MigrationService — RetroDECK path + save-sort migration
+    migration.py                     # MigrationService — save-sort migration + settings-schema migrations
     steamgrid.py                     # SteamGridService — SteamGridDB artwork
     artwork.py                       # ArtworkService — cover art staging/cleanup
     game_detail.py / playtime.py / achievements.py / settings.py / cores.py
@@ -123,7 +123,7 @@ py_modules/
     steam_config.py / steamgriddb.py / sgdb_artwork_cache.py / cover_art_file_store.py
     persistence.py / registry_store.py / metadata_cache_store.py
     download_file.py / download_queue.py / firmware_file.py / migration_file.py / rom_files.py / save_file.py
-    retrodeck_paths.py / retroarch_config.py / retroarch_core_info.py / es_de_config.py
+    frontends/emudeck.py / retroarch_config.py / retroarch_core_info.py / es_de_config.py
     system_clock.py / system_uuid_gen.py / asyncio_sleeper.py / hostname.py / path_probe.py / plugin_metadata.py / debug_logger.py
   domain/                            # Pure compute — no I/O, no service/adapter imports
     sync_action.py / sync_diff.py / preview_delta.py / work_unit.py
@@ -140,8 +140,8 @@ src/                                 # Frontend TypeScript
   api/backend.ts                     # callable() wrappers (typed)
   types/                             # TypeScript interfaces and Steam API declarations
   utils/                             # Shortcut CRUD, sync, downloads, collections, session manager
-bin/romm-launcher                    # Bash launcher for RetroDECK
-defaults/config.json                 # platform_map: 149 platform slug -> RetroDECK system mappings
+bin/romm-launcher                    # Bash launcher script
+defaults/config.json                 # placeholder — EmuDeck platform_map ships in defaults/platform_map_emudeck.json (Sprint 4)
 tests/                               # Backend unit tests, mirroring py_modules/ layout
 ```
 

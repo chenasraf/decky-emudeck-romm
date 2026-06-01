@@ -24,7 +24,7 @@ Save files in RomM are tied to the authenticated user account. If multiple peopl
 
 ## Supported Systems
 
-Save sync currently supports **RetroArch per-game `.srm` saves only**. This covers all systems that use RetroArch cores through RetroDECK:
+Save sync currently supports **RetroArch per-game `.srm` saves only**. This covers all systems that EmuDeck routes through RetroArch cores:
 
 - NES, SNES, Game Boy, Game Boy Color, Game Boy Advance
 - Genesis / Mega Drive, Master System, Nintendo 64
@@ -89,9 +89,9 @@ The warning shows which core you're switching from and to. You can:
 
 ### Per-game override warning (temporary)
 
-You may see a second warning box in the same dialog titled **Per-Game Core Switch Not Working**. This is a temporary notice about a RetroDECK bug (tracked in [#210](https://github.com/danielcopper/decky-romm-sync/issues/210)): per-game core overrides are currently ignored for ROMs whose filenames contain special characters like parentheses (`()`), brackets (`[]`), or other punctuation. For those ROMs, switching the core per-game has no effect — RetroDECK silently falls back to the system-wide core.
+You may see a second warning box in the same dialog titled **Per-Game Core Switch Not Working**. This is a temporary notice about an upstream ES-DE / RetroArch issue (tracked in upstream [#210](https://github.com/danielcopper/decky-romm-sync/issues/210)): per-game core overrides are currently ignored for ROMs whose filenames contain special characters like parentheses (`()`), brackets (`[]`), or other punctuation. For those ROMs, switching the core per-game has no effect — the launcher silently falls back to the system-wide core.
 
-**Workaround**: switch the core **system-wide** via the QAM panel (Core Switching) rather than per-game. This second warning will disappear from the dialog once RetroDECK fixes the underlying issue.
+**Workaround**: switch the core **system-wide** via the QAM panel (Core Switching) rather than per-game. This second warning will disappear from the dialog once the underlying issue is fixed.
 
 ### Which cores are compatible?
 
@@ -126,19 +126,25 @@ Steam also tracks playtime natively for non-Steam shortcuts, so you'll see playt
 
 ## Save File Location
 
-Save files are stored in your RetroDECK saves directory. The exact path is read from RetroDECK's configuration at runtime — typically:
+Save files live in EmuDeck's central saves tree. Typical paths:
 
-- **Internal SSD**: `~/retrodeck/saves/{system}/{rom_name}.srm`
-- **SD card**: `/run/media/deck/Emulation/retrodeck/saves/{system}/{rom_name}.srm`
+- **Internal SSD**: `~/Emulation/saves/retroarch/saves/{system}/{rom_name}.srm`
+- **SD card**: `/run/media/deck/<sd-label>/Emulation/saves/retroarch/saves/{system}/{rom_name}.srm`
+
+EmuDeck routes save writes to the central tree for most emulators; RetroArch
+(via the `org.libretro.RetroArch` Flatpak) is a known exception that writes to
+its Flatpak sandbox under `~/.var/app/org.libretro.RetroArch/config/retroarch/saves/`.
+See [EmuDeck Filesystem Layout — Saves](../architecture/emudeck-layout.md#saves-the-central-tree-and-the-flatpak-exceptions)
+for the full per-emulator table.
 
 ## RetroArch Save Sorting Requirement
 
-Save sync expects save files to be organized as `{saves_dir}/{system}/{rom_name}.srm`. This matches the **RetroDECK default** RetroArch configuration:
+Save sync expects save files to be organized as `{saves_dir}/{system}/{rom_name}.srm`. This matches RetroArch's standard "sort by content" configuration:
 
-| RetroArch Setting | Required Value | RetroDECK Default |
-| --- | --- | --- |
-| Sort Saves into Folders by Content Directory | **ON** | ON |
-| Sort Saves into Folders by Core Name | **OFF** | OFF |
+| RetroArch Setting | Required Value |
+| --- | --- |
+| Sort Saves into Folders by Content Directory | **ON** |
+| Sort Saves into Folders by Core Name | **OFF** |
 
 > **If you changed these settings in RetroArch, save sync will silently fail to find your save files.** No error is shown — saves simply won't sync.
 
@@ -157,7 +163,7 @@ If you use "Sort by Core Name" (alone or combined with Content Directory), your 
 
 ### How to check your settings
 
-In RetroArch: **Settings > Saving**. Look for the two "Sort Saves into Folders" toggles. On a fresh RetroDECK install, they are already set correctly.
+In RetroArch: **Settings > Saving**. Look for the two "Sort Saves into Folders" toggles. The defaults match what save sync expects, but if you flipped them this is where to flip them back.
 
 ### If your saves are already in core-name folders
 
@@ -174,4 +180,4 @@ For technical details on how save sync works internally (three-way conflict dete
 
 ---
 
-**Previous:** [RetroDECK Path Migration](retrodeck-path-migration.md) | **Next:** [Troubleshooting](troubleshooting.md)
+**Previous:** [BIOS Management](bios-management.md) | **Next:** [Troubleshooting](troubleshooting.md)

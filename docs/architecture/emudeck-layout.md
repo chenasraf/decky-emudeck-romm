@@ -5,7 +5,7 @@ How EmuDeck arranges ROMs, BIOS, saves, configuration, and Steam-ROM-Manager lau
 !!! info "Empirical snapshot"
     Last verified **2026-05-24** against a Steam Deck (LCD) running **SteamOS 3.7.25**. Items marked **observed** were confirmed on that install; items marked **canonical** come from `~/.config/EmuDeck/backend/settings.sh` and apply to every EmuDeck install. Items marked **TODO** need a second sample to confirm. Example paths in this page use the default internal-SSD layout (`~/Emulation`); SD-card installs put the same tree under `/run/media/deck/<sd-label>/Emulation` — see [Canonical roots](#canonical-roots-read-these-do-not-guess) below.
 
-## Canonical roots — read these, do not guess
+## Canonical roots: read these, do not guess
 
 EmuDeck writes one shell script that every other path is derived from:
 
@@ -29,7 +29,7 @@ The convention this page uses below:
 There is **no single `EmuDeck version` string on disk**. The closest things:
 
 | Path | What it tells you |
-|---|---|
+| --- | --- |
 | `~/.config/EmuDeck/backend/.git/HEAD` | The git ref of the backend repo EmuDeck cloned. **canonical** — every install has it. |
 | `~/.config/EmuDeck/backend/versions.json` | Per-emulator schema-version integers (`{"ra": {"version": 2}, "dolphin": {"version": 4}, …}`). EmuDeck increments these when an emulator's setup logic changes. **canonical**. |
 | `~/.config/EmuDeck/backend/branch.txt` | 5-byte file naming the branch (e.g. `main`). **observed**. |
@@ -42,7 +42,7 @@ There is **no single `EmuDeck version` string on disk**. The closest things:
 `$romsPath` is a flat list of per-system directories. Observed on this install (~150 system slugs — only the meaningful ones listed; the long tail is in `inventory.out`):
 
 | EmuDeck slug | Console | RomM equivalent (best guess) |
-|---|---|---|
+| --- | --- | --- |
 | `psx` | PlayStation | `ps` |
 | `ps2` | PlayStation 2 | `ps2` |
 | `psp` | PSP | `psp` |
@@ -82,7 +82,7 @@ A platform-slug-mapping table (`defaults/platform_map_emudeck.json`) lands in Ph
 
 `$emulationPath/bios/` mixes bare files and per-system subdirs:
 
-```
+```text
 $emulationPath/bios/
 ├── HdPacks/
 ├── IPL.bin                                  # GameCube IPL
@@ -109,11 +109,11 @@ The mix of bare files + per-system dirs is intentional — many BIOSes are match
 
 Subdirs like `citra-flatpak/` exist because Flatpak emulators can't read outside their sandbox, so EmuDeck mirrors some BIOSes into Flatpak-visible locations during setup. The plugin should write to the canonical `$emulationPath/bios/` location — EmuDeck's setup scripts handle the mirroring. **TODO**: confirm by writing a fresh BIOS and watching whether EmuDeck mirrors it on next launch.
 
-## Saves — the central tree and the Flatpak exceptions
+## Saves: the central tree and the Flatpak exceptions
 
 EmuDeck **mostly** centralizes saves under `$emulationPath/saves/` — one subdir per emulator, usually with `{saves, states}` underneath. Observed:
 
-```
+```text
 $emulationPath/saves/
 ├── BigPEmu/
 ├── Cemu/
@@ -143,7 +143,7 @@ $emulationPath/saves/
 **Exceptions where the emulator still writes to its own Flatpak directory** despite the central tree existing:
 
 | Emulator | Where it actually writes (observed) |
-|---|---|
+| --- | --- |
 | RetroArch (Flatpak `org.libretro.RetroArch`) | `~/.var/app/org.libretro.RetroArch/config/retroarch/saves/*.srm` — the `.srm` files there have real timestamps (2024-2026); `$emulationPath/saves/retroarch/` is empty. EmuDeck does **not** redirect RA's `savefile_directory` on this install. |
 | Dolphin (Flatpak `org.DolphinEmu.dolphin-emu`) | `~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu/{GC,Wii,GBA/Saves}` — populated with real data. |
 | PPSSPP (Flatpak `org.ppsspp.PPSSPP`) | `~/.var/app/org.ppsspp.PPSSPP/config/ppsspp/PSP/SAVEDATA` — populated. |
@@ -156,7 +156,7 @@ A pragmatic v1 stance for the EmuDeck adapter's `save_root(system)`: **return th
 
 ## RetroArch (Flatpak)
 
-```
+```text
 ~/.var/app/org.libretro.RetroArch/config/retroarch/
 ├── retroarch.cfg                       # canonical RA config
 ├── cores/*.so                          # 130+ cores observed
@@ -176,7 +176,7 @@ Per-core config dirs (e.g. `config/melonDS DS/`) name cores by display string, n
 
 Native install (not Flatpak), rooted at `~/ES-DE/`:
 
-```
+```text
 ~/ES-DE/
 ├── settings/                # es_settings.xml lives here
 ├── gamelists/<system>/       # gamelist.xml per system
@@ -194,7 +194,7 @@ SRM is how EmuDeck wires emulator launches into Steam shortcuts. Two relevant tr
 
 1. **Per-emulator launcher scripts** (the file SRM points each Steam shortcut at):
 
-    ```
+    ```text
     ~/.config/EmuDeck/backend/tools/launchers/
     ├── retroarch.sh        ← e.g. shortcut.exe target for any RetroArch ROM
     ├── pcsx2-qt.sh
@@ -219,7 +219,7 @@ SRM is how EmuDeck wires emulator launches into Steam shortcuts. Two relevant tr
 
 2. **SRM parser configs** (per-system rules: which launcher to use, which ROM dir to scan, what artwork to attach):
 
-    ```
+    ```text
     ~/.config/EmuDeck/backend/configs/steam-rom-manager/userData/parsers/
     ```
 
@@ -227,7 +227,7 @@ SRM is how EmuDeck wires emulator launches into Steam shortcuts. Two relevant tr
 
 3. **SRM's own state** (Electron app — caches, cookies, parsers UI state):
 
-    ```
+    ```text
     ~/.config/steam-rom-manager/
     ```
 
@@ -238,7 +238,7 @@ SRM is how EmuDeck wires emulator launches into Steam shortcuts. Two relevant tr
 Some EmuDeck-installed emulators are AppImages, not Flatpaks, and write config under `~/.config/`. Observed on this install:
 
 | Emulator | Config dir |
-|---|---|
+| --- | --- |
 | PCSX2 | `~/.config/PCSX2/{inis,memcards,sstates,bios,…}` |
 | Cemu | `~/.config/Cemu/controllerProfiles/` |
 | yuzu | `~/.config/yuzu/input/` |

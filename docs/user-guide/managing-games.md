@@ -27,7 +27,8 @@ Games appear as shortcuts in your library even before the ROM file is downloaded
 
 You can also tap **Cancel** to abort a download in progress. Partial files are cleaned up automatically.
 
-Downloaded ROMs are stored in your RetroDECK roms directory (e.g. `~/retrodeck/roms/gba/`).
+Downloaded ROMs are stored in your EmuDeck roms directory (e.g. `~/Emulation/roms/gba/`). See
+[EmuDeck Filesystem Layout](../architecture/emudeck-layout.md) for the canonical paths.
 
 ### Multi-Disc Games
 
@@ -75,8 +76,8 @@ The **Downloads** page (accessible from the main QAM panel) shows all active and
 Select any installed game in the Steam Library and press **Play**. The plugin's launcher script:
 
 1. Looks up the ROM file path from the plugin's registry
-2. Launches RetroDECK with the correct ROM
-3. RetroDECK auto-detects the system from the ROM's directory path and uses the appropriate emulator
+2. Launches EmuDeck's emulator launcher with the correct ROM
+3. EmuDeck auto-detects the system from the ROM's directory path and uses the appropriate emulator
 
 If the ROM is not downloaded, the launcher will request a download — you'll get a toast notification and can play once the download completes.
 

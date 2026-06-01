@@ -2,9 +2,9 @@
 
 ## Overview
 
-decky-romm-sync provides bidirectional save file synchronization between RetroDECK and a self-hosted RomM server. Saves are uploaded after play sessions and downloaded before game launch, enabling seamless multi-device play.
+decky-emudeck-romm provides bidirectional save file synchronization between EmuDeck and a self-hosted RomM server. Saves are uploaded after play sessions and downloaded before game launch, enabling seamless multi-device play.
 
-The initial implementation covers **RetroArch per-game `.srm` saves only**. This includes all systems that use RetroArch cores via RetroDECK (NES, SNES, GB, GBC, GBA, Genesis, N64, PSX via RetroArch cores, Saturn, Dreamcast, PC Engine, and more). Standalone emulator saves (PCSX2, DuckStation, Dolphin, PPSSPP, melonDS, etc.) are deferred to Phase 7.
+The initial implementation covers **RetroArch per-game `.srm` saves only**. This includes all systems that EmuDeck routes through RetroArch cores (NES, SNES, GB, GBC, GBA, Genesis, N64, PSX via RetroArch cores, Saturn, Dreamcast, PC Engine, and more). Standalone emulator saves (PCSX2, DuckStation, Dolphin, PPSSPP, melonDS, etc.) are deferred to Phase 4-5 (per-emulator save resolver + bidirectional sync).
 
 ## RomM Save API
 
@@ -207,18 +207,14 @@ Save files are located using a predictable path pattern based on the system slug
 
 ### Save base path
 
-The save base directory is read at runtime from RetroDECK's configuration file:
+The save base directory comes from the `Frontend` Protocol's `saves()` method (`EmuDeckFrontendAdapter` returns `$emulationPath/saves/`). For RetroArch specifically, EmuDeck routes `.srm` writes through the RetroArch Flatpak sandbox by default; see [EmuDeck Filesystem Layout — Saves](emudeck-layout.md#saves-the-central-tree-and-the-flatpak-exceptions) for the full per-emulator table.
 
-```text
-~/.var/app/net.retrodeck.retrodeck/config/retrodeck/retrodeck.json -> paths.saves_path
-```
+Typical paths:
 
-This path varies depending on where RetroDECK was installed:
+- **Internal SSD**: `~/Emulation/saves/retroarch/saves/`
+- **SD card**: `/run/media/deck/<sd-label>/Emulation/saves/retroarch/saves/`
 
-- **Internal SSD**: `/home/deck/retrodeck/saves/`
-- **SD card**: `/run/media/deck/Emulation/retrodeck/saves/`
-
-The backend reads `retrodeck.json` as the primary source, with RetroArch's `retroarch.cfg` → `savefile_directory` as a fallback. The path is never hardcoded.
+The path is read via `Frontend.saves()` at runtime — never hardcoded. `retroarch.cfg` → `savefile_directory` is the fallback when EmuDeck's `settings.sh` is unreadable.
 
 ### RetroArch .srm pattern
 
@@ -230,11 +226,11 @@ All RetroArch cores save in a consistent location:
 
 Where:
 
-- `<saves_path>` is the base path from `retrodeck.json` → `paths.saves_path`
-- `{system}` is the RetroDECK ROM directory name (e.g. `gba`, `snes`, `n64`, `psx`) — this matches the ROM folder under `roms/`
+- `<saves_path>` is the base path from `Frontend.saves()`
+- `{system}` is the system directory name (e.g. `gba`, `snes`, `n64`, `psx`) — matches the ROM folder under `roms/`
 - `{rom_name}` is the ROM filename without extension
 
-**Sort by content directory**: RetroDECK's default RetroArch config sets `sort_savefiles_by_content_enable = true`. This means save subdirectories match the ROM's parent folder name (the platform slug like `gba`), **not** the RetroArch core name (like `mGBA`). The separate `sort_savefiles_enable` setting (sort by core name) is `false` by default.
+**Sort by content directory**: RetroArch's standard default sets `sort_savefiles_by_content_enable = true`. This means save subdirectories match the ROM's parent folder name (the platform slug like `gba`), **not** the RetroArch core name (like `mGBA`). The separate `sort_savefiles_enable` setting (sort by core name) is `false` by default.
 
 **Sort by core name (optional)**: When a user enables `sort_savefiles_enable`, RetroArch organizes saves by the core's canonical name instead — e.g. `<saves_path>/Snes9x/game.srm` rather than `<saves_path>/snes/game.srm`. The canonical core name comes from the `corename` field of RetroArch's `.info` file for the active core, which is **not** the same as the ES-DE display label for that core (e.g. ES-DE labels the core `Snes9x - Current` while RetroArch calls it `Snes9x`). The plugin resolves this by asking two different parsers — ES-DE for "which core is active", then the RetroArch `.info` parser for "what does RetroArch call that core". The rationale and architecture are documented on the [Config Source Parsers](config-source-parsers.md) page.
 
@@ -246,7 +242,7 @@ RetroArch has a third save-related layout setting that **the plugin does not sup
 
 - `savefiles_in_content_dir` — RetroArch UI label: **"Write Saves to Content Directory"**
 
-When this setting is **enabled** (RetroDECK default is `false`), RetroArch writes save files into the **same directory as the ROM file** (e.g. `roms/gba/Game/Game.srm`) instead of the configured `savefile_directory`. The two `sort_savefiles_*` settings discussed above become irrelevant in that case because saves no longer live in the savefile directory at all.
+When this setting is **enabled** (the standard RetroArch default is `false`), RetroArch writes save files into the **same directory as the ROM file** (e.g. `roms/gba/Game/Game.srm`) instead of the configured `savefile_directory`. The two `sort_savefiles_*` settings discussed above become irrelevant in that case because saves no longer live in the savefile directory at all.
 
 **The plugin does not handle this configuration.** `adapters/retroarch_config.py` reads only `sort_savefiles_by_content_enable` and `sort_savefiles_enable` — it does not read or react to `savefiles_in_content_dir`. If a user enables it, the plugin's save sync, conflict detection, and save-sort migration will silently miss every save because they only look inside `savefile_directory`.
 
@@ -275,7 +271,7 @@ The plugin must detect this layout change and offer a one-click migration to con
 
 ### Detection trigger points
 
-All five trigger points call the `refresh_migration_state` callable and share the same idempotent backend methods. Running on every trigger is cheap: `detect_retrodeck_path_change()` and `detect_save_sort_change()` both have early-return guards that exit immediately when no config change has occurred since the last call.
+All trigger points call the save-sort detection path and share the same idempotent backend method: `detect_save_sort_change()` has an early-return guard that exits immediately when no config change has occurred since the last call.
 
 | When | Where (code location) | Why |
 | --- | --- | --- |
@@ -301,7 +297,7 @@ In `sessionManager.ts` `handleGameStop`, save-sync runs first, then migration re
 
 Combined, these three guards close all four race sub-scenarios (mid-session change with detect winning or post_exit winning the race, and NEW-from-start with detect winning or post_exit winning).
 
-Migration refresh still runs unconditionally regardless of connectivity because `refresh_migration_state` only reads config files and local state — it does not touch user save files. The actual migration runs only when the user explicitly clicks the migrate button in Settings.
+Migration refresh still runs unconditionally regardless of connectivity because the detection path only reads config files and local state — it does not touch user save files. The actual migration runs only when the user explicitly clicks the migrate button in Settings.
 
 ### Newest-wins conflict resolution
 
@@ -327,13 +323,9 @@ On any `OSError` during `mtime` reads or file operations, the error is appended 
 
 **Mtime-naive limitation:** The resolver compares pure `os.path.getmtime` timestamps. A freshly-downloaded file has `mtime=now` regardless of how old its content actually is. This is structurally prevented by #238 Rule 2 (upload-only mode during pending migration prevents downloads that would create stale files with misleading mtimes). If Rule 2 is ever removed, the resolver would need to be made hash-aware.
 
-### Relationship to `retrodeck_path_migration`
-
-The RetroDECK **path** migration — `_migrate_retrodeck_files_io` in `migration.py`, triggered when the RetroDECK home directory moves between the internal SSD and an SD card — uses a different conflict-resolution approach: a user-driven bulk strategy modal (overwrite / skip / cancel). That is intentional. ROMs and BIOS files are not progress files, and `mtime`-based resolution is not semantically meaningful for them. See [RetroDECK Path Migration](../user-guide/retrodeck-path-migration.md) for the user-facing side.
-
 ### Supported systems
 
-All paths below are relative to `<saves_path>` from `retrodeck.json`.
+All paths below are relative to `<saves_path>` from `Frontend.saves()`.
 
 | System | Save Path Example | Extension |
 | --- | --- | --- |
@@ -636,7 +628,7 @@ Location: `~/homebrew/data/decky-romm-sync/save_sync_state.json`
 | `device_name` | string / null | Human-readable device name (reserved for future use) |
 | `server_device_id` | string / null | RomM server device UUID. Null until first device registration. |
 | `saves` | object | Per-ROM sync metadata, keyed by `rom_id` (string) |
-| `saves.<id>.system` | string | RetroDECK system slug (e.g. `"gba"`, `"snes"`) |
+| `saves.<id>.system` | string | system slug (e.g. `"gba"`, `"snes"`) |
 | `saves.<id>.active_slot` | string | Which RomM slot this game syncs to (e.g. `"default"`) |
 | `saves.<id>.slot_confirmed` | boolean | Whether user has explicitly chosen their slot (see "Slot Setup Wizard") |
 | `saves.<id>.last_synced_core` | string / null | RetroArch core used at last sync (for core change detection, e.g. `"mgba_libretro"`) |
@@ -786,7 +778,7 @@ RomM currently supports `last_played` timestamps but does not have a dedicated p
 
 ### Emulator save states not synced
 
-RetroArch save states (`<states_path>/{system}/`, where `<states_path>` comes from `retrodeck.json` → `paths.states_path`) are not synced. Only SRAM saves (`.srm`) are handled. Save states are large, emulator-version-specific, and not portable between different RetroArch core versions.
+RetroArch save states (`<states_path>/{system}/`, located alongside the saves tree) are not synced. Only SRAM saves (`.srm`) are handled. Save states are large, emulator-version-specific, and not portable between different RetroArch core versions.
 
 ### Save slot migration between slots not yet implemented
 

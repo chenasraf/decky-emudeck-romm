@@ -56,7 +56,6 @@ nav:
       - BIOS Management: user-guide/bios-management.md
       - Save Sync: user-guide/save-sync.md
       - Save File Extensions: user-guide/save-file-extensions.md
-      - RetroDECK Path Migration: user-guide/retrodeck-path-migration.md
       - Troubleshooting: user-guide/troubleshooting.md
   - Architecture:
       - Backend Architecture: architecture/backend-architecture.md

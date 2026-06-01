@@ -1,6 +1,6 @@
 # Save File Extensions
 
-Research results for which save file extensions RetroDECK cores produce, and what our plugin needs to support. This informs the implementation of [#196](https://github.com/danielcopper/decky-romm-sync/issues/196).
+Research results for which save file extensions RetroArch cores produce, and what our plugin needs to support. This informs the implementation of upstream issue [#196](https://github.com/danielcopper/decky-romm-sync/issues/196). The core inventory below was collected against a RetroDECK install (the upstream plugin's target); the libretro core set is the same one EmuDeck bundles via its RetroArch Flatpak, so the extension list applies to this fork unchanged.
 
 ## How RetroArch Save Extensions Work
 
@@ -12,9 +12,9 @@ RetroArch has two save mechanisms:
 
 This means `.srm`/`.rtc` covers the vast majority of cores. Only a handful of cores use custom extensions.
 
-## RetroDECK Core Inventory
+## Core Inventory
 
-Checked against RetroDECK's installed cores (March 2026). Only cores relevant to save file sync are listed.
+Checked against a RetroDECK install's cores (March 2026); the libretro core set is the same one EmuDeck bundles. Only cores relevant to save file sync are listed.
 
 ### Cores Using Standard `.srm`/`.rtc` (libretro_saves = true)
 
@@ -75,7 +75,7 @@ These cores all produce `.srm` (and optionally `.rtc`). No additional extensions
 
 - `libretro_saves = "false"` -- manages its own saves
 - In practice, gpsp writes `.sav` files in its own format
-- However, mgba/vbam are the recommended GBA cores in RetroDECK
+- However, mgba/vbam are the recommended GBA cores
 - **Action**: Add `.sav` defensively to GBA overrides for gpsp users
 
 #### mednafen_gba (Beetle GBA) -- custom format
@@ -83,7 +83,7 @@ These cores all produce `.srm` (and optionally `.rtc`). No additional extensions
 - No `libretro_saves` field -- uses Mednafen's native format
 - Can write `.{md5}.sav` and `.{md5}.eep` with MD5 hash in filename
 - Has a dual mode: Mednafen method (own files) vs libretro method (`.srm`)
-- Rarely used in RetroDECK (mgba is the default)
+- Rarely used (mgba is the GBA default)
 - **Action**: Not worth supporting the MD5-hashed filenames. Users of this core should use libretro mode.
 
 ## Comparison With Other RomM Clients
@@ -96,7 +96,7 @@ Uses a **flat global allowlist** of 11 extensions with no per-platform mapping:
 .srm, .sav, .dsv, .mcr, .mcd, .brm, .eep, .sra, .fla, .mpk, .nv
 ```
 
-This is intentionally broad -- Grout targets multiple CFWs (muOS, NextUI, MinUI) where standalone emulators produce these formats. For RetroArch-only setups like RetroDECK, most of these are unnecessary.
+This is intentionally broad -- Grout targets multiple CFWs (muOS, NextUI, MinUI) where standalone emulators produce these formats. For RetroArch-routed setups, most of these are unnecessary.
 
 ### Argosy (Android client)
 
@@ -111,11 +111,11 @@ Uses a **per-emulator** mapping:
 | DuckStation (standalone) | `.mcd` |
 | MAME | `.nv` |
 
-Again, standalone emulator formats that don't apply to RetroDECK's RetroArch-based setup.
+Again, standalone emulator formats that don't apply to a RetroArch-routed setup.
 
 ## Implementation Decision
 
-For decky-romm-sync (RetroDECK-only):
+For decky-emudeck-romm (RetroArch-only today):
 
 | Extension | Include? | Reason |
 | --- | --- | --- |

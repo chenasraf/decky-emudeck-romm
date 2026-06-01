@@ -118,11 +118,11 @@ Removes ALL non-Steam shortcuts visible to Steam — including games not managed
 A **whitelist** system lets you protect specific shortcuts from removal:
 
 1. Tap **Configure Whitelist**
-2. Toggle on any games you want to protect (RetroDECK is auto-protected by default)
+2. Toggle on any games you want to protect (EmuDeck-installed launchers are auto-protected by default)
 3. Use the search box to find specific games in long lists
 4. Protected games are excluded from the removal count
 
-The plugin shows extra warnings if RetroDECK is not whitelisted, since removing it would break all emulation.
+The plugin shows extra warnings if an EmuDeck launcher shortcut is not whitelisted, since removing it would break emulation.
 
 ### Delete Save Files
 

@@ -37,7 +37,7 @@ Controls how Steam handles controller input for ROM shortcuts. Found under the *
 
 | Mode | Description |
 | --- | --- |
-| **Default** (Recommended) | Uses your global Steam Input settings. Works well with RetroDECK's default configuration. |
+| **Default** (Recommended) | Uses your global Steam Input settings. Works with EmuDeck's default configuration. |
 | **Force On** | Explicitly enables Steam Input wrapping. Normalizes the controller as standard XInput, which RetroArch autoconfig expects. |
 | **Force Off** | Raw HID passthrough. Only for advanced users — may break RetroArch menu navigation. |
 

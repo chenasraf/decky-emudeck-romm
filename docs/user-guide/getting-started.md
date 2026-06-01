@@ -3,10 +3,10 @@
 ## What is EmuDeck RomM Sync?
 
 EmuDeck RomM Sync is a [Decky Loader](https://decky.xyz/) plugin that connects your self-hosted
-[RomM](https://github.com/rommapp/romm) ROM library to your Steam Deck. It is an **EmuDeck-focused fork** of
-[danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync) — today the plugin still ships
-identical to upstream's behaviour (Non-Steam shortcuts launching through RetroDECK); the EmuDeck-native flow is being
-introduced in phases. Every game in your RomM library appears as a Non-Steam shortcut in the Steam Library, complete
+[RomM](https://github.com/rommapp/romm) ROM library to your Steam Deck under an
+[EmuDeck](https://www.emudeck.com/) install. It is the **EmuDeck-only fork** of
+[danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync) — upstream targets RetroDECK; this
+fork targets EmuDeck. Every game in your RomM library appears as a Non-Steam shortcut in the Steam Library, complete
 with cover art, metadata, and collections.
 
 ## Prerequisites
@@ -15,9 +15,7 @@ Before installing the plugin, you need:
 
 1. **A RomM server** — a running RomM instance with your ROM library. You'll need the server URL, a username, and a password. Each user should have their own RomM account (see [Save Sync](save-sync.md) for why this matters).
 
-2. **An emulation frontend** — [RetroDECK](https://retrodeck.net/) today (the current default the plugin launches
-   ROMs through). [EmuDeck](https://www.emudeck.com/) support is the target of the in-progress rewrite; once
-   it lands, EmuDeck will become the recommended setup and RetroDECK will remain an opt-in alternative.
+2. **EmuDeck** — installed on your Steam Deck. The plugin autodetects EmuDeck via the presence of `~/Emulation/roms/`.
 
 3. **Decky Loader** — the plugin framework for Steam's Gaming Mode. Install it from [decky.xyz](https://decky.xyz/) if you haven't already.
 

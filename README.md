@@ -5,13 +5,13 @@
 
 # EmuDeck RomM Sync
 
-> **EmuDeck-focused fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync).
-> The product thesis differs from upstream — see [Roadmap](#roadmap) below. Today the plugin still ships
-> identical to upstream's behaviour; the EmuDeck-specific changes land in phases.
+> **EmuDeck-only fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync) —
+> that's the RetroDECK plugin, this is the EmuDeck plugin. The two diverge permanently from Phase 1.5
+> onward; see [Roadmap](#roadmap) below.
 
 A [Decky Loader](https://decky.xyz/) plugin that syncs your self-hosted [RomM](https://github.com/rommapp/romm) library
-into your Steam Deck. Browse and download ROMs from the QAM, manage BIOS files, keep saves in sync, and (currently)
-launch through [RetroDECK](https://retrodeck.net/).
+into your Steam Deck under an [EmuDeck](https://www.emudeck.com/) install. Browse and download ROMs from the QAM,
+manage BIOS files, and keep saves in sync.
 
 ## 📖 [Read the full documentation →](https://chenasraf.github.io/decky-emudeck-romm/)
 
@@ -20,13 +20,12 @@ documentation site. This README is just the quick tour.
 
 ## Roadmap
 
-This fork is being reshaped around an EmuDeck-first workflow:
+This fork is shaped around an EmuDeck-only workflow:
 
 - **EmuDeck-native paths** for ROMs, BIOS, and per-emulator saves
 - **File-manager-first** browse + on-demand download from RomM
 - **Bidirectional save sync** with per-system filename normalization
 - **Steam shortcuts** demoted to opt-in / secondary
-- **RetroDECK** still supported as a secondary launcher
 
 ## Features
 
@@ -40,7 +39,6 @@ This fork is being reshaped around an EmuDeck-first workflow:
 - **Per-platform control** — Choose exactly which platforms get synced
 - **Controller friendly** — Full gamepad navigation throughout the plugin UI
 - **Steam Input config** — Per-shortcut Steam Input mode (Default / Force On / Force Off)
-- **RetroDECK path migration** — Move your RetroDECK installation between storage locations without re-syncing
 - **RetroArch diagnostics** — Detects misconfigured input drivers that break menu navigation
 
 ## Screenshots
@@ -58,8 +56,7 @@ This fork is being reshaped around an EmuDeck-first workflow:
 - [Decky Loader](https://decky.xyz/) on your Steam Deck or Linux HTPC
 - A running [RomM](https://github.com/rommapp/romm) server, **version 4.8.1 or newer** (the plugin stays inert against
   older servers)
-- A launcher for your ROMs — [RetroDECK](https://retrodeck.net/) today;
-  [EmuDeck](https://www.emudeck.com/) support is the target of the in-progress rewrite
+- [EmuDeck](https://www.emudeck.com/) installed (the plugin probes `~/Emulation/roms/` to autodetect)
 
 ## Installation
 
@@ -105,9 +102,7 @@ This plugin stands on the shoulders of some great projects:
   derives from. Every line of working code in this repo started life there
 - [RomM](https://github.com/rommapp/romm) — the self-hosted ROM manager at the heart of this plugin. RomM provides
   the library, metadata, cover art, and save file storage that makes the entire sync experience possible
-- [RetroDECK](https://retrodeck.net/) — the all-in-one emulation solution for Steam Deck that bundles ES-DE,
-  RetroArch, and standalone emulators into a single flatpak
-- [EmuDeck](https://www.emudeck.com/) — the emulation setup this fork is being reshaped around
+- [EmuDeck](https://www.emudeck.com/) — the emulation setup this fork targets
 - [Decky Loader](https://decky.xyz/) — the plugin framework that makes all of this possible
 - [Valve](https://www.valvesoftware.com/) — for the Steam Deck, SteamOS, and an open enough platform to build on
 - [Unifideck](https://github.com/ma3ke/unifideck) — inspiration for game detail page injection techniques and gamepad

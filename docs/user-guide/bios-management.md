@@ -37,7 +37,7 @@ The dedicated BIOS management page shows all platforms that have firmware files 
 
 <!-- Screenshot: BIOS Manager page showing platforms with download counts and Download All buttons -->
 
-BIOS files are downloaded to your RetroDECK bios directory (e.g. `~/retrodeck/bios/`). Some platforms use subdirectories — for example, Dreamcast BIOS goes into `bios/dc/` and PS2 BIOS goes into `bios/pcsx2/bios/`. The plugin handles the correct placement automatically.
+BIOS files are downloaded to your EmuDeck bios directory (e.g. `~/Emulation/bios/`). Some platforms use subdirectories — for example, Dreamcast BIOS goes into `bios/dc/` and PS2 BIOS goes into `bios/pcsx2/bios/`. The plugin handles the correct placement automatically. See [EmuDeck Filesystem Layout](../architecture/emudeck-layout.md#bios) for the canonical paths.
 
 ## Which Systems Need BIOS?
 
@@ -49,11 +49,11 @@ The plugin only shows BIOS files that belong to the platform you're looking at. 
 
 ## Active Core Detection
 
-Different emulator cores can have different BIOS requirements for the same platform. The plugin detects which core RetroDECK is actually configured to use and filters the BIOS list accordingly, so you only see the files that matter for your setup.
+Different emulator cores can have different BIOS requirements for the same platform. The plugin detects which core is actually configured for each platform and filters the BIOS list accordingly, so you only see the files that matter for your setup.
 
 ### Example: Game Boy Advance
 
-- With **mGBA** (RetroDECK's default), `gba_bios.bin` is shown as *optional* — mGBA has a built-in high-level BIOS replacement
+- With **mGBA** (the common EmuDeck default), `gba_bios.bin` is shown as *optional* — mGBA has a built-in high-level BIOS replacement
 - With **gpSP**, `gba_bios.bin` is shown as *required* — gpSP cannot run without it
 
 The active core name appears as a badge in both the game detail page BIOS indicator and the BIOS Manager. This tells you at a glance which core the plugin is filtering for.
@@ -62,11 +62,11 @@ The active core name appears as a badge in both the game detail page BIOS indica
 
 1. If a per-game override exists in ES-DE's `gamelist.xml` (via `<altemulator>`), the plugin uses that first
 2. If no per-game override, the plugin checks for a per-system override in `gamelist.xml` (via `<alternativeEmulator>`)
-3. The plugin reads RetroDECK's ES-DE configuration (`es_systems.xml`) from the flatpak installation to find the default emulator for each platform — the first listed RetroArch core is treated as the default
-4. If the live configuration can't be read, the plugin falls back to a shipped `core_defaults.json` with RetroDECK's known defaults
+3. The plugin reads ES-DE's `es_systems.xml` if available to find the default emulator for each platform — the first listed RetroArch core is treated as the default
+4. If the live configuration can't be read, the plugin falls back to a shipped `core_defaults.json` with known defaults
 5. If all detection fails, all BIOS files for the platform are shown — the safe default
 
-The detection chain ensures BIOS filtering works even when RetroDECK's configuration files aren't accessible (e.g. after an update changes paths). You'll see a "Core: mGBA" badge when detection is working, or no badge when falling back to showing all files.
+The detection chain ensures BIOS filtering works even when ES-DE's configuration files aren't accessible. You'll see a "Core: mGBA" badge when detection is working, or no badge when falling back to showing all files.
 
 ## Changing the Active Core
 
@@ -105,4 +105,4 @@ The game detail info panel shows the active core in a dedicated "Emulator" colum
 
 ---
 
-**Previous:** [Managing Games](managing-games.md) | **Next:** [RetroDECK Path Migration](retrodeck-path-migration.md)
+**Previous:** [Managing Games](managing-games.md) | **Next:** [Save Sync](save-sync.md)

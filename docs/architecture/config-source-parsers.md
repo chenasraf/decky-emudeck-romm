@@ -2,7 +2,7 @@
 
 ## Overview
 
-The plugin reads configuration and metadata from multiple local files — ES-DE XML, RetroArch `.info` files, `retrodeck.json`, `retroarch.cfg`, gamelist XML, a bundled `core_defaults.json`, and more. Each source has its own format, its own update cycle, and its own authoritative domain. None of them is redundant with another, even when they describe overlapping concepts like "core name" or "supported extensions".
+The plugin reads configuration and metadata from multiple local files — ES-DE XML, RetroArch `.info` files, EmuDeck's `settings.sh`, `retroarch.cfg`, gamelist XML, a bundled `core_defaults.json`, and more. Each source has its own format, its own update cycle, and its own authoritative domain. None of them is redundant with another, even when they describe overlapping concepts like "core name" or "supported extensions".
 
 This page catalogs the sources, the rules for parsing them, and the mapping of questions to sources. It is the reference that new parsers should follow and the justification for why existing parsers are shaped the way they are.
 
@@ -10,11 +10,11 @@ This page catalogs the sources, the rules for parsing them, and the mapping of q
 
 ## Why multiple sources?
 
-RetroDECK is a stack of independent components — ES-DE as the frontend, RetroArch as the runtime, a glue config layer on top, plus bundled tooling. Each component owns its own metadata in its own format:
+EmuDeck is a stack of independent components — ES-DE as the frontend, RetroArch as one of the runtimes, a glue config layer on top, plus bundled tooling. Each component owns its own metadata in its own format:
 
 - **ES-DE** keeps its system definitions in `es_systems.xml`, its per-game overrides in `gamelist.xml`, and display-oriented labels it chose to include. It decides which core runs a ROM.
 - **RetroArch** keeps per-core metadata in `.info` files shipped alongside each `.so` — `corename`, `display_name`, `supported_extensions`, `firmware_*`, `database`, and more. It decides how saves are organized on disk, which firmware to require, and what extensions each core accepts.
-- **RetroDECK glue** keeps user-facing configuration in `retrodeck.json` (paths for ROMs, saves, BIOS, state) and forwards RetroArch's own `retroarch.cfg` (sort settings, core directories, and everything else RetroArch reads at startup).
+- **EmuDeck glue** keeps user-facing configuration in `~/.config/EmuDeck/settings.sh` (the canonical `emulationPath` / `romsPath` etc.) and lets each emulator keep its own runtime config — RetroArch in `retroarch.cfg`, PCSX2 in `~/.config/PCSX2/`, and so on.
 
 There is no unified source. The upstream components are developed independently, updated on independent schedules, and have no mechanism to consolidate their metadata. The plugin must read each source individually.
 
@@ -26,7 +26,7 @@ Each external source gets exactly one parser. Parsers do not fall back to each o
 
 The principle has three parts:
 
-1. **One parser per source.** Adding a second reader for the same file creates drift — sooner or later the two readers disagree and the bug lives in the newer one. `retrodeck.json` has one parser. `es_systems.xml` has one parser. Every new source follows suit.
+1. **One parser per source.** Adding a second reader for the same file creates drift — sooner or later the two readers disagree and the bug lives in the newer one. `settings.sh` has one parser. `es_systems.xml` has one parser. Every new source follows suit.
 
 2. **No cross-contamination.** When a parser cannot answer a question — the file is missing, a field is absent, the value is malformed — the parser returns `None` (or raises), it does **not** defer to another parser. Cross-parser fallbacks are how ES-DE's display label ended up being used as a RetroArch save directory name (the underlying bug of [#208](https://github.com/danielcopper/decky-romm-sync/issues/208)). Each source owns its own answer or admits it has none.
 
@@ -36,7 +36,7 @@ The principle has three parts:
 
 The concrete case that motivated this principle, and the bug in [#208](https://github.com/danielcopper/decky-romm-sync/issues/208):
 
-- `CoreResolver` (parses ES-DE) returns a tuple `(core_so, label)` for "which core is active?". `label` is ES-DE's **display string** — e.g. `"Snes9x - Current"`. It is a UI-level name, chosen by the ES-DE/RetroDECK team to disambiguate in the core picker UI.
+- `CoreResolver` (parses ES-DE) returns a tuple `(core_so, label)` for "which core is active?". `label` is ES-DE's **display string** — e.g. `"Snes9x - Current"`. It is a UI-level name, chosen at the ES-DE config level to disambiguate in the core picker UI.
 - RetroArch, when `sort_savefiles_enable = true`, writes saves into subdirectories named by the **`corename`** field of the core's `.info` file — e.g. `"Snes9x"`. It is RetroArch's canonical internal name, set by the core's maintainer, baked into RetroArch's runtime path logic.
 
 These two values **are not redundant representations of the same thing**. They answer different questions at different layers:
@@ -49,21 +49,21 @@ These two values **are not redundant representations of the same thing**. They a
 | SwanStation | `SwanStation` | `SwanStation` |
 | Genesis Plus GX | `Genesis Plus GX` | `Genesis Plus GX` |
 
-Four out of five happen to match textually. Snes9x does not — ES-DE added `" - Current"` to disambiguate from the older `Snes9x 2010` variant. The match is **incidental**, not structural. Future cores, future ES-DE redesigns, and future RetroDECK re-labelings will introduce new mismatches.
+Four out of five happen to match textually. Snes9x does not — ES-DE added `" - Current"` to disambiguate from the older `Snes9x 2010` variant. The match is **incidental**, not structural. Future cores, future ES-DE redesigns, and future EmuDeck re-labelings will introduce new mismatches.
 
-Reconciling by whitelist — a table of "ES-DE label → RetroArch corename" mappings — would be a perpetual maintenance burden. Every new core, every label change, every RetroDECK release shifts the table. The correct answer is to not reconcile at all: when you need the save directory name, ask RetroArch; when you need the UI label, ask ES-DE. The lookup is O(1) per source, caching is local, and drift is impossible because neither parser pretends to speak for the other.
+Reconciling by whitelist — a table of "ES-DE label → RetroArch corename" mappings — would be a perpetual maintenance burden. Every new core, every label change, every EmuDeck release shifts the table. The correct answer is to not reconcile at all: when you need the save directory name, ask RetroArch; when you need the UI label, ask ES-DE. The lookup is O(1) per source, caching is local, and drift is impossible because neither parser pretends to speak for the other.
 
 ## Question-to-source mapping
 
 | Question | Authoritative source | Why |
 | --- | --- | --- |
 | Which core is active for system X / ROM Y? | ES-DE (`es_systems.xml` + `gamelist.xml`) | ES-DE **decides** this — defaults, per-system overrides, per-game overrides. |
-| What's the ES-DE display label for a core? | ES-DE | Label is an ES-DE/RetroDECK UI concern, chosen at the ES-DE config level. |
+| What's the ES-DE display label for a core? | ES-DE | Label is an ES-DE UI concern, chosen at the ES-DE config level. |
 | What subdirectory does RetroArch use for this core's saves (sort-by-core)? | RetroArch `.info` `corename` field | RetroArch creates the directory using `corename`; `.info` is the only place that canonical name lives. |
 | What ROM extensions does a core support? | RetroArch `.info` `supported_extensions` field | libretro-maintainer-authoritative, updated with every core release. |
 | What firmware files does a core need? | RetroArch `.info` `firmware_count` + `firmwareN_*` fields | libretro-maintainer-authoritative; optional flags included. |
 | What datfile database matches a core's ROMs? | RetroArch `.info` `database` field | libretro-maintainer-authoritative. |
-| Where does RetroDECK put ROMs, saves, BIOS, states, and its home directory? | `retrodeck.json` | RetroDECK owns path configuration; it's the file users edit via the RetroDECK configurator. |
+| Where does EmuDeck put ROMs, saves, BIOS, and the emulation root? | `~/.config/EmuDeck/settings.sh` | EmuDeck owns path configuration; the script is rewritten by EmuDeck's setup wizard. |
 | Is RetroArch's save-sorting by content or by core enabled? | `retroarch.cfg` `sort_savefiles_*` | RetroArch owns its runtime config; the cfg is its canonical input. |
 
 If a new question appears, the first step is to figure out which source authoritatively owns it. The mapping above grows as new questions are added — treat this table as part of the contract, not a passive catalog.
@@ -121,8 +121,8 @@ A class with a single responsibility: resolve the right file path(s), read bytes
 # adapters/retroarch_core_info.py
 
 class RetroArchCoreInfoAdapter:
-    _SYSTEM_CORES_DIR = "/var/lib/flatpak/app/net.retrodeck.retrodeck/current/active/files/..."
-    _USER_CORES_SUFFIX = os.path.join(".local", "share", "flatpak", ...)
+    _SYSTEM_CORES_DIR = "/var/lib/flatpak/app/org.libretro.RetroArch/current/active/files/..."
+    _USER_CORES_SUFFIX = os.path.join(".var", "app", "org.libretro.RetroArch", ...)
 
     def __init__(self, *, user_home: str, logger: logging.Logger) -> None: ...
 
@@ -175,7 +175,7 @@ The service receives callbacks, not an adapter. It has no knowledge of which fil
 
 | Source | Format | Parser location | Layer status | What it answers |
 | --- | --- | --- | --- | --- |
-| `retrodeck.json` | JSON | `adapters/retrodeck_paths.py` — `RetroDeckPathsAdapter` | ✅ adapter (correct layering) | Where RetroDECK puts saves, ROMs, BIOS, and its home directory. |
+| `settings.sh` | shell-var assignments | `adapters/frontends/emudeck.py` — `EmuDeckFrontendAdapter` | ✅ adapter (correct layering) | Where EmuDeck puts ROMs, BIOS, and the emulation root. |
 | `retroarch.cfg` | INI-ish `key = "value"` | `adapters/retroarch_config.py` — `RetroArchConfigAdapter` | ✅ adapter (correct layering) | Save-sorting flags (`sort_savefiles_by_content_enable`, `sort_savefiles_enable`); room to grow as more cfg fields are needed. |
 | `es_systems.xml` | XML | `adapters/es_de_config.py` — `CoreResolver` | ✅ adapter (correct layering) | Which core is ES-DE's default for a system; list of available cores with labels. |
 | `gamelist.xml` | XML | `adapters/es_de_config.py` — `CoreResolver` + `GamelistXmlEditorAdapter` | ✅ adapter (correct layering) | Per-system and per-game `altemulator` overrides; metadata reads and writes. |
@@ -260,15 +260,15 @@ When the plugin needs to read a new external config/metadata source, the checkli
 
 Non-obvious design choices worth preserving:
 
-- **Three sibling adapters for RetroDECK/RetroArch-side config, not one bundle.** The plugin has `RetroDeckPathsAdapter` (reads `retrodeck.json`), `RetroArchConfigAdapter` (reads `retroarch.cfg`), and `RetroArchCoreInfoAdapter` (reads `.info` files) as three independent adapters. A single combined "RetroDECK/RetroArch config" adapter would conflate three different owners (RetroDECK team vs RetroArch team vs libretro core maintainers), three different change triggers (user configurator edits vs runtime cfg writes vs Flatpak core releases), and three different file layouts (user home for `retrodeck.json`, RetroDECK config directory for `retroarch.cfg`, Flatpak install tree for `.info`). Bundling them would produce a class with too many reasons to change; splitting them keeps each adapter small, testable, and cleanly scoped to one source. This is the applied form of the "one parser per source" principle for the RetroDECK/RetroArch-side of the codebase.
+- **Three sibling adapters for frontend/RetroArch-side config, not one bundle.** The plugin has `EmuDeckFrontendAdapter` (reads `settings.sh` + `versions.json`), `RetroArchConfigAdapter` (reads `retroarch.cfg`), and `RetroArchCoreInfoAdapter` (reads `.info` files) as three independent adapters. A single combined "frontend/RetroArch config" adapter would conflate three different owners (EmuDeck team vs RetroArch team vs libretro core maintainers), three different change triggers (user setup-wizard edits vs runtime cfg writes vs Flatpak core releases), and three different file layouts (user home for `settings.sh`, RetroArch's Flatpak config dir for `retroarch.cfg`, Flatpak install tree for `.info`). Bundling them would produce a class with too many reasons to change; splitting them keeps each adapter small, testable, and cleanly scoped to one source. This is the applied form of the "one parser per source" principle for the frontend/RetroArch-side of the codebase.
 
-- **No TTL cache for `.info` reads.** `RetroDeckPathsAdapter` uses a 30-second TTL cache for `retrodeck.json` because that file can be edited by the user at runtime via RetroDECK's configurator. `.info` files live inside a read-only Flatpak install and only change when the Flatpak is updated, which in practice tears down the plugin process anyway. A simple per-instance dict cache (keyed by `core_so`, no expiry) is sufficient — plugin restart picks up any real change. `RetroArchConfigAdapter` currently reads `retroarch.cfg` uncached on every call; that's fine for today's low call frequency and can grow a cache later if needed.
+- **No TTL cache for `.info` reads.** `.info` files live inside a read-only Flatpak install and only change when the Flatpak is updated, which in practice tears down the plugin process anyway. A simple per-instance dict cache (keyed by `core_so`, no expiry) is sufficient — plugin restart picks up any real change. `RetroArchConfigAdapter` currently reads `retroarch.cfg` uncached on every call; that's fine for today's low call frequency and can grow a cache later if needed.
 
 - **No fallback from RetroArch parser to ES-DE label.** When `.info` lookup returns `None`, `MigrationService` returns `None` for the core name and the save-sort migration logs a warning and skips the affected files. This is deliberately stricter than the previous behavior (which returned the ES-DE label and silently built wrong paths for any core where label ≠ corename). Fail-loud beats silent corruption; real-world `.info`-missing cases can be diagnosed from the warning and addressed by adding candidate paths or a bundled fallback.
 
 - **`core_so` is the full `.so` basename including `_libretro`.** `CoreResolver.get_active_core` returns `(core_so, label)` where `core_so` is e.g. `"snes9x_libretro"`, not `"snes9x"`. This is set by the regex `[\w-]+_libretro` when parsing `es_systems.xml`'s `<command>` elements. The `.info` filename is therefore `{core_so}.info` (e.g. `snes9x_libretro.info`), not `{core_so}_libretro.info`. This is a subtle naming quirk documented here so future parser users don't double the suffix.
 
-- **RetroDECK-only path resolution, standalone RetroArch out of scope.** The `.info` adapter only looks under `net.retrodeck.retrodeck` Flatpak paths (system-wide `/var/lib/flatpak/...` and per-user `~/.local/share/flatpak/...`). Support for `org.libretro.RetroArch` Flatpak, native RetroArch installs, and other launchers is deferred — a separate long-term issue tracks broadening the plugin's launcher support beyond RetroDECK, and this parser will be extended alongside that work.
+- **Standalone RetroArch Flatpak path resolution.** The `.info` adapter looks under `org.libretro.RetroArch` Flatpak paths (system-wide `/var/lib/flatpak/...` and per-user `~/.var/app/...`) — EmuDeck's bundled RetroArch is the same Flatpak. Support for native RetroArch installs and other launchers is deferred.
 
 - **Candidate paths use the `current/active` Flatpak symlinks.** Both candidate paths for `.info` files (system and per-user) route through `current/active`, which is Flatpak's stable symlink to the installed commit. This means the adapter does not need to know the specific Flatpak commit hash, and Flatpak updates do not break path resolution.
 
@@ -278,4 +278,4 @@ Non-obvious design choices worth preserving:
 
 - [Backend Architecture](backend-architecture.md) — service/adapter architecture, dependency diagram, boundary enforcement
 - [Save File Sync Architecture](save-file-sync-architecture.md) — save sync details, conflict detection, sort-by-core migration flow
-- [RetroDECK Path Migration](../user-guide/retrodeck-path-migration.md) — user-facing guide for moving a RetroDECK install between storage locations
+- [EmuDeck Filesystem Layout](emudeck-layout.md) — canonical paths for ROMs, BIOS, saves, ES-DE, SRM

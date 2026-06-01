@@ -129,7 +129,7 @@ Grid artwork is stored at `userdata/<user_id>/config/grid/`, keyed by the shortc
 | `py_modules/adapters/steam_config.py` | `SteamConfigAdapter` — VDF read/write, grid dir, shortcut icon write, Steam Input config |
 | `py_modules/services/library/` | LibraryService — builds shortcut data, drives per-unit sync apply |
 | `py_modules/domain/sgdb_artwork.py` | `to_signed_app_id`, SGDB asset-type/endpoint maps |
-| `bin/romm-launcher` | Bash script invoked by Steam — parses `romm:<id>`, looks up ROM path, launches RetroDECK |
+| `bin/romm-launcher` | Bash script invoked by Steam — parses `romm:<id>`, looks up ROM path, launches the configured emulator |
 
 ## Common Pitfalls
 

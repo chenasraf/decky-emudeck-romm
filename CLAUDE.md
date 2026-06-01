@@ -2,19 +2,19 @@
 
 ## Fork context
 
-This is an **EmuDeck-variant fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). The product thesis differs from upstream:
+This is the **EmuDeck-only fork** of [danielcopper/decky-romm-sync](https://github.com/danielcopper/decky-romm-sync). Upstream is the RetroDECK plugin; this fork commits to EmuDeck-only (Phase 1.5 of `.scratch/PLAN.md` ripped the parallel RetroDECK code path). The product thesis differs from upstream:
 
-- File-manager-first EmuDeck client, not Steam-first RetroDECK client
+- File-manager-first EmuDeck client, not Steam-first
 - EmuDeck-native paths for ROMs + BIOS + per-emulator saves
 - Bidirectional save sync with per-system name normalization
 - On-demand browse + download from RomM (full-library auto-sync becomes opt-in)
 - Steam shortcuts are demoted to opt-in / secondary
 
-The inherited Cosmic Python rules and the rest of this file still apply — only the product framing changes.
+The inherited Cosmic Python rules and the rest of this file still apply — only the product framing changes. The `Frontend` Protocol stays as a single-implementation testability seam (`EmuDeckFrontendAdapter` is the only impl, `FakeFrontend` stands in for tests); the abstraction future-proofs adding AmberELEC / RetroPie / Anbernic later if that ever becomes interesting.
 
 ## What This Is
 
-A Decky Loader plugin that syncs a self-hosted RomM library to EmuDeck paths (with RetroDECK still supported via a Frontend abstraction). The QAM panel handles RomM browsing, on-demand download, BIOS management, and bidirectional save sync.
+A Decky Loader plugin that syncs a self-hosted RomM library to EmuDeck paths. The QAM panel handles RomM browsing, on-demand download, BIOS management, and bidirectional save sync.
 
 ## Documentation
 
