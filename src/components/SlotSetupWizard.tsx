@@ -113,7 +113,7 @@ export const SlotSetupWizard: FC<SlotSetupWizardProps> = ({ romId, onComplete })
 
     fetchInfo();
     return () => { cancelled = true; };
-  }, [romId]);
+  }, [romId, onComplete]);
 
   const handleConfirm = async (slot: string) => {
     setConfirming(true);

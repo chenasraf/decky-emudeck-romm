@@ -30,37 +30,23 @@ export const DownloadQueue: FC<DownloadQueueProps> = ({ onBack }) => {
   const [cleared, setCleared] = useState<Set<number>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  // Un-clear rom_ids that have new active downloads (re-download case)
-  const unclearRestarted = (current: DownloadItem[]) => (prev: Set<number>): Set<number> => {
-    const restarted = current.filter(
-      (d) => (d.status === "downloading" || d.status === "queued") && prev.has(d.rom_id),
-    );
-    if (restarted.length === 0) return prev;
-    const next = new Set(prev);
-    for (const d of restarted) next.delete(d.rom_id);
-    return next;
-  };
-
-  const pollTick = () => {
-    const current = getDownloadState();
-    setCleared(unclearRestarted(current));
-    setLocalDownloads([...current]);
-  };
-
-  const startPolling = () => {
-    stopPolling();
-    pollRef.current = setInterval(pollTick, 500);
-  };
-
   useEffect(() => {
-    // Seed from backend on mount, then poll the store
+    // Un-clear rom_ids that have new active downloads (re-download case).
+    const unclearRestarted = (current: DownloadItem[]) => (prev: Set<number>): Set<number> => {
+      const restarted = current.filter(
+        (d) => (d.status === "downloading" || d.status === "queued") && prev.has(d.rom_id),
+      );
+      if (restarted.length === 0) return prev;
+      const next = new Set(prev);
+      for (const d of restarted) next.delete(d.rom_id);
+      return next;
+    };
+    const pollTick = () => {
+      const current = getDownloadState();
+      setCleared(unclearRestarted(current));
+      setLocalDownloads([...current]);
+    };
+    // Seed from backend on mount, then poll the store.
     getDownloadQueue()
       .then((result) => {
         setDownloads(result.downloads);
@@ -70,8 +56,13 @@ export const DownloadQueue: FC<DownloadQueueProps> = ({ onBack }) => {
         // Fall back to whatever is in the store already
         setLocalDownloads([...getDownloadState()]);
       });
-    startPolling();
-    return () => stopPolling();
+    pollRef.current = setInterval(pollTick, 500);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
   }, []);
 
   const handleCancel = async (romId: number) => {

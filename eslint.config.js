@@ -6,7 +6,7 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "defaults", "bin", "coverage", ".worktrees", "py_modules/vdf"] },
+  { ignores: ["dist", "node_modules", "defaults", "bin", "coverage", ".worktrees", "py_modules/vdf", ".venv", "site", "__pycache__"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   react.configs.flat.recommended,
