@@ -39,7 +39,7 @@ import { VersionErrorCard, useVersionError } from "./VersionErrorCard";
 import { FrontendUnsupportedCard, useFrontendUnsupported } from "./FrontendUnsupportedCard";
 import type { SyncProgress, SyncStage, SyncStats, SyncPreview, SyncPreviewSummary, DownloadItem } from "../types";
 
-type Page = "settings" | "library" | "data" | "downloads";
+type Page = "settings" | "library" | "library_settings" | "data" | "downloads";
 
 interface MainPageProps {
   onNavigate: (page: Page) => void;
@@ -626,6 +626,11 @@ export const MainPage: FC<MainPageProps> = ({ onNavigate }) => {
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={() => onNavigate("library")}>
             Library
+          </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={() => onNavigate("library_settings")}>
+            Library Settings
           </ButtonItem>
         </PanelSectionRow>
         <PanelSectionRow>

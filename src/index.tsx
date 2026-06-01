@@ -9,6 +9,7 @@ import { FaGamepad } from "react-icons/fa";
 import { MainPage } from "./components/MainPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { LibraryPage } from "./components/LibraryPage";
+import { LibrarySettingsPage } from "./components/LibrarySettingsPage";
 import { DangerZone } from "./components/DangerZone";
 import { DownloadQueue } from "./components/DownloadQueue";
 import { initUnitSyncManager } from "./utils/syncManager";
@@ -29,7 +30,7 @@ import type { SyncProgress, DownloadProgressEvent, DownloadCompleteEvent, Downlo
 import { removeShortcut } from "./utils/steamShortcuts";
 import { DISPLAY_NAME } from "./branding";
 
-type Page = "main" | "settings" | "library" | "data" | "downloads";
+type Page = "main" | "settings" | "library" | "library_settings" | "data" | "downloads";
 
 // Module-level page state survives QAM remounts (e.g. after modal close)
 let currentPage: Page = "main";
@@ -80,6 +81,9 @@ const QAMPanel: FC = () => {
       break;
     case "library":
       content = <LibraryPage onBack={() => setPage("main")} />;
+      break;
+    case "library_settings":
+      content = <LibrarySettingsPage onBack={() => setPage("main")} />;
       break;
     case "data":
       content = <DangerZone onBack={() => setPage("main")} />;
