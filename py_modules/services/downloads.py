@@ -489,6 +489,15 @@ class DownloadService:
     def get_installed_rom(self, rom_id):
         return self._state["installed_roms"].get(str(int(rom_id)))
 
+    def get_installed_rom_ids(self):
+        ids: list[int] = []
+        for key in self._state.get("installed_roms", {}):
+            try:
+                ids.append(int(key))
+            except (TypeError, ValueError):
+                continue
+        return {"ids": ids}
+
     # ── DownloadQueueCleanup Protocol ──────────────────────────────
 
     def evict(self, rom_id: int) -> None:

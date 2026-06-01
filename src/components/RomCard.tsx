@@ -13,10 +13,11 @@ import type { BrowseRom } from "../types/browse";
 
 interface RomCardProps {
   rom: BrowseRom;
+  installed?: boolean;
   onDownloadQueued?: (rom: BrowseRom) => void;
 }
 
-export const RomCard: FC<RomCardProps> = ({ rom, onDownloadQueued }) => {
+export const RomCard: FC<RomCardProps> = ({ rom, installed = false, onDownloadQueued }) => {
   const [coverData, setCoverData] = useState<string | null>(null);
   const [coverMime, setCoverMime] = useState<string>("image/jpeg");
   const [coverLoaded, setCoverLoaded] = useState(false);
@@ -99,6 +100,7 @@ export const RomCard: FC<RomCardProps> = ({ rom, onDownloadQueued }) => {
       </div>
       <button
         data-testid="rom-card-download"
+        data-installed={installed ? "true" : "false"}
         onClick={() => void handleDownload()}
         disabled={queued}
         style={{
@@ -106,13 +108,15 @@ export const RomCard: FC<RomCardProps> = ({ rom, onDownloadQueued }) => {
           padding: "2px 6px",
           fontSize: "10px",
           borderRadius: "3px",
-          border: "1px solid rgba(255,255,255,0.2)",
-          background: queued ? "rgba(76,175,80,0.2)" : "transparent",
+          border: installed
+            ? "1px solid #4caf50"
+            : "1px solid rgba(255,255,255,0.2)",
+          background: queued || installed ? "rgba(76,175,80,0.2)" : "transparent",
           color: "inherit",
           cursor: queued ? "default" : "pointer",
         }}
       >
-        {queued ? "Queued" : "Download"}
+        {queued ? "Queued" : installed ? "Installed — Re-download" : "Download"}
       </button>
     </div>
   );

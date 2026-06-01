@@ -367,6 +367,30 @@ class TestGetInstalledRom:
         assert result is None
 
 
+class TestGetInstalledRomIds:
+    @pytest.mark.asyncio
+    async def test_returns_installed_ids_as_ints(self, plugin):
+        plugin._state["installed_roms"] = {
+            "42": {"rom_id": 42},
+            "7": {"rom_id": 7},
+            "99": {"rom_id": 99},
+        }
+        result = await plugin.get_installed_rom_ids()
+        assert sorted(result["ids"]) == [7, 42, 99]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_nothing_installed(self, plugin):
+        plugin._state["installed_roms"] = {}
+        result = await plugin.get_installed_rom_ids()
+        assert result == {"ids": []}
+
+    @pytest.mark.asyncio
+    async def test_skips_non_integer_keys(self, plugin):
+        plugin._state["installed_roms"] = {"42": {}, "garbage": {}, "7": {}}
+        result = await plugin.get_installed_rom_ids()
+        assert sorted(result["ids"]) == [7, 42]
+
+
 class TestRemoveRom:
     @pytest.mark.asyncio
     async def test_deletes_file_and_clears_state(self, plugin, tmp_path):

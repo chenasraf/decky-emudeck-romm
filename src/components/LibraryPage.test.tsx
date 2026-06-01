@@ -4,12 +4,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@testing-library/react";
 import { LibraryPage } from "./LibraryPage";
-import { browseRoms, getBrowseCoverBase64, getPlatforms } from "../api/backend";
+import { browseRoms, getBrowseCoverBase64, getInstalledRomIds, getPlatforms, startDownload } from "../api/backend";
 
 vi.mock("../api/backend", () => ({
   browseRoms: vi.fn(),
   getBrowseCoverBase64: vi.fn(),
+  getInstalledRomIds: vi.fn(),
   getPlatforms: vi.fn(),
+  startDownload: vi.fn(),
 }));
 
 const _makeRoms = (n: number) =>
@@ -20,6 +22,8 @@ describe("LibraryPage", () => {
     vi.clearAllMocks();
     vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
     vi.mocked(getPlatforms).mockResolvedValue({ success: true, platforms: [] });
+    vi.mocked(getInstalledRomIds).mockResolvedValue({ ids: [] });
+    vi.mocked(startDownload).mockResolvedValue({ success: true });
   });
 
   it("shows the spinner while browseRoms is in flight", () => {
@@ -136,6 +140,22 @@ describe("LibraryPage", () => {
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith([9], null, 30, 0));
     fireEvent.click(pill);
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 0));
+  });
+
+  it("marks ROMs in the installed set with the Installed badge", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({
+      success: true,
+      total: 2,
+      items: [
+        { id: 1, name: "Zelda" },
+        { id: 2, name: "Mario" },
+      ],
+    });
+    vi.mocked(getInstalledRomIds).mockResolvedValue({ ids: [1] });
+    const { findAllByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const buttons = await findAllByTestId("rom-card-download");
+    await waitFor(() => expect(buttons[0]?.dataset.installed).toBe("true"));
+    expect(buttons[1]?.dataset.installed).toBe("false");
   });
 
   it("debounces search-box input before re-querying browse_roms", async () => {

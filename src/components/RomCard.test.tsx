@@ -78,6 +78,23 @@ describe("RomCard", () => {
     expect(calls.some((c) => c?.title === "Download failed" && c?.body === "queue full")).toBe(true);
   });
 
+  it("renders the Installed badge and Re-download label when installed=true", () => {
+    vi.mocked(getBrowseCoverBase64).mockReturnValue(new Promise(() => {}));
+    const { getByTestId } = render(<RomCard rom={{ id: 1, name: "Z" }} installed />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    expect(btn.dataset.installed).toBe("true");
+    expect(btn.textContent).toContain("Installed");
+  });
+
+  it("still lets Re-download fire startDownload when installed=true", async () => {
+    vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
+    vi.mocked(startDownload).mockResolvedValue({ success: true });
+    const { getByTestId } = render(<RomCard rom={{ id: 5, name: "Mario" }} installed />);
+    const btn = getByTestId("rom-card-download") as HTMLButtonElement;
+    fireEvent.click(btn);
+    await waitFor(() => expect(vi.mocked(startDownload)).toHaveBeenCalledWith(5));
+  });
+
   it("reverts to Download and toasts on a startDownload rejection (post-catch state)", async () => {
     vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
     vi.mocked(startDownload).mockRejectedValue(new Error("network gone"));

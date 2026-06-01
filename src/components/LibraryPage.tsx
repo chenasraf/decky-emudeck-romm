@@ -8,7 +8,7 @@
 
 import { useState, useEffect, FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, TextField } from "@decky/ui";
-import { browseRoms, getPlatforms } from "../api/backend";
+import { browseRoms, getInstalledRomIds, getPlatforms } from "../api/backend";
 import type { BrowseRom, PlatformSyncSetting } from "../types";
 import { RomCard } from "./RomCard";
 import { useDebounce } from "../utils/useDebounce";
@@ -33,6 +33,7 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
   const [selectedPlatformIds, setSelectedPlatformIds] = useState<number[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, SEARCH_DEBOUNCE_MS);
+  const [installedIds, setInstalledIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     getPlatforms()
@@ -41,6 +42,11 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
       })
       .catch(() => {
         /* leave the pill row empty if platforms can't load */
+      });
+    getInstalledRomIds()
+      .then((res) => setInstalledIds(new Set(res?.ids ?? [])))
+      .catch(() => {
+        /* without an installed-set, every card shows Download — acceptable */
       });
   }, []);
 
@@ -162,7 +168,11 @@ export const LibraryPage: FC<LibraryPageProps> = ({ onBack }) => {
                 }}
               >
                 {items.map((rom) => (
-                  <RomCard key={rom.id} rom={rom} />
+                  <RomCard
+                    key={rom.id}
+                    rom={rom}
+                    installed={installedIds.has(rom.id)}
+                  />
                 ))}
               </div>
             </PanelSectionRow>

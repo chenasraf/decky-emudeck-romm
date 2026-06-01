@@ -413,6 +413,9 @@ class Plugin:
     async def get_installed_rom(self, rom_id):
         return self._download_service.get_installed_rom(rom_id)
 
+    async def get_installed_rom_ids(self):
+        return self._download_service.get_installed_rom_ids()
+
     async def remove_rom(self, rom_id):
         return await self._rom_removal_service.remove_rom(rom_id)
 

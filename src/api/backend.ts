@@ -62,6 +62,7 @@ export const startDownload = callable<[number], BackendResult>("start_download")
 export const cancelDownload = callable<[number], BackendResult>("cancel_download");
 export const getDownloadQueue = callable<[], { downloads: DownloadItem[] }>("get_download_queue");
 export const getInstalledRom = callable<[number], InstalledRom | null>("get_installed_rom");
+export const getInstalledRomIds = callable<[], { ids: number[] }>("get_installed_rom_ids");
 export const evaluateLaunch = callable<[number], LaunchVerdict>("evaluate_launch");
 export const removeRom = callable<[number], BackendResult>("remove_rom");
 export const getPlatforms = callable<[], { success: boolean; platforms: PlatformSyncSetting[] }>("get_platforms");
