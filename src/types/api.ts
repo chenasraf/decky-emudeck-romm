@@ -52,6 +52,8 @@ export interface RetroArchInputCheck {
   config_path?: string;
 }
 
+export type FrontendChoice = "auto" | "emudeck" | "retrodeck" | "custom";
+
 export interface PluginSettings {
   romm_url: string;
   romm_user: string;
@@ -63,6 +65,7 @@ export interface PluginSettings {
   romm_allow_insecure_ssl: boolean;
   retroarch_input_check?: RetroArchInputCheck;
   collection_create_platform_groups?: boolean;
+  frontend?: FrontendChoice;
 }
 
 export interface RomMetadata {

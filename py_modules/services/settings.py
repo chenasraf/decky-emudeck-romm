@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 _MASK_PLACEHOLDER = "••••"
 _VALID_LOG_LEVELS = ("debug", "info", "warn", "error")
 _VALID_STEAM_INPUT_MODES = ("default", "force_on", "force_off")
+_VALID_FRONTENDS = ("auto", "emudeck", "retrodeck", "custom")
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,7 @@ class SettingsService:
             "log_level": self._settings.get("log_level", "warn"),
             "romm_allow_insecure_ssl": self._settings.get("romm_allow_insecure_ssl", False),
             "collection_create_platform_groups": self._settings.get("collection_create_platform_groups", False),
+            "frontend": self._settings.get("frontend", "auto"),
         }
 
     # ── Log level ────────────────────────────────────────────────────────
@@ -192,5 +194,20 @@ class SettingsService:
     def save_collection_platform_groups(self, enabled: bool) -> dict:
         """Persist the collection platform-group toggle."""
         self._settings["collection_create_platform_groups"] = bool(enabled)
+        self._settings_persister.save_settings()
+        return {"success": True}
+
+    # ── Frontend selection ──────────────────────────────────────────────
+
+    def save_frontend_setting(self, value: str) -> dict:
+        """Validate and persist the host emulator-frontend selection.
+
+        Drives ``bootstrap._select_frontend`` on next plugin load. The
+        selected value takes effect after the plugin reloads — the
+        live adapter wired by the current process is not swapped.
+        """
+        if value not in _VALID_FRONTENDS:
+            return {"success": False, "message": f"Invalid frontend: {value}"}
+        self._settings["frontend"] = value
         self._settings_persister.save_settings()
         return {"success": True}

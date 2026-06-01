@@ -29,6 +29,7 @@ import type { SaveSyncSection } from "./settings/SaveSyncSection";
 import type { RegisteredDevicesSection } from "./settings/RegisteredDevicesSection";
 import type { ControllerSection } from "./settings/ControllerSection";
 import type { AdvancedSection } from "./settings/AdvancedSection";
+import type { FrontendSection } from "./settings/FrontendSection";
 import type { SaveSortMigrationSection } from "./settings/SaveSortMigrationSection";
 import { DISPLAY_NAME } from "../branding";
 
@@ -38,6 +39,7 @@ type SaveSyncProps = ComponentProps<typeof SaveSyncSection>;
 type RegisteredDevicesProps = ComponentProps<typeof RegisteredDevicesSection>;
 type ControllerProps = ComponentProps<typeof ControllerSection>;
 type AdvancedProps = ComponentProps<typeof AdvancedSection>;
+type FrontendProps = ComponentProps<typeof FrontendSection>;
 type SaveSortMigrationProps = ComponentProps<typeof SaveSortMigrationSection>;
 
 // Captured props arrays — reset in beforeEach. Each child mock pushes the
@@ -49,6 +51,7 @@ const capturedSaveSync: SaveSyncProps[] = [];
 const capturedDevices: RegisteredDevicesProps[] = [];
 const capturedController: ControllerProps[] = [];
 const capturedAdvanced: AdvancedProps[] = [];
+const capturedFrontend: FrontendProps[] = [];
 const capturedMigration: SaveSortMigrationProps[] = [];
 
 vi.mock("./settings/ConnectionSection", () => ({
@@ -85,6 +88,12 @@ vi.mock("./settings/AdvancedSection", () => ({
   AdvancedSection: (p: AdvancedProps) => {
     capturedAdvanced.push(p);
     return createElement("div", { "data-testid": "advanced-section" });
+  },
+}));
+vi.mock("./settings/FrontendSection", () => ({
+  FrontendSection: (p: FrontendProps) => {
+    capturedFrontend.push(p);
+    return createElement("div", { "data-testid": "frontend-section" });
   },
 }));
 vi.mock("./settings/SaveSortMigrationSection", () => ({
@@ -193,6 +202,7 @@ describe("SettingsPage", () => {
     capturedDevices.length = 0;
     capturedController.length = 0;
     capturedAdvanced.length = 0;
+    capturedFrontend.length = 0;
     capturedMigration.length = 0;
     saveSortListeners.length = 0;
     currentSortState = { pending: false };
@@ -1107,6 +1117,49 @@ describe("SettingsPage", () => {
       });
       expect(vi.mocked(backend.saveLogLevel)).toHaveBeenCalledWith("debug");
       expect(capturedAdvanced[capturedAdvanced.length - 1]?.logLevel).toBe("debug");
+    });
+  });
+
+  describe("Frontend handlers", () => {
+    it("seeds the selector from getSettings", async () => {
+      vi.mocked(backend.getSettings).mockResolvedValue({
+        ...defaultSettings(),
+        frontend: "emudeck",
+      });
+      render(<SettingsPage onBack={vi.fn()} />);
+      await flushAsync();
+      expect(capturedFrontend[capturedFrontend.length - 1]?.frontend).toBe("emudeck");
+    });
+
+    it("falls back to 'auto' when settings.frontend is undefined", async () => {
+      render(<SettingsPage onBack={vi.fn()} />);
+      await flushAsync();
+      expect(capturedFrontend[capturedFrontend.length - 1]?.frontend).toBe("auto");
+    });
+
+    it("handleFrontendChange persists via saveFrontendSetting and updates the selector", async () => {
+      vi.mocked(backend.saveFrontendSetting).mockResolvedValue({ success: true });
+      render(<SettingsPage onBack={vi.fn()} />);
+      await flushAsync();
+      act(() => {
+        capturedFrontend[capturedFrontend.length - 1]?.onFrontendChange("retrodeck");
+      });
+      expect(vi.mocked(backend.saveFrontendSetting)).toHaveBeenCalledWith("retrodeck");
+      expect(capturedFrontend[capturedFrontend.length - 1]?.frontend).toBe("retrodeck");
+    });
+
+    it("saveFrontendSetting rejection surfaces via logError (catch side effect is observable)", async () => {
+      vi.mocked(backend.saveFrontendSetting).mockRejectedValue(new Error("backend down"));
+      const logSpy = vi.spyOn(backend, "logError");
+      render(<SettingsPage onBack={vi.fn()} />);
+      await flushAsync();
+      await act(async () => {
+        capturedFrontend[capturedFrontend.length - 1]?.onFrontendChange("emudeck");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to save frontend setting"));
+      logSpy.mockRestore();
     });
   });
 
