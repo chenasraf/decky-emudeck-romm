@@ -90,6 +90,9 @@ class RommApiAdapter:
     def download_cover(self, cover_url: str, dest: str) -> None:
         self._client.download(cover_url, dest)
 
+    def download_cover_bytes(self, cover_url: str) -> bytes:
+        return self._client.download_bytes(cover_url)
+
     # ── Collections ───────────────────────────────────────────────────
 
     def list_collections(self) -> list[dict]:

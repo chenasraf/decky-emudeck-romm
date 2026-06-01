@@ -1,23 +1,23 @@
 /**
- * LibraryPage state-render tests — F7 scaffold.
- *
- * Drives the four load states (loading / empty / error / ready) via the
- * mocked ``browseRoms`` callable and asserts the right slot renders.
- *
- * F8 will extend with grid + cover assertions; F10 with Download CTA.
+ * LibraryPage tests — F7 state scaffolding + F8 grid + pagination.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@testing-library/react";
 import { LibraryPage } from "./LibraryPage";
-import { browseRoms } from "../api/backend";
+import { browseRoms, getBrowseCoverBase64 } from "../api/backend";
 
 vi.mock("../api/backend", () => ({
   browseRoms: vi.fn(),
+  getBrowseCoverBase64: vi.fn(),
 }));
+
+const _makeRoms = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({ id: i + 1, name: `Game ${i + 1}` }));
 
 describe("LibraryPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
   });
 
   it("shows the spinner while browseRoms is in flight", () => {
@@ -32,18 +32,12 @@ describe("LibraryPage", () => {
     expect(await findByTestId("library-empty")).toBeDefined();
   });
 
-  it("renders the ready slot with the item count when browseRoms returns items", async () => {
-    vi.mocked(browseRoms).mockResolvedValue({
-      success: true,
-      total: 2,
-      items: [
-        { id: 1, name: "Zelda" },
-        { id: 2, name: "Mario" },
-      ],
-    });
-    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
-    const grid = await findByTestId("library-grid");
-    expect(grid.textContent).toContain("2");
+  it("renders the grid with one card per item when ready", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: _makeRoms(5), total: 5 });
+    const { findByTestId, findAllByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    expect(await findByTestId("library-grid")).toBeDefined();
+    const cards = await findAllByTestId("rom-card");
+    expect(cards).toHaveLength(5);
   });
 
   it("renders the error state and surfaces the backend message on success=false", async () => {
@@ -69,11 +63,36 @@ describe("LibraryPage", () => {
   it("re-fetches when Retry is pressed", async () => {
     vi.mocked(browseRoms)
       .mockRejectedValueOnce(new Error("first call failed"))
-      .mockResolvedValueOnce({ success: true, total: 1, items: [{ id: 1, name: "Zelda" }] });
+      .mockResolvedValueOnce({ success: true, total: 1, items: _makeRoms(1) });
     const { findByText, findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
     const retry = await findByText("Retry");
     fireEvent.click(retry);
     await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenCalledTimes(2));
     expect(await findByTestId("library-grid")).toBeDefined();
+  });
+
+  it("advances offset when Next is pressed", async () => {
+    vi.mocked(browseRoms)
+      .mockResolvedValueOnce({ success: true, items: _makeRoms(30), total: 75 })
+      .mockResolvedValueOnce({ success: true, items: _makeRoms(30), total: 75 });
+    const { findByText } = render(<LibraryPage onBack={vi.fn()} />);
+    const next = await findByText("Next");
+    fireEvent.click(next);
+    await waitFor(() => expect(vi.mocked(browseRoms)).toHaveBeenLastCalledWith(null, null, 30, 30));
+  });
+
+  it("disables Previous on the first page", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: _makeRoms(30), total: 90 });
+    const { findByText } = render(<LibraryPage onBack={vi.fn()} />);
+    const prev = (await findByText("Previous")) as HTMLButtonElement;
+    expect(prev.disabled).toBe(true);
+  });
+
+  it("surfaces pagination metadata in the status row", async () => {
+    vi.mocked(browseRoms).mockResolvedValue({ success: true, items: _makeRoms(30), total: 75 });
+    const { findByTestId } = render(<LibraryPage onBack={vi.fn()} />);
+    const meta = await findByTestId("library-pagination");
+    expect(meta.textContent).toContain("Page 1 of 3");
+    expect(meta.textContent).toContain("75 ROMs");
   });
 });

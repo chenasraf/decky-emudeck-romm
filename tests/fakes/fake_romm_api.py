@@ -296,6 +296,12 @@ class FakeRommApi:
         payload = self.download_payloads.get(key, b"")
         self._materialize_download(dest, payload)
 
+    def download_cover_bytes(self, cover_url: str) -> bytes:
+        self._log("download_cover_bytes", (cover_url,))
+        self._check_fail(getattr(self, "download_cover_bytes_side_effect", None))
+        key = f"cover:{cover_url}"
+        return self.download_payloads.get(key, b"")
+
     # ------------------------------------------------------------------
     # RommFirmwareApi
     # ------------------------------------------------------------------

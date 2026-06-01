@@ -247,6 +247,38 @@ class RommHttpAdapter:
 
         return self.with_retry(_do_download)
 
+    def download_bytes(self, path: str) -> bytes:
+        """Download a file from the RomM API and return its raw bytes.
+
+        Used by the Library tab to fetch cover thumbnails in-memory for
+        base64-encoding before relay to the frontend. Small (~50KB) covers
+        only — for ROM downloads stream to disk via :meth:`download`.
+
+        Accepts both relative paths (``/covers/x.jpg``, ``covers/x.jpg``)
+        and absolute URLs (``https://...``); the latter pass through unchanged
+        so RomM responses that embed a fully-qualified cover URL still resolve.
+        """
+        if path.startswith(("http://", "https://")):
+            url = urllib.parse.quote(path, safe="/:?=&@%")
+        else:
+            normalized = path if path.startswith("/") else "/" + path
+            encoded_path = urllib.parse.quote(normalized, safe="/:?=&@")
+            url = self._settings["romm_url"].rstrip("/") + encoded_path
+
+        def _do():
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("Authorization", self.auth_header())
+            req.add_header("User-Agent", self._user_agent)
+            try:
+                with urllib.request.urlopen(req, context=self.ssl_context(), timeout=30) as resp:
+                    return resp.read()
+            except RommApiError:
+                raise
+            except Exception as exc:
+                raise self.translate_http_error(exc, url, "GET") from exc
+
+        return self.with_retry(_do)
+
     def json_request(self, path: str, data, method: str = "POST"):
         """Send a JSON request (POST/PUT) to RomM API, return parsed response."""
         url = self._settings["romm_url"].rstrip("/") + path

@@ -25,3 +25,11 @@ export interface BrowseRomsResult {
   message?: string;
   error_code?: string;
 }
+
+export interface BrowseCoverResult {
+  success: boolean;
+  base64: string | null;
+  mime?: string;
+  message?: string;
+  error_code?: string;
+}

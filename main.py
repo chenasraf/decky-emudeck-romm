@@ -325,6 +325,9 @@ class Plugin:
     async def browse_roms(self, platform_ids=None, search=None, limit=30, offset=0):
         return await self._browse_service.browse_roms(platform_ids, search, limit, offset)
 
+    async def get_browse_cover_base64(self, rom_id):
+        return await self._browse_service.get_cover_base64(rom_id)
+
     async def set_all_platforms_sync(self, enabled):
         return await self._sync_service.set_all_platforms_sync(enabled)
 

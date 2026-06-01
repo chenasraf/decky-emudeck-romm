@@ -198,6 +198,10 @@ class RommRomReader(Protocol):
         """
         ...
 
+    def download_cover_bytes(self, cover_url: str) -> bytes:
+        """Download a RomM cover URL and return raw bytes (for in-memory base64)."""
+        ...
+
     def download_cover(self, cover_url: str, dest: str) -> None:
         """Download a ROM cover image to a local path.
 
