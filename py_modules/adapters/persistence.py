@@ -25,6 +25,7 @@ DEFAULT_SETTINGS: dict = {
     "romm_user": "",
     "romm_pass": "",
     "enabled_platforms": {},
+    "platform_sync_modes": {},
     "enabled_collections": {},
     "collection_create_platform_groups": False,
     "steam_input_mode": "default",

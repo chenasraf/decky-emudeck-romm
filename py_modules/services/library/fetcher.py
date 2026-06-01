@@ -123,6 +123,14 @@ class LibraryFetcher:
         self._settings_persister.save_settings()
         return {"success": True}
 
+    def save_platform_sync_mode(self, platform_id, mode):
+        if mode not in ("manual", "automatic"):
+            return {"success": False, "message": f"invalid sync mode: {mode!r}"}
+        pid = str(platform_id)
+        self._settings.setdefault("platform_sync_modes", {})[pid] = mode
+        self._settings_persister.save_settings()
+        return {"success": True}
+
     async def set_all_platforms_sync(self, enabled):
         enabled = bool(enabled)
         try:

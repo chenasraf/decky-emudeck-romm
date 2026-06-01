@@ -129,6 +129,31 @@ class TestSavePlatformSync:
         assert plugin.settings["enabled_platforms"]["42"] is False
 
 
+class TestSavePlatformSyncMode:
+    def test_saves_automatic_mode(self, plugin):
+        result = plugin._sync_service.save_platform_sync_mode(42, "automatic")
+        assert result["success"] is True
+        assert plugin.settings["platform_sync_modes"]["42"] == "automatic"
+
+    def test_saves_manual_mode(self, plugin):
+        plugin.settings["platform_sync_modes"]["42"] = "automatic"
+        result = plugin._sync_service.save_platform_sync_mode(42, "manual")
+        assert result["success"] is True
+        assert plugin.settings["platform_sync_modes"]["42"] == "manual"
+
+    def test_rejects_invalid_mode(self, plugin):
+        result = plugin._sync_service.save_platform_sync_mode(42, "bogus")
+        assert result["success"] is False
+        assert "invalid sync mode" in result["message"]
+        assert "42" not in plugin.settings.get("platform_sync_modes", {})
+
+    def test_creates_dict_when_missing(self, plugin):
+        plugin.settings.pop("platform_sync_modes", None)
+        result = plugin._sync_service.save_platform_sync_mode(7, "automatic")
+        assert result["success"] is True
+        assert plugin.settings["platform_sync_modes"]["7"] == "automatic"
+
+
 class TestSetAllPlatformsSync:
     """Tests for set_all_platforms_sync() — lines 126-139."""
 

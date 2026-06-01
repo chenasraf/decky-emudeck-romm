@@ -319,6 +319,9 @@ class LibraryService:
     def save_platform_sync(self, platform_id, enabled):
         return self._fetcher.save_platform_sync(platform_id, enabled)
 
+    def save_platform_sync_mode(self, platform_id, mode):
+        return self._fetcher.save_platform_sync_mode(platform_id, mode)
+
     async def set_all_platforms_sync(self, enabled):
         return await self._fetcher.set_all_platforms_sync(enabled)
 

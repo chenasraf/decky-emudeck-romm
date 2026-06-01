@@ -258,6 +258,9 @@ class Plugin:
     async def save_platform_sync(self, platform_id, enabled):
         return self._sync_service.save_platform_sync(platform_id, enabled)
 
+    async def save_platform_sync_mode(self, platform_id, mode):
+        return self._sync_service.save_platform_sync_mode(platform_id, mode)
+
     async def set_all_platforms_sync(self, enabled):
         return await self._sync_service.set_all_platforms_sync(enabled)
 
