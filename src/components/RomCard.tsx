@@ -1,14 +1,15 @@
 /**
- * Library tab grid card. Renders cover thumbnail + title + Download CTA.
- * Cover loading uses ``get_browse_cover_base64`` (backend LRU-cached); the
- * Download button calls ``start_download``. Per-card live queue state is
- * deferred to Sprint 6 — for now we show a transient "Queued" badge on
- * tap and rely on the LibraryPage's Refresh button to re-poll if needed.
+ * Library tab grid card. Cover thumbnail + title + Download CTA.
+ *
+ * Covers arrive inline on the ``browse_roms`` payload (server-side
+ * ``asyncio.gather`` fetches all covers in one round-trip), so this
+ * component is pure render — no per-card backend calls. Per-card live
+ * queue state (Queued/Downloading%/Updates) is deferred to Sprint 6.
  */
 
-import { useState, useEffect, FC } from "react";
+import { useState, FC } from "react";
 import { toaster } from "@decky/api";
-import { getBrowseCoverBase64, startDownload } from "../api/backend";
+import { startDownload } from "../api/backend";
 import type { BrowseRom } from "../types/browse";
 
 interface RomCardProps {
@@ -18,29 +19,10 @@ interface RomCardProps {
 }
 
 export const RomCard: FC<RomCardProps> = ({ rom, installed = false, onDownloadQueued }) => {
-  const [coverData, setCoverData] = useState<string | null>(null);
-  const [coverMime, setCoverMime] = useState<string>("image/jpeg");
-  const [coverLoaded, setCoverLoaded] = useState(false);
   const [queued, setQueued] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    getBrowseCoverBase64(rom.id)
-      .then((res) => {
-        if (cancelled) return;
-        setCoverData(res.success ? res.base64 : null);
-        setCoverMime(res.mime ?? "image/jpeg");
-        setCoverLoaded(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setCoverData(null);
-        setCoverLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [rom.id]);
+  const cover = rom.cover_base64;
+  const mime = rom.cover_mime ?? "image/jpeg";
 
   const handleDownload = async () => {
     setQueued(true);
@@ -74,16 +56,16 @@ export const RomCard: FC<RomCardProps> = ({ rom, installed = false, onDownloadQu
           justifyContent: "center",
         }}
       >
-        {coverData ? (
+        {cover ? (
           <img
-            src={`data:${coverMime};base64,${coverData}`}
+            src={`data:${mime};base64,${cover}`}
             alt={rom.name ?? `ROM ${rom.id}`}
             loading="lazy"
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
-        ) : coverLoaded ? (
+        ) : (
           <span style={{ fontSize: "10px", opacity: 0.6 }}>No art</span>
-        ) : null}
+        )}
       </div>
       <div
         data-testid="rom-card-title"

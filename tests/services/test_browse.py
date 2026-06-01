@@ -1,8 +1,9 @@
-"""Tests for BrowseService — paginated RomM ROM browse."""
+"""Tests for BrowseService — paginated RomM ROM browse + inline covers."""
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 from unittest.mock import MagicMock
 
@@ -103,57 +104,62 @@ class TestBrowseRoms:
         assert page1["items"][0]["id"] != page2["items"][0]["id"]
 
 
-class TestGetCoverBase64:
+class TestBrowseRomsInlineCovers:
     @pytest.mark.asyncio
-    async def test_returns_encoded_bytes_when_cover_available(self, fake_romm_api):
+    async def test_inlines_cover_base64_and_mime_per_item(self, fake_romm_api):
+        png_head = b"\x89PNG\r\n\x1a\n"
         fake_romm_api.roms = {
-            42: {"id": 42, "name": "Zelda", "path_cover_small": "/covers/42-s.jpg"},
+            42: {"id": 42, "name": "Zelda", "platform_id": 5, "path_cover_small": "/covers/42.png"},
         }
-        fake_romm_api.download_payloads = {"cover:/covers/42-s.jpg": b"\x89PNG\r\n"}
+        fake_romm_api.download_payloads = {"cover:/covers/42.png": png_head}
         service = _make_service(fake_romm_api)
-        result = await service.get_cover_base64(42)
-        assert result["success"] is True
-        assert result["base64"] is not None
-        # Round-trip the encoding to confirm the bytes survived
-        import base64
-        assert base64.b64decode(result["base64"]) == b"\x89PNG\r\n"
+        result = await service.browse_roms(None, None, 30, 0)
+        item = result["items"][0]
+        assert item["cover_mime"] == "image/png"
+        assert base64.b64decode(item["cover_base64"]) == png_head
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_rom_has_no_cover_path(self, fake_romm_api):
-        fake_romm_api.roms = {42: {"id": 42, "name": "No Art"}}
+    async def test_omits_cover_fields_when_rom_has_no_cover_path(self, fake_romm_api):
+        fake_romm_api.roms = {42: {"id": 42, "name": "No Art", "platform_id": 5}}
         service = _make_service(fake_romm_api)
-        result = await service.get_cover_base64(42)
-        assert result["success"] is True
-        assert result["base64"] is None
+        result = await service.browse_roms(None, None, 30, 0)
+        item = result["items"][0]
+        assert "cover_base64" not in item
+        assert "cover_mime" not in item
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_download_returns_empty_bytes(self, fake_romm_api):
-        fake_romm_api.roms = {42: {"id": 42, "path_cover_small": "/covers/42-s.jpg"}}
-        fake_romm_api.download_payloads = {"cover:/covers/42-s.jpg": b""}
-        service = _make_service(fake_romm_api)
-        result = await service.get_cover_base64(42)
-        assert result["success"] is True
-        assert result["base64"] is None
-
-    @pytest.mark.asyncio
-    async def test_cache_hit_skips_second_fetch(self, fake_romm_api):
-        fake_romm_api.roms = {42: {"id": 42, "path_cover_small": "/covers/42-s.jpg"}}
-        fake_romm_api.download_payloads = {"cover:/covers/42-s.jpg": b"abc"}
-        service = _make_service(fake_romm_api)
-        first = await service.get_cover_base64(42)
-        second = await service.get_cover_base64(42)
-        assert first == second
-        # Second call hits the LRU cache → no extra download
-        cover_calls = [c for c in fake_romm_api.call_log if c[0] == "download_cover_bytes"]
-        assert len(cover_calls) == 1
-
-    @pytest.mark.asyncio
-    async def test_server_unreachable_returns_failure_with_null_base64(self, fake_romm_api):
+    async def test_partial_cover_failure_does_not_break_response(self, fake_romm_api):
         from lib.errors import RommConnectionError
 
-        fake_romm_api.get_rom_side_effect = RommConnectionError("offline")
+        fake_romm_api.roms = {
+            1: {"id": 1, "name": "A", "path_cover_small": "/covers/1.jpg"},
+            2: {"id": 2, "name": "B", "path_cover_small": "/covers/2.jpg"},
+        }
+        fake_romm_api.download_payloads = {"cover:/covers/1.jpg": b"good"}
+
+        original = fake_romm_api.download_cover_bytes
+
+        def selective(cover_url: str) -> bytes:
+            if "2.jpg" in cover_url:
+                raise RommConnectionError("partial")
+            return original(cover_url)
+
+        fake_romm_api.download_cover_bytes = selective  # type: ignore[method-assign]
         service = _make_service(fake_romm_api)
-        result = await service.get_cover_base64(42)
-        assert result["success"] is False
-        assert result["error_code"] == "connection_error"
-        assert result["base64"] is None
+        result = await service.browse_roms(None, None, 30, 0)
+        items = sorted(result["items"], key=lambda r: r["id"])
+        assert items[0]["cover_base64"] == base64.b64encode(b"good").decode("ascii")
+        assert "cover_base64" not in items[1]
+
+    @pytest.mark.asyncio
+    async def test_lru_cache_skips_second_download_for_same_rom(self, fake_romm_api):
+        fake_romm_api.roms = {
+            42: {"id": 42, "name": "Zelda", "path_cover_small": "/covers/42.jpg"},
+        }
+        fake_romm_api.download_payloads = {"cover:/covers/42.jpg": b"abc"}
+        service = _make_service(fake_romm_api)
+        first = await service.browse_roms(None, None, 30, 0)
+        second = await service.browse_roms(None, None, 30, 0)
+        assert first["items"][0]["cover_base64"] == second["items"][0]["cover_base64"]
+        cover_calls = [c for c in fake_romm_api.call_log if c[0] == "download_cover_bytes"]
+        assert len(cover_calls) == 1

@@ -4,11 +4,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@testing-library/react";
 import { LibraryPage } from "./LibraryPage";
-import { browseRoms, getBrowseCoverBase64, getInstalledRomIds, getPlatforms, startDownload } from "../api/backend";
+import { browseRoms, getInstalledRomIds, getPlatforms, startDownload } from "../api/backend";
 
 vi.mock("../api/backend", () => ({
   browseRoms: vi.fn(),
-  getBrowseCoverBase64: vi.fn(),
   getInstalledRomIds: vi.fn(),
   getPlatforms: vi.fn(),
   startDownload: vi.fn(),
@@ -20,7 +19,6 @@ const _makeRoms = (n: number) =>
 describe("LibraryPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getBrowseCoverBase64).mockResolvedValue({ success: true, base64: null });
     vi.mocked(getPlatforms).mockResolvedValue({ success: true, platforms: [] });
     vi.mocked(getInstalledRomIds).mockResolvedValue({ ids: [] });
     vi.mocked(startDownload).mockResolvedValue({ success: true });

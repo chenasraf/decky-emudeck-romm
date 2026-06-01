@@ -16,20 +16,17 @@ export interface BrowseRom {
   path_cover_small?: string;
   path_cover_large?: string;
   url_cover?: string;
+  /** Inline cover thumbnail (base64-encoded image bytes). Backend bundles
+   * these on the browse_roms response so the grid renders in one round-trip. */
+  cover_base64?: string;
+  /** MIME type sniffed server-side from the first few bytes of the cover. */
+  cover_mime?: string;
 }
 
 export interface BrowseRomsResult {
   success: boolean;
   items: BrowseRom[];
   total: number;
-  message?: string;
-  error_code?: string;
-}
-
-export interface BrowseCoverResult {
-  success: boolean;
-  base64: string | null;
-  mime?: string;
   message?: string;
   error_code?: string;
 }

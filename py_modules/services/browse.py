@@ -9,6 +9,7 @@ in ``adapters/romm``.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -71,54 +72,49 @@ class BrowseService:
 
         items = page.get("items", []) if isinstance(page.get("items"), list) else []
         total = page.get("total", 0) if isinstance(page.get("total"), int) else 0
+
+        # Inline cover thumbnails so the grid renders in one round-trip.
+        # asyncio.gather with return_exceptions keeps a single transport
+        # failure from masking the rest of the page; cards without a
+        # resolved cover fall through to the "No art" placeholder.
+        await asyncio.gather(*(self._attach_cover(item) for item in items), return_exceptions=True)
+
         return {"success": True, "items": items, "total": total}
 
-    async def get_cover_base64(self, rom_id: int) -> dict:
-        """Fetch a ROM's RomM cover and return it base64-encoded.
-
-        LRU-cached in-memory so re-renders of the Library grid don't
-        re-hit the RomM server. Returns ``{base64: None}`` when the ROM
-        has no cover path; RomM transport errors surface as the canonical
-        failure shape so the frontend can render a placeholder.
-        """
+    async def _attach_cover(self, item: dict) -> None:
+        rom_id = item.get("id")
+        if not isinstance(rom_id, int):
+            return
         cached = self._cover_cache.get(rom_id)
         if cached is not None:
             self._cover_cache.move_to_end(rom_id)
-            return {"success": True, "base64": cached, "mime": _sniff_mime(_b64_head(cached))}
-
-        try:
-            rom = await self._loop.run_in_executor(None, self._romm_api.get_rom, rom_id)
-        except Exception as e:
-            self._logger.warning(f"get_rom failed for cover lookup rom_id={rom_id}: {e}")
-            code, msg = classify_error(e)
-            return {"success": False, "message": msg, "error_code": code, "base64": None}
+            item["cover_base64"] = cached
+            item["cover_mime"] = _sniff_mime(_b64_head(cached))
+            return
 
         cover_url = (
-            (rom or {}).get("path_cover_small")
-            or (rom or {}).get("path_cover_large")
-            or (rom or {}).get("url_cover")
+            item.get("path_cover_small")
+            or item.get("path_cover_large")
+            or item.get("url_cover")
         )
         if not cover_url:
-            self._logger.info(f"rom_id={rom_id} has no cover path; skipping")
-            return {"success": True, "base64": None}
+            return
 
         try:
             raw = await self._loop.run_in_executor(None, self._romm_api.download_cover_bytes, cover_url)
         except Exception as e:
-            self._logger.warning(f"download_cover_bytes failed for rom_id={rom_id} url={cover_url!r}: {e}")
-            code, msg = classify_error(e)
-            return {"success": False, "message": msg, "error_code": code, "base64": None}
+            self._logger.warning(f"download_cover_bytes failed rom_id={rom_id} url={cover_url!r}: {e}")
+            return
 
         if not raw:
-            self._logger.info(f"rom_id={rom_id} cover download returned 0 bytes (url={cover_url!r})")
-            return {"success": True, "base64": None}
+            return
 
-        mime = _sniff_mime(raw[:16])
         encoded = base64.b64encode(raw).decode("ascii")
         self._cover_cache[rom_id] = encoded
         if len(self._cover_cache) > _COVER_CACHE_LIMIT:
             self._cover_cache.popitem(last=False)
-        return {"success": True, "base64": encoded, "mime": mime}
+        item["cover_base64"] = encoded
+        item["cover_mime"] = _sniff_mime(raw[:16])
 
 
 def _sniff_mime(head: bytes) -> str:
