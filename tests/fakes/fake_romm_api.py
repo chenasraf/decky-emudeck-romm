@@ -198,6 +198,27 @@ class FakeRommApi:
         items = [r for r in self.roms.values() if r.get("platform_id") == platform_id]
         return self._paginate(items, limit, offset)
 
+    def browse_roms(
+        self,
+        platform_ids: list[int] | None,
+        search: str | None,
+        limit: int = 30,
+        offset: int = 0,
+    ) -> dict:
+        self._log(
+            "browse_roms",
+            (platform_ids, search),
+            {"limit": limit, "offset": offset},
+        )
+        self._check_fail(getattr(self, "browse_roms_side_effect", None))
+        items = list(self.roms.values())
+        if platform_ids:
+            items = [r for r in items if r.get("platform_id") in platform_ids]
+        if search:
+            needle = search.lower()
+            items = [r for r in items if needle in str(r.get("name", "")).lower()]
+        return self._paginate(items, limit, offset)
+
     def list_roms_updated_after(
         self,
         platform_id: int,

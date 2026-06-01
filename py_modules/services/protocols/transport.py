@@ -131,6 +131,21 @@ class RommRomReader(Protocol):
         """
         ...
 
+    def browse_roms(
+        self,
+        platform_ids: list[int] | None,
+        search: str | None,
+        limit: int = 30,
+        offset: int = 0,
+    ) -> dict:
+        """Paginated ROM browse with optional multi-platform filter + search.
+
+        Returns paginated response {"items": [...], "total": N} from
+        /api/roms with repeated ?platform_ids= params (RomM accepts the
+        param multiple times) and an optional ?search= filter.
+        """
+        ...
+
     def list_roms_updated_after(
         self,
         platform_id: int,

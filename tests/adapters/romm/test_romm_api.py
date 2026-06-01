@@ -54,6 +54,28 @@ class TestListRoms:
         client.request.assert_called_once_with("/api/roms?platform_ids=5&limit=25&offset=10")
 
 
+class TestBrowseRoms:
+    def test_repeats_platform_ids_param(self):
+        api, client = _make_api()
+        client.request.return_value = {"items": [], "total": 0}
+        api.browse_roms([1, 2, 3], None, limit=30, offset=0)
+        client.request.assert_called_once_with(
+            "/api/roms?platform_ids=1&platform_ids=2&platform_ids=3&limit=30&offset=0"
+        )
+
+    def test_url_encodes_search_term(self):
+        api, client = _make_api()
+        client.request.return_value = {"items": [], "total": 0}
+        api.browse_roms(None, "super mario", limit=30, offset=0)
+        client.request.assert_called_once_with("/api/roms?search=super%20mario&limit=30&offset=0")
+
+    def test_omits_platform_and_search_when_unset(self):
+        api, client = _make_api()
+        client.request.return_value = {"items": [], "total": 0}
+        api.browse_roms(None, None, limit=30, offset=60)
+        client.request.assert_called_once_with("/api/roms?limit=30&offset=60")
+
+
 class TestDownloadSave:
     def test_uses_content_endpoint(self):
         api, client = _make_api()

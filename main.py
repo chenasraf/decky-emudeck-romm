@@ -127,6 +127,7 @@ class Plugin:
         self._save_sync_service = services["save_sync_service"]
         self._playtime_service = services["playtime_service"]
         self._sync_service = services["sync_service"]
+        self._browse_service = services["browse_service"]
         self._download_service = services["download_service"]
         self._rom_removal_service = services["rom_removal_service"]
         self._firmware_service = services["firmware_service"]
@@ -260,6 +261,9 @@ class Plugin:
 
     async def save_platform_sync_mode(self, platform_id, mode):
         return self._sync_service.save_platform_sync_mode(platform_id, mode)
+
+    async def browse_roms(self, platform_ids=None, search=None, limit=30, offset=0):
+        return await self._browse_service.browse_roms(platform_ids, search, limit, offset)
 
     async def set_all_platforms_sync(self, enabled):
         return await self._sync_service.set_all_platforms_sync(enabled)

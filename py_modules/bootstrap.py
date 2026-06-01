@@ -56,6 +56,7 @@ from lib.errors import FrontendUnsupportedError
 from lib.late_binding import LateBinding
 from services.achievements import AchievementsService, AchievementsServiceConfig
 from services.artwork import ArtworkService, ArtworkServiceConfig
+from services.browse import BrowseService, BrowseServiceConfig
 from services.connection import ConnectionService, ConnectionServiceConfig
 from services.cores import CoreService, CoreServiceConfig
 from services.downloads import DownloadService, DownloadServiceConfig
@@ -578,6 +579,14 @@ def wire_services(cfg: WiringConfig) -> dict:
     )
     pending_sync_binding.set(lambda: sync_service.pending_sync)
 
+    browse_service = BrowseService(
+        config=BrowseServiceConfig(
+            romm_api=cfg.adapters.romm_api,
+            loop=cfg.runtime.loop,
+            logger=cfg.runtime.logger,
+        ),
+    )
+
     download_service = DownloadService(
         config=DownloadServiceConfig(
             romm_api=cfg.adapters.romm_api,
@@ -732,6 +741,7 @@ def wire_services(cfg: WiringConfig) -> dict:
         "save_sync_service": save_sync_service,
         "playtime_service": playtime_service,
         "sync_service": sync_service,
+        "browse_service": browse_service,
         "download_service": download_service,
         "rom_removal_service": rom_removal_service,
         "firmware_service": firmware_service,

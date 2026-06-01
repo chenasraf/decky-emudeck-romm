@@ -45,6 +45,22 @@ class RommApiAdapter:
     def list_roms(self, platform_id: int, limit: int = 50, offset: int = 0) -> dict:
         return self._client.request(f"/api/roms?platform_ids={platform_id}&limit={limit}&offset={offset}")
 
+    def browse_roms(
+        self,
+        platform_ids: list[int] | None,
+        search: str | None,
+        limit: int = 30,
+        offset: int = 0,
+    ) -> dict:
+        params: list[str] = []
+        for pid in platform_ids or []:
+            params.append(f"platform_ids={pid}")
+        if search:
+            params.append(f"search={urllib.parse.quote(search, safe='')}")
+        params.append(f"limit={limit}")
+        params.append(f"offset={offset}")
+        return self._client.request("/api/roms?" + "&".join(params))
+
     def list_roms_updated_after(
         self,
         platform_id: int,
