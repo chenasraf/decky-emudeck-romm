@@ -2,19 +2,16 @@
   "name": "EmuDeck RomM Sync",
   "version": "0.1.0",
   "author": "chenasraf",
-  "flags": [
-    "_root"
-  ],
+  "flags": [],
   "api_version": 1,
   "publish": {
     "tags": [
       "romm",
       "rom-manager",
       "emudeck",
-      "retrodeck",
       "emulation"
     ],
-    "description": "EmuDeck-focused fork of decky-romm-sync. Browse and download from your self-hosted RomM into EmuDeck paths, manage BIOS, and sync saves bidirectionally with per-system filename normalization. RetroDECK is still supported as a secondary frontend.",
+    "description": "EmuDeck-only fork of decky-romm-sync. Browse and download from your self-hosted RomM into EmuDeck paths, manage BIOS, and sync saves bidirectionally with per-system filename normalization.",
     "image": "https://raw.githubusercontent.com/chenasraf/decky-emudeck-romm/main/assets/store_image.png"
   }
 }
