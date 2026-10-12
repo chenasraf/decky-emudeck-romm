@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -34,6 +35,13 @@ type Client struct {
 	version   string
 	userAgent string
 	http      *http.Client
+	log       *slog.Logger
+}
+
+// WithLogger makes the client log each request at debug level, and failed ones at warn.
+func (c *Client) WithLogger(log *slog.Logger) *Client {
+	c.log = log
+	return c
 }
 
 // New returns a client for server. token may be empty for the unauthenticated endpoints, and
@@ -58,6 +66,7 @@ func New(server domain.Server, token, version string) *Client {
 		// they reach RomM.
 		userAgent: clientName + "/" + version,
 		http:      &http.Client{Transport: transport, Timeout: requestTimeout},
+		log:       slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -247,8 +256,12 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) (int,
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 
+	start := time.Now()
 	resp, err := c.http.Do(req)
+	// Tokens and codes travel in headers and bodies, never in the URL, so the URL is safe to log.
+	attrs := []any{"method", method, "url", c.base + path, "duration", time.Since(start).Round(time.Millisecond)}
 	if err != nil {
+		c.log.Warn("request failed", append(attrs, "err", err)...)
 		var de *domain.Error
 		if errors.As(err, &de) {
 			return 0, de
@@ -256,6 +269,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) (int,
 		return 0, &domain.Error{Kind: domain.KindUnreachable, Message: "Couldn't reach the server.", Err: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
+	c.log.Debug("request", append(attrs, "status", resp.StatusCode)...)
 
 	if out == nil {
 		return resp.StatusCode, nil

@@ -71,6 +71,9 @@ func PairingEvents(s *Server) app.PairingListener {
 			status := toWireStatus(u.Status)
 			event.Status = &status
 		}
+		if u.Problem != nil {
+			event.Problem = problemOf(u.Problem)
+		}
 		if err := s.Notify("device_pairing", event); err != nil {
 			s.log.Error("send device_pairing", "err", err)
 		}
@@ -90,13 +93,19 @@ func toWireStatus(s app.ConnectionStatus) schema.ConnectionStatus {
 		})
 	}
 	if s.Problem != nil {
-		var rpcErr *Error
-		if errors.As(wireError(s.Problem), &rpcErr) {
-			e := schema.Error(*rpcErr)
-			out.Problem = &e
-		}
+		out.Problem = problemOf(s.Problem)
 	}
 	return out
+}
+
+// problemOf describes err for a field the frontend shows, rather than for a rejected call.
+func problemOf(err error) *schema.Error {
+	var rpcErr *Error
+	if errors.As(wireError(err), &rpcErr) {
+		e := schema.Error(*rpcErr)
+		return &e
+	}
+	return &schema.Error{Code: CodeInternalError, Message: err.Error()}
 }
 
 // wireError turns a domain error into a JSON-RPC error the frontend can switch on. Any other error

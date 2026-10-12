@@ -166,10 +166,18 @@ export type PairingState = string;
 export const PairingApproved: PairingState = "approved";
 export const PairingDenied: PairingState = "denied";
 export const PairingExpired: PairingState = "expired";
+/**
+ * PairingFailed means RomM approved the pairing but the plugin couldn't keep the sign-in.
+ */
+export const PairingFailed: PairingState = "failed";
 export interface DevicePairingEvent {
   state: PairingState;
   /**
    * Status is the connection once signed in, set when approved.
    */
   status?: ConnectionStatus;
+  /**
+   * Problem says what went wrong, set when failed.
+   */
+  problem?: Error;
 }

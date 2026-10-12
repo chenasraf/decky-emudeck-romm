@@ -65,6 +65,12 @@ export function DevicePairingPanel({
         setState({ name: 'denied' })
       } else if (event.state === 'expired') {
         setState({ name: 'expired' })
+      } else if (event.state === 'failed') {
+        userCode = null
+        setState({
+          name: 'failed',
+          message: `RomM approved this Deck, but the plugin couldn't save the sign-in: ${event.problem?.message ?? 'unknown error'}`,
+        })
       }
     })
 

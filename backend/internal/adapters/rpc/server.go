@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
 )
@@ -152,22 +153,32 @@ func (s *Server) dispatch(ctx context.Context, line []byte) {
 		return
 	}
 
+	start := time.Now()
 	result, err := handler(ctx, req.Params)
+	// Params aren't logged: they can carry a pair code.
+	attrs := []any{"method", req.Method, "duration", time.Since(start).Round(time.Millisecond)}
 	if isNotification {
 		if err != nil {
-			s.log.Warn("notification handler failed", "method", req.Method, "err", err)
+			s.log.Warn("notification handler failed", append(attrs, "err", err)...)
 		}
 		return
 	}
 	if err != nil {
 		var rpcErr *Error
-		if !errors.As(err, &rpcErr) {
-			s.log.Error("call failed", "method", req.Method, "err", err)
+		if errors.As(err, &rpcErr) {
+			kind := ""
+			if rpcErr.Data != nil {
+				kind = string(rpcErr.Data.Kind)
+			}
+			s.log.Info("call returned an error", append(attrs, "kind", kind, "message", rpcErr.Message)...)
+		} else {
+			s.log.Error("call failed", append(attrs, "err", err)...)
 			rpcErr = &Error{Code: CodeInternalError, Message: err.Error()}
 		}
 		s.reply(req.ID, nil, rpcErr)
 		return
 	}
+	s.log.Debug("call", attrs...)
 	s.reply(req.ID, result, nil)
 }
 

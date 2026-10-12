@@ -159,10 +159,14 @@ const (
 	PairingApproved PairingState = "approved"
 	PairingDenied   PairingState = "denied"
 	PairingExpired  PairingState = "expired"
+	// PairingFailed means RomM approved the pairing but the plugin couldn't keep the sign-in.
+	PairingFailed PairingState = "failed"
 )
 
 type DevicePairingEvent struct {
 	State PairingState `json:"state"`
 	// Status is the connection once signed in, set when approved.
 	Status *ConnectionStatus `json:"status,omitempty"`
+	// Problem says what went wrong, set when failed.
+	Problem *Error `json:"problem,omitempty"`
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -263,6 +264,22 @@ func TestDevicePairingApproved(t *testing.T) {
 	// The poll after slow_down waits at least one slowDownStep longer.
 	if gap := n.pollTimes[2].Sub(n.pollTimes[1]); gap < c.slowDownStep {
 		t.Fatalf("poll after slow_down came after %v", gap)
+	}
+}
+
+type brokenSettings struct{ fakeSettings }
+
+func (*brokenSettings) SaveSignIn(domain.SignIn) error { return errors.New("disk full") }
+
+func TestDevicePairingSaveFails(t *testing.T) {
+	n := &fakeNet{approved: domain.SignIn{Token: "rmm_dev", DeviceID: "dev-1"}}
+	c, updates := newConnection(t, &brokenSettings{}, n)
+	if _, err := c.StartDevicePairing(context.Background(), domain.Server{URL: "https://romm.lan"}); err != nil {
+		t.Fatal(err)
+	}
+	u := updates.next(t)
+	if u.State != PairingFailed || u.Problem == nil || !strings.Contains(u.Problem.Error(), "disk full") {
+		t.Fatalf("got %+v", u)
 	}
 }
 

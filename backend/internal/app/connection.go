@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -62,12 +63,16 @@ const (
 	PairingApproved PairingState = "approved"
 	PairingDenied   PairingState = "denied"
 	PairingExpired  PairingState = "expired"
+	// PairingFailed means RomM approved the pairing but the plugin couldn't keep the sign-in.
+	PairingFailed PairingState = "failed"
 )
 
-// PairingUpdate is how a device pairing ended. Status is set when it was approved.
+// PairingUpdate is how a device pairing ended. Status is set when it was approved, and Problem
+// when it failed.
 type PairingUpdate struct {
-	State  PairingState
-	Status ConnectionStatus
+	State   PairingState
+	Status  ConnectionStatus
+	Problem error
 }
 
 // PairingListener hears how each device pairing ends. A cancelled pairing ends silently.
@@ -143,10 +148,13 @@ func (c *Connection) CheckServer(ctx context.Context, input, trustFingerprint st
 		version, err := c.dial(server, "").Heartbeat(ctx)
 		if err == nil {
 			if err := domain.CheckServerVersion(version); err != nil {
+				c.log.Info("server too old", "url", u, "version", version)
 				return domain.Server{}, "", err
 			}
+			c.log.Info("found server", "url", u, "version", version, "pinned_cert", trustFingerprint != "")
 			return server, version, nil
 		}
+		c.log.Info("no server at address", "url", u, "err", err)
 		lastErr = err
 		// Something answered at this address, so falling back to plain HTTP would reach a
 		// different service, or the same one without encryption.
@@ -177,7 +185,13 @@ func (c *Connection) SignInWithPairCode(ctx context.Context, server domain.Serve
 	if err := c.settings.SaveSignIn(in); err != nil {
 		return ConnectionStatus{}, err
 	}
+	c.logSignIn("pair code", in)
 	return c.Status(ctx)
+}
+
+func (c *Connection) logSignIn(method string, in domain.SignIn) {
+	c.log.Info("signed in", "method", method, "url", in.Server.URL, "device_id", in.DeviceID,
+		"scopes", in.Scopes, "disabled_features", len(domain.DisabledFeatures(in.Scopes)))
 }
 
 // StartDevicePairing asks RomM to pair this Deck as a Device and returns the code for the user to
@@ -200,11 +214,14 @@ func (c *Connection) StartDevicePairing(ctx context.Context, server domain.Serve
 	pctx, cancel := context.WithTimeout(c.base, pairing.ExpiresIn)
 	c.mu.Lock()
 	if c.cancelPairing != nil {
+		c.log.Info("device pairing replaced", "user_code", c.pairingCode)
 		c.cancelPairing()
 	}
 	c.pairingCode, c.cancelPairing = pairing.UserCode, cancel
 	c.mu.Unlock()
 
+	c.log.Info("device pairing started", "url", server.URL, "user_code", pairing.UserCode,
+		"device", device.Name, "platform", device.Platform, "expires_in", pairing.ExpiresIn, "interval", pairing.Interval)
 	go c.pollPairing(pctx, cancel, client, server, pairing)
 	return pairing, nil
 }
@@ -215,6 +232,7 @@ func (c *Connection) CancelDevicePairing(userCode string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cancelPairing != nil && c.pairingCode == userCode {
+		c.log.Info("device pairing cancelled", "user_code", userCode)
 		c.cancelPairing()
 		c.pairingCode, c.cancelPairing = "", nil
 	}
@@ -227,10 +245,12 @@ func (c *Connection) pollPairing(ctx context.Context, cancel context.CancelFunc,
 		interval = c.slowDownStep
 	}
 
+	log := c.log.With("user_code", pairing.UserCode)
 	for {
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				log.Info("device pairing expired", "reason", "no approval in time")
 				c.onPairing(PairingUpdate{State: PairingExpired})
 			}
 			return
@@ -242,27 +262,34 @@ func (c *Connection) pollPairing(ctx context.Context, cancel context.CancelFunc,
 		case err == nil:
 			in.Server = server
 			if err := c.settings.SaveSignIn(in); err != nil {
-				c.log.Error("save device sign-in", "err", err)
+				log.Error("save device sign-in", "err", err)
+				c.onPairing(PairingUpdate{State: PairingFailed, Problem: fmt.Errorf("save sign-in: %w", err)})
 				return
 			}
+			c.logSignIn("device pairing", in)
 			status, err := c.Status(ctx)
 			if err != nil {
-				c.log.Error("read status after device sign-in", "err", err)
+				log.Error("read status after device sign-in", "err", err)
 			}
 			c.onPairing(PairingUpdate{State: PairingApproved, Status: status})
 			return
 		case errors.Is(err, domain.ErrPairingSlowDown):
 			interval += c.slowDownStep
+			log.Info("device pairing polled too fast, slowing down", "interval", interval)
 		case errors.Is(err, domain.ErrPairingDenied):
+			log.Info("device pairing denied")
 			c.onPairing(PairingUpdate{State: PairingDenied})
 			return
 		case errors.Is(err, domain.ErrPairingExpired):
+			log.Info("device pairing expired", "reason", "RomM dropped the request")
 			c.onPairing(PairingUpdate{State: PairingExpired})
 			return
-		case errors.Is(err, domain.ErrPairingPending), ctx.Err() != nil:
+		case errors.Is(err, domain.ErrPairingPending):
+			log.Debug("device pairing waiting for approval")
+		case ctx.Err() != nil:
 		default:
 			// A dropped connection or a server hiccup; the request stays valid until it expires.
-			c.log.Warn("poll device pairing", "err", err)
+			log.Warn("poll device pairing", "err", err)
 		}
 	}
 }

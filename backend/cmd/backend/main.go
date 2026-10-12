@@ -31,7 +31,13 @@ func main() {
 	}
 
 	// stdout carries only the protocol; logs go to stderr, which main.py forwards to decky.logger.
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	level := slog.LevelInfo
+	if v := os.Getenv("BACKEND_LOG_LEVEL"); v != "" {
+		if err := level.UnmarshalText([]byte(v)); err != nil {
+			fmt.Fprintf(os.Stderr, "ignoring BACKEND_LOG_LEVEL=%q: %v\n", v, err)
+		}
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
 	if err := run(log); err != nil {
 		log.Error("exiting", "err", err)
@@ -48,16 +54,19 @@ func run(log *slog.Logger) error {
 	settingsDir := os.Getenv("DECKY_PLUGIN_SETTINGS_DIR")
 	store := settings.New(settingsDir)
 	identity := system.NewIdentity(settingsDir)
-	dial := func(server domain.Server, token string) app.RomM { return romm.New(server, token, version) }
+	rommLog := log.With("component", "romm")
+	dial := func(server domain.Server, token string) app.RomM {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
 
 	srv := rpc.NewServer(os.Stdout, log)
-	conn := app.NewConnection(ctx, store, dial, identity, rpc.PairingEvents(srv), log)
+	conn := app.NewConnection(ctx, store, dial, identity, rpc.PairingEvents(srv), log.With("component", "connection"))
 	rpc.Routes(srv, version, conn)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {
 		return fmt.Errorf("send ready: %w", err)
 	}
-	log.Info("started", "version", version, "protocol", schema.ProtocolVersion)
+	log.Info("started", "version", version, "protocol", schema.ProtocolVersion, "settings_dir", settingsDir)
 
 	return srv.Serve(ctx, os.Stdin)
 }
