@@ -1,0 +1,11 @@
+{
+  "name": "EmuDeck RomM Sync",
+  "author": "chenasraf",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["romm", "emudeck", "emulation", "saves"],
+    "description": "Turns your RomM server into a library for EmuDeck: places ROMs and BIOS in EmuDeck's folders and keeps saves in sync with RomM.",
+    "image": "https://opengraph.githubassets.com/1/chenasraf/decky-emudeck-romm"
+  }
+}

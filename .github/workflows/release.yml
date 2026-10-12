@@ -20,3 +20,29 @@ jobs:
       working-directory: backend
       platforms: '["linux/amd64", "linux/arm64"]'
       release-type: node
+
+  plugin:
+    uses: ./.github/workflows/plugin.yml
+
+  attach-zip:
+    name: Attach plugin zip to release
+    needs: [release, plugin]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Find a release for this commit
+        id: tag
+        run: |
+          tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          if [ -n "$tag" ] && [ "$(gh api "repos/$GH_REPO/commits/$tag" --jq .sha)" = "$GITHUB_SHA" ]; then
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v8
+        if: steps.tag.outputs.tag
+        with:
+          name: plugin-zip
+      - if: steps.tag.outputs.tag
+        run: gh release upload "${{ steps.tag.outputs.tag }}" decky-emudeck-romm.zip --clobber

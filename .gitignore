@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+backend/out/
+bin/
+cli/
+__pycache__/
+.DS_Store

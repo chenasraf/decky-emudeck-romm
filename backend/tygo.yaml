@@ -1,0 +1,3 @@
+packages:
+  - path: github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema
+    output_path: ../src/rpc/schema.gen.ts

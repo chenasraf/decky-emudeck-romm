@@ -1,0 +1,36 @@
+glob_matcher: doublestar
+
+pre-commit:
+  parallel: true
+  commands:
+    go-fmt:
+      root: backend/
+      glob: 'backend/**/*.go'
+      run: go fmt ./...
+      stage_fixed: true
+    go-vet:
+      root: backend/
+      glob: 'backend/**/*.go'
+      run: go vet ./...
+    golangci-lint:
+      root: backend/
+      glob: 'backend/**/*.go'
+      run: golangci-lint run ./...
+    go-test:
+      root: backend/
+      glob: 'backend/**/*.go'
+      run: go test ./...
+    generated-ts:
+      glob: 'backend/internal/adapters/rpc/schema/*.go'
+      run: pnpm generate && git diff --exit-code -- src/rpc/schema.gen.ts
+      fail_text: src/rpc/schema.gen.ts was stale and has been regenerated; stage it
+    prettier:
+      glob: '**/*.{js,ts,tsx,json,md,yml,yaml}'
+      run: pnpm prettier --write {staged_files}
+      stage_fixed: true
+    eslint:
+      glob: '**/*.{js,ts,tsx}'
+      run: pnpm eslint --no-warn-ignored {staged_files}
+    tsc:
+      glob: '**/*.{ts,tsx}'
+      run: pnpm tsc --noEmit

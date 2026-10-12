@@ -1,0 +1,9 @@
+pnpm-lock.yaml
+CHANGELOG.md
+src/rpc/schema.gen.ts
+backend/
+dist/
+out/
+.scratch/
+CLAUDE.md
+CONTEXT.md

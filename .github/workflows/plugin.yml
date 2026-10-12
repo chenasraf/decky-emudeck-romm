@@ -1,0 +1,71 @@
+name: Plugin
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    name: Lint and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - name: Generated TypeScript is up to date
+        run: |
+          pnpm generate
+          git diff --exit-code -- src/rpc/schema.gen.ts || {
+            echo "::error::src/rpc/schema.gen.ts is stale; run 'pnpm generate' and commit it"
+            exit 1
+          }
+
+  build:
+    name: Build plugin zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install decky CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/decky"
+          curl -fsSL -o "$RUNNER_TEMP/decky/decky" \
+            https://github.com/SteamDeckHomebrew/cli/releases/download/0.0.8/decky-linux-x86_64
+          chmod +x "$RUNNER_TEMP/decky/decky"
+          echo "$RUNNER_TEMP/decky" >> "$GITHUB_PATH"
+      - name: Build
+        run: decky plugin build -o out -s directory .
+      - name: Check zip contents
+        run: |
+          unzip -l out/decky-emudeck-romm.zip
+          for f in main.py plugin.json package.json dist/index.js bin/backend-amd64 bin/backend-arm64; do
+            unzip -l out/decky-emudeck-romm.zip "decky-emudeck-romm/$f" > /dev/null || {
+              echo "::error::zip is missing $f"
+              exit 1
+            }
+          done
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - name: Smoke test arm64 binary
+        run: |
+          unzip -q out/decky-emudeck-romm.zip -d "$RUNNER_TEMP/zip"
+          docker run --rm --platform linux/arm64 -v "$RUNNER_TEMP/zip/decky-emudeck-romm/bin:/b:ro" busybox sh -ec '
+            /b/backend-arm64 --version
+            out=$(echo "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}" | /b/backend-arm64 2>/dev/null)
+            echo "$out"
+            echo "$out" | grep -q "\"id\":1,\"result\""
+          '
+      - uses: actions/upload-artifact@v7
+        with:
+          name: plugin-zip
+          path: out/decky-emudeck-romm.zip
