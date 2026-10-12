@@ -223,3 +223,93 @@ func TestPollDeviceAuth(t *testing.T) {
 		}
 	}
 }
+
+func TestPasswordGrant(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/token" || r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.FormValue("grant_type") != "password" || r.FormValue("scope") != "me.read me.write" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		switch r.FormValue("username") + ":" + r.FormValue("password") {
+		case "chen:hunter2":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "jwt", "refresh_token": "r", "token_type": "bearer"})
+		case "viewer:hunter2":
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": "Insufficient scope"})
+		case "disabled:hunter2":
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": "User account is disabled"})
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": "Invalid username or password"})
+		}
+	}))
+	defer srv.Close()
+	c := New(domain.Server{URL: srv.URL}, "", ver)
+	scopes := domain.PasswordScopes()
+
+	if token, err := c.PasswordGrant(context.Background(), "chen", "hunter2", scopes); err != nil || token != "jwt" {
+		t.Fatalf("got %q, %v", token, err)
+	}
+	for user, want := range map[string]domain.Kind{
+		"nobody":   domain.KindBadCredentials,
+		"viewer":   domain.KindMissingPermission,
+		"disabled": domain.KindAccountDisabled,
+	} {
+		if _, err := c.PasswordGrant(context.Background(), user, "hunter2", scopes); kindOf(err) != want {
+			t.Errorf("%s: want %s, got %v", user, want, err)
+		}
+	}
+}
+
+func TestApproveOwnDeviceAuth(t *testing.T) {
+	var approved map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer jwt" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/auth/device/pending/ABCD2345":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"requested_scopes": []string{"me.read", "roms.read", "assets.write"},
+				"allowed_scopes":   []string{"me.read", "roms.read"},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/auth/device/approve":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["user_code"] != "ABCD2345" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			approved = body
+			_ = json.NewEncoder(w).Encode(map[string]any{"device_id": "dev-1", "device_name": "Steam Deck (steamdeck)"})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": "Unknown or expired code"})
+		}
+	}))
+	defer srv.Close()
+	c := New(domain.Server{URL: srv.URL}, "jwt", ver)
+
+	scopes, err := c.DeviceAuthScopes(context.Background(), "ABCD2345")
+	if err != nil || !slices.Equal(scopes, []string{"me.read", "roms.read"}) {
+		t.Fatalf("got %v, %v", scopes, err)
+	}
+	if err := c.ApproveDeviceAuth(context.Background(), "ABCD2345", scopes); err != nil {
+		t.Fatal(err)
+	}
+	if approved["user_code"] != "ABCD2345" || approved["expires_in"] != "never" || len(approved["approved_scopes"].([]any)) != 2 {
+		t.Fatalf("approved with %v", approved)
+	}
+	if _, err := c.DeviceAuthScopes(context.Background(), "GONE2345"); err == nil {
+		t.Fatal("want an error for an expired pairing")
+	}
+	if err := c.ApproveDeviceAuth(context.Background(), "GONE2345", scopes); err == nil {
+		t.Fatal("want an error for an expired pairing")
+	}
+}

@@ -155,7 +155,7 @@ func (s *Server) dispatch(ctx context.Context, line []byte) {
 
 	start := time.Now()
 	result, err := handler(ctx, req.Params)
-	// Params aren't logged: they can carry a pair code.
+	// Params aren't logged: they can carry a pair code or a password.
 	attrs := []any{"method", req.Method, "duration", time.Since(start).Round(time.Millisecond)}
 	if isNotification {
 		if err != nil {

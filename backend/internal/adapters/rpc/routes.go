@@ -43,6 +43,15 @@ func Routes(s *Server, version string, conn *app.Connection) {
 		return toWireStatus(status), nil
 	})
 
+	Register(s, "sign_in_with_password", func(ctx context.Context, p schema.SignInWithPasswordParams) (schema.ConnectionStatus, error) {
+		server := domain.Server{URL: p.Server.URL, CertFingerprint: p.Server.CertFingerprint}
+		status, err := conn.SignInWithPassword(ctx, server, p.Username, p.Password)
+		if err != nil {
+			return schema.ConnectionStatus{}, wireError(err)
+		}
+		return toWireStatus(status), nil
+	})
+
 	Register(s, "start_device_pairing", func(ctx context.Context, p schema.StartDevicePairingParams) (schema.DevicePairing, error) {
 		server := domain.Server{URL: p.Server.URL, CertFingerprint: p.Server.CertFingerprint}
 		pairing, err := conn.StartDevicePairing(ctx, server)

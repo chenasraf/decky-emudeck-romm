@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -231,12 +232,88 @@ func (c *Client) PollDeviceAuth(ctx context.Context, deviceCode string) (domain.
 	}
 }
 
+// PasswordGrant signs in with a username and password and returns a short-lived OAuth access
+// token limited to scopes. RomM refuses the whole grant when the account lacks any of them.
+func (c *Client) PasswordGrant(ctx context.Context, username, password string, scopes []string) (string, error) {
+	form := url.Values{
+		"grant_type": {"password"},
+		"username":   {username},
+		"password":   {password},
+		"scope":      {strings.Join(scopes, " ")},
+	}
+	var body struct {
+		AccessToken string `json:"access_token"`
+		Detail      string `json:"detail"`
+	}
+	status, err := c.do(ctx, http.MethodPost, "/api/token", form, &body)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case status == http.StatusOK && body.AccessToken != "":
+		return body.AccessToken, nil
+	case status == http.StatusUnauthorized:
+		return "", &domain.Error{Kind: domain.KindBadCredentials, Message: "Wrong username or password."}
+	case status == http.StatusForbidden && body.Detail == "Insufficient scope":
+		return "", &domain.Error{
+			Kind:    domain.KindMissingPermission,
+			Message: "Your RomM account lacks the me.write permission, which signing in a device needs. Ask your RomM admin to grant it.",
+		}
+	case status == http.StatusForbidden:
+		return "", &domain.Error{Kind: domain.KindAccountDisabled, Message: "This RomM account is disabled."}
+	case status == http.StatusTooManyRequests:
+		return "", &domain.Error{Kind: domain.KindRateLimited, Message: "Too many sign-in attempts. Wait a minute and try again."}
+	default:
+		return "", fmt.Errorf("password sign-in: unexpected status %d", status)
+	}
+}
+
+// DeviceAuthScopes returns the scopes of a pending device pairing that the signed-in account may
+// grant: the ones it asked for, narrowed to what the account has.
+func (c *Client) DeviceAuthScopes(ctx context.Context, userCode string) ([]string, error) {
+	var body struct {
+		AllowedScopes []string `json:"allowed_scopes"`
+	}
+	status, err := c.do(ctx, http.MethodGet, "/api/auth/device/pending/"+url.PathEscape(userCode), nil, &body)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("read device pairing: unexpected status %d", status)
+	}
+	return body.AllowedScopes, nil
+}
+
+// ApproveDeviceAuth approves a pending device pairing as the signed-in account, granting scopes
+// with a token that never expires. RomM creates or reuses the Device, as when the user approves
+// in its web UI.
+func (c *Client) ApproveDeviceAuth(ctx context.Context, userCode string, scopes []string) error {
+	req := map[string]any{"user_code": userCode, "approved_scopes": scopes, "expires_in": "never"}
+	var body struct {
+		Detail any `json:"detail"`
+	}
+	status, err := c.do(ctx, http.MethodPost, "/api/auth/device/approve", req, &body)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("approve device pairing: unexpected status %d: %v", status, body.Detail)
+	}
+	return nil
+}
+
 // do sends a request and decodes its JSON response into out. A non-2xx status is not an error
 // here; callers map statuses to what they mean for their endpoint. Error bodies are decoded too,
 // for endpoints that explain a 4xx in them.
 func (c *Client) do(ctx context.Context, method, path string, in, out any) (int, error) {
 	var body io.Reader
-	if in != nil {
+	contentType := "application/json"
+	switch v := in.(type) {
+	case nil:
+	case url.Values:
+		body = strings.NewReader(v.Encode())
+		contentType = "application/x-www-form-urlencoded"
+	default:
 		data, err := json.Marshal(in)
 		if err != nil {
 			return 0, err
@@ -250,7 +327,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) (int,
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept", "application/json")
 	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)

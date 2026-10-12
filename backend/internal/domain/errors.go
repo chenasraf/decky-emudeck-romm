@@ -15,6 +15,9 @@ const (
 	KindInvalidPairCode    Kind = "invalid_pair_code"
 	KindPairRejected       Kind = "pair_rejected"
 	KindRateLimited        Kind = "rate_limited"
+	KindBadCredentials     Kind = "bad_credentials"
+	KindAccountDisabled    Kind = "account_disabled"
+	KindMissingPermission  Kind = "missing_permission"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

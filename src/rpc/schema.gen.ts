@@ -41,6 +41,9 @@ export const ErrorUnsupportedVersion: ErrorKind = "unsupported_version";
 export const ErrorInvalidPairCode: ErrorKind = "invalid_pair_code";
 export const ErrorPairRejected: ErrorKind = "pair_rejected";
 export const ErrorRateLimited: ErrorKind = "rate_limited";
+export const ErrorBadCredentials: ErrorKind = "bad_credentials";
+export const ErrorAccountDisabled: ErrorKind = "account_disabled";
+export const ErrorMissingPermission: ErrorKind = "missing_permission";
 export interface ErrorData {
   kind: ErrorKind;
   /**
@@ -61,6 +64,7 @@ export interface Methods {
   connection_status: Method<ConnectionStatusParams, ConnectionStatus>;
   check_server: Method<CheckServerParams, CheckServerResult>;
   sign_in_with_pair_code: Method<SignInWithPairCodeParams, ConnectionStatus>;
+  sign_in_with_password: Method<SignInWithPasswordParams, ConnectionStatus>;
   start_device_pairing: Method<StartDevicePairingParams, DevicePairing>;
   cancel_device_pairing: Method<CancelDevicePairingParams, CancelDevicePairingResult>;
 }
@@ -138,6 +142,11 @@ export interface Server {
 export interface SignInWithPairCodeParams {
   server: Server;
   code: string;
+}
+export interface SignInWithPasswordParams {
+  server: Server;
+  username: string;
+  password: string;
 }
 export interface StartDevicePairingParams {
   server: Server;

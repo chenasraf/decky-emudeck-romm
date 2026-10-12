@@ -36,6 +36,9 @@ const (
 	ErrorInvalidPairCode    ErrorKind = "invalid_pair_code"
 	ErrorPairRejected       ErrorKind = "pair_rejected"
 	ErrorRateLimited        ErrorKind = "rate_limited"
+	ErrorBadCredentials     ErrorKind = "bad_credentials"
+	ErrorAccountDisabled    ErrorKind = "account_disabled"
+	ErrorMissingPermission  ErrorKind = "missing_permission"
 )
 
 type ErrorData struct {
@@ -53,6 +56,7 @@ type Methods struct {
 	ConnectionStatus    Method[ConnectionStatusParams, ConnectionStatus]             `json:"connection_status"`
 	CheckServer         Method[CheckServerParams, CheckServerResult]                 `json:"check_server"`
 	SignInWithPairCode  Method[SignInWithPairCodeParams, ConnectionStatus]           `json:"sign_in_with_pair_code"`
+	SignInWithPassword  Method[SignInWithPasswordParams, ConnectionStatus]           `json:"sign_in_with_password"`
 	StartDevicePairing  Method[StartDevicePairingParams, DevicePairing]              `json:"start_device_pairing"`
 	CancelDevicePairing Method[CancelDevicePairingParams, CancelDevicePairingResult] `json:"cancel_device_pairing"`
 }
@@ -131,6 +135,12 @@ type Server struct {
 type SignInWithPairCodeParams struct {
 	Server Server `json:"server"`
 	Code   string `json:"code"`
+}
+
+type SignInWithPasswordParams struct {
+	Server   Server `json:"server"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type StartDevicePairingParams struct {

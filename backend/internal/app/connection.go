@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,9 @@ type RomM interface {
 	ExchangePairCode(ctx context.Context, code string) (domain.SignIn, error)
 	StartDeviceAuth(ctx context.Context, device domain.DeviceIdentity, scopes []string) (domain.DevicePairing, error)
 	PollDeviceAuth(ctx context.Context, deviceCode string) (domain.SignIn, error)
+	PasswordGrant(ctx context.Context, username, password string, scopes []string) (string, error)
+	DeviceAuthScopes(ctx context.Context, userCode string) ([]string, error)
+	ApproveDeviceAuth(ctx context.Context, userCode string, scopes []string) error
 }
 
 // Dialer returns a RomM client for server, authenticated with token when it isn't empty.
@@ -186,6 +190,52 @@ func (c *Connection) SignInWithPairCode(ctx context.Context, server domain.Serve
 		return ConnectionStatus{}, err
 	}
 	c.logSignIn("pair code", in)
+	return c.Status(ctx)
+}
+
+// SignInWithPassword signs in with the user's RomM username and password, which are used once and
+// never stored. The plugin starts a device pairing and approves it itself, so the sign-in ends
+// with the same Device and token a QR pairing would leave. server is what CheckServer returned.
+func (c *Connection) SignInWithPassword(ctx context.Context, server domain.Server, username, password string) (ConnectionStatus, error) {
+	if err := checkServerURL(server); err != nil {
+		return ConnectionStatus{}, err
+	}
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return ConnectionStatus{}, &domain.Error{Kind: domain.KindInvalidInput, Message: "Enter your RomM username and password."}
+	}
+	device, err := c.identity.Device()
+	if err != nil {
+		return ConnectionStatus{}, err
+	}
+
+	client := c.dial(server, "")
+	access, err := client.PasswordGrant(ctx, username, password, domain.PasswordScopes())
+	if err != nil {
+		return ConnectionStatus{}, err
+	}
+	pairing, err := client.StartDeviceAuth(ctx, device, domain.RequestedScopes())
+	if err != nil {
+		return ConnectionStatus{}, err
+	}
+	user := c.dial(server, access)
+	scopes, err := user.DeviceAuthScopes(ctx, pairing.UserCode)
+	if err != nil {
+		return ConnectionStatus{}, err
+	}
+	if err := user.ApproveDeviceAuth(ctx, pairing.UserCode, scopes); err != nil {
+		return ConnectionStatus{}, err
+	}
+	in, err := client.PollDeviceAuth(ctx, pairing.DeviceCode)
+	if err != nil {
+		return ConnectionStatus{}, fmt.Errorf("collect approved device pairing: %w", err)
+	}
+
+	in.Server = server
+	if err := c.settings.SaveSignIn(in); err != nil {
+		return ConnectionStatus{}, err
+	}
+	c.logSignIn("password", in)
 	return c.Status(ctx)
 }
 

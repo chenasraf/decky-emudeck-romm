@@ -127,18 +127,21 @@ export function TextField({
   description,
   value,
   disabled,
+  bIsPassword,
   onChange,
 }: {
   label?: ReactNode
   description?: ReactNode
   value?: string
   disabled?: boolean
+  bIsPassword?: boolean
   onChange?: ChangeEventHandler<HTMLInputElement>
 }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {label && <span style={{ color: '#fff', fontSize: 14 }}>{label}</span>}
       <input
+        type={bIsPassword ? 'password' : 'text'}
         value={value}
         disabled={disabled}
         onChange={onChange}

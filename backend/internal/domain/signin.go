@@ -50,6 +50,12 @@ func RequestedScopes() []string {
 	return scopes
 }
 
+// PasswordScopes is what a password sign-in asks RomM for: just enough to approve this Deck's own
+// device pairing, which then grants the RequestedScopes the account has.
+func PasswordScopes() []string {
+	return []string{"me.read", "me.write"}
+}
+
 // DisabledFeature is a Feature the token's scopes don't cover.
 type DisabledFeature struct {
 	Feature       Feature

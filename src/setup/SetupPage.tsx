@@ -138,6 +138,78 @@ function PairCodeForm({
   )
 }
 
+function PasswordForm({
+  server,
+  onSignedIn,
+}: {
+  server: Server
+  onSignedIn: (status: ConnectionStatus) => void
+}) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<RpcError | null>(null)
+
+  const signIn = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      onSignedIn(await call('sign_in_with_password', { server, username, password }))
+    } catch (err) {
+      setError(asRpcError(err))
+    } finally {
+      // The password lives only as long as the form needs it.
+      setPassword('')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div style={muted}>
+        Sign in with your RomM account. The plugin uses your password once to add this Deck as a
+        device in RomM, then forgets it.
+      </div>
+      <TextField
+        label="Username"
+        value={username}
+        disabled={busy}
+        onChange={(e) => {
+          setUsername(e.target.value)
+          setError(null)
+        }}
+      />
+      <TextField
+        label="Password"
+        bIsPassword
+        value={password}
+        disabled={busy}
+        onChange={(e) => {
+          setPassword(e.target.value)
+          setError(null)
+        }}
+      />
+      {error && <ErrorBox>{error.message}</ErrorBox>}
+      <Focusable style={{ display: 'flex', gap: 12 }}>
+        <DialogButton
+          disabled={busy || username.trim() === '' || password === ''}
+          onClick={() => void signIn()}
+        >
+          {busy ? 'Signing in…' : 'Sign in'}
+        </DialogButton>
+      </Focusable>
+    </>
+  )
+}
+
+type Method = 'qr' | 'code' | 'password'
+
+const methodLabels: Record<Method, string> = {
+  qr: 'Use a QR code',
+  code: 'Use a pair code',
+  password: 'Use a password',
+}
+
 function SignInStep({
   found,
   onBack,
@@ -147,23 +219,25 @@ function SignInStep({
   onBack: () => void
   onSignedIn: (status: ConnectionStatus) => void
 }) {
-  const [method, setMethod] = useState<'qr' | 'code'>('qr')
+  const [method, setMethod] = useState<Method>('qr')
 
   return (
     <>
       <Field label="Server" description={`RomM ${found.version}`}>
         {found.server.url}
       </Field>
-      {method === 'qr' ? (
-        <DevicePairingPanel server={found.server} onSignedIn={onSignedIn} />
-      ) : (
-        <PairCodeForm server={found.server} onSignedIn={onSignedIn} />
-      )}
+      {method === 'qr' && <DevicePairingPanel server={found.server} onSignedIn={onSignedIn} />}
+      {method === 'code' && <PairCodeForm server={found.server} onSignedIn={onSignedIn} />}
+      {method === 'password' && <PasswordForm server={found.server} onSignedIn={onSignedIn} />}
       <Focusable style={{ display: 'flex', gap: 12 }} flow-children="horizontal">
         <DialogButton onClick={onBack}>Back</DialogButton>
-        <DialogButton onClick={() => setMethod(method === 'qr' ? 'code' : 'qr')}>
-          {method === 'qr' ? 'Use a pair code instead' : 'Use a QR code instead'}
-        </DialogButton>
+        {(Object.keys(methodLabels) as Method[])
+          .filter((m) => m !== method)
+          .map((m) => (
+            <DialogButton key={m} onClick={() => setMethod(m)}>
+              {methodLabels[m]}
+            </DialogButton>
+          ))}
       </Focusable>
     </>
   )

@@ -39,10 +39,16 @@ func (fakeIdentity) Device() (domain.DeviceIdentity, error) {
 	return domain.DeviceIdentity{Identifier: "abc", Name: "Steam Deck (steamdeck)", Platform: "steamos"}, nil
 }
 
-// fakeNet answers heartbeats per URL, redeems one pair code, and replays poll answers in order.
+// fakeNet answers heartbeats per URL, redeems one pair code, accepts one password, and replays
+// poll answers in order.
 type fakeNet struct {
 	heartbeats map[string]func(domain.Server) (string, error)
 	pairCode   string
+	password   string
+	// grantErr fails a password grant whose password is right.
+	grantErr error
+	// allowed is what the signed-in account may grant a pending pairing.
+	allowed []string
 
 	mu        sync.Mutex
 	dialed    []domain.Server
@@ -52,18 +58,54 @@ type fakeNet struct {
 	pollCalls int
 	pollTimes []time.Time
 	approved  domain.SignIn
+	// grantScopes, approvals and approvedScopes record the password sign-in's calls.
+	grantScopes    []string
+	approvals      []string
+	approvedScopes []string
 }
 
 type fakeRomM struct {
 	net    *fakeNet
 	server domain.Server
+	token  string
 }
 
-func (n *fakeNet) dial(server domain.Server, _ string) RomM {
+func (n *fakeNet) dial(server domain.Server, token string) RomM {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.dialed = append(n.dialed, server)
-	return fakeRomM{net: n, server: server}
+	return fakeRomM{net: n, server: server, token: token}
+}
+
+func (r fakeRomM) PasswordGrant(_ context.Context, username, password string, scopes []string) (string, error) {
+	r.net.mu.Lock()
+	defer r.net.mu.Unlock()
+	r.net.grantScopes = scopes
+	if username != "chen" || password != r.net.password {
+		return "", &domain.Error{Kind: domain.KindBadCredentials, Message: "bad credentials"}
+	}
+	if r.net.grantErr != nil {
+		return "", r.net.grantErr
+	}
+	return "jwt", nil
+}
+
+func (r fakeRomM) DeviceAuthScopes(_ context.Context, userCode string) ([]string, error) {
+	if r.token != "jwt" {
+		return nil, errors.New("not signed in")
+	}
+	return r.net.allowed, nil
+}
+
+func (r fakeRomM) ApproveDeviceAuth(_ context.Context, userCode string, scopes []string) error {
+	if r.token != "jwt" {
+		return errors.New("not signed in")
+	}
+	r.net.mu.Lock()
+	defer r.net.mu.Unlock()
+	r.net.approvals = append(r.net.approvals, userCode)
+	r.net.approvedScopes = scopes
+	return nil
 }
 
 func (r fakeRomM) Heartbeat(context.Context) (string, error) {
@@ -210,6 +252,71 @@ func TestSignInWithPairCode(t *testing.T) {
 	}
 	if len(status.DisabledFeatures) == 0 {
 		t.Fatal("a token with only roms.read should disable features")
+	}
+}
+
+func TestSignInWithPassword(t *testing.T) {
+	allowed := []string{"me.read", "platforms.read", "roms.read", "firmware.read"}
+	n := &fakeNet{
+		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
+		password:   "hunter2",
+		allowed:    allowed,
+		approved:   domain.SignIn{Token: "rmm_dev", DeviceID: "dev-1", Scopes: allowed},
+	}
+	settings := &fakeSettings{}
+	c, _ := newConnection(t, settings, n)
+	server := domain.Server{URL: "https://romm.lan", CertFingerprint: "AA:BB"}
+
+	if _, err := c.SignInWithPassword(context.Background(), server, "chen", "wrong"); kindOf(err) != domain.KindBadCredentials {
+		t.Fatalf("want bad_credentials, got %v", err)
+	}
+	if _, err := c.SignInWithPassword(context.Background(), server, "  ", "hunter2"); kindOf(err) != domain.KindInvalidInput {
+		t.Fatalf("want invalid_input for a blank username, got %v", err)
+	}
+	if settings.in != nil || len(n.started) != 0 {
+		t.Fatalf("a failed sign-in went on: saved %+v, started %+v", settings.in, n.started)
+	}
+
+	status, err := c.SignInWithPassword(context.Background(), server, " chen ", "hunter2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != Connected || len(status.DisabledFeatures) != 1 || status.DisabledFeatures[0].Feature != domain.FeatureSaveSync {
+		t.Fatalf("status %+v", status)
+	}
+	// Only the device-bound token is kept: no password, no OAuth token.
+	if settings.in.Token != "rmm_dev" || settings.in.DeviceID != "dev-1" || settings.in.Server != server {
+		t.Fatalf("saved %+v", settings.in)
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if !slices.Equal(n.grantScopes, domain.PasswordScopes()) {
+		t.Fatalf("password grant asked for %v", n.grantScopes)
+	}
+	// The pairing is the one QR pairing would start, approved with what the account may grant.
+	if len(n.started) != 1 || n.started[0].Identifier != "abc" || !slices.Equal(n.scopes, domain.RequestedScopes()) {
+		t.Fatalf("started %+v with %v", n.started, n.scopes)
+	}
+	if !slices.Equal(n.approvals, []string{"CODE0001"}) || !slices.Equal(n.approvedScopes, allowed) {
+		t.Fatalf("approved %v with %v", n.approvals, n.approvedScopes)
+	}
+}
+
+func TestSignInWithPasswordMissingPermission(t *testing.T) {
+	n := &fakeNet{
+		password: "hunter2",
+		grantErr: &domain.Error{Kind: domain.KindMissingPermission, Message: "no me.write"},
+	}
+	settings := &fakeSettings{}
+	c, _ := newConnection(t, settings, n)
+
+	_, err := c.SignInWithPassword(context.Background(), domain.Server{URL: "https://romm.lan"}, "chen", "hunter2")
+	if kindOf(err) != domain.KindMissingPermission {
+		t.Fatalf("want missing_permission, got %v", err)
+	}
+	if settings.in != nil || len(n.started) != 0 {
+		t.Fatal("a refused sign-in went on")
 	}
 }
 
