@@ -20,11 +20,18 @@ Requirements: Node with pnpm, Go, Docker, [lefthook](https://lefthook.dev) and
 ```sh
 pnpm install
 make install-hooks
+pnpm dev         # the plugin in a browser at http://localhost:5174, backed by the real main.py and backend
 make build       # frontend into dist/, backend binaries into backend/out/
 make test
 make lint
 make package     # the installable zip into out/, built like the plugin store does (needs the decky CLI)
 ```
+
+`pnpm dev` runs `dev/bridge.py`, which loads `main.py` with a stand-in for Decky's `decky` module
+(its folders live in `dev/.data/`) and builds the backend for your machine. `@decky/api` and
+`@decky/ui` are swapped for browser versions in `dev/mocks/`, so the UI is close to the Quick Access
+Menu but not pixel-exact. Editing Go code rebuilds and restarts the backend; editing `main.py`
+restarts the bridge. The page's **Kill backend** button shows the supervisor recovering.
 
 The RPC contract lives in `backend/internal/adapters/rpc/schema`. After changing it, run
 `pnpm generate` to regenerate `src/rpc/schema.gen.ts`, and bump `ProtocolVersion` there and

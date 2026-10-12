@@ -6,3 +6,4 @@ bin/
 cli/
 __pycache__/
 .DS_Store
+dev/.data/

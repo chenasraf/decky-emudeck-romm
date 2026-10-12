@@ -12,6 +12,7 @@
   },
   "packageManager": "pnpm@9.15.9",
   "scripts": {
+    "dev": "vite --config dev/vite.config.ts",
     "build": "rollup -c",
     "watch": "rollup -c -w",
     "lint": "eslint .",
@@ -30,15 +31,21 @@
     "@decky/ui": "^4.12.1",
     "@eslint/js": "^9.39.4",
     "@rollup/rollup-linux-x64-musl": "^4.64.5",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
     "prettier": "^3.9.10",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "rollup": "^4.64.5",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.71.2"
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4"
   },
   "pnpm": {
     "peerDependencyRules": {
