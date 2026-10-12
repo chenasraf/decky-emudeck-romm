@@ -7,3 +7,6 @@ cli/
 __pycache__/
 .DS_Store
 dev/.data/
+.env
+.env.keys
+.envrc

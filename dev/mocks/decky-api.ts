@@ -1,5 +1,9 @@
 // Browser stand-in for @decky/api: callables go to the dev bridge, events come back over SSE.
 
+import type { ComponentType } from 'react'
+
+import { addRoute, removeRoute } from './router'
+
 type Listener = (...args: never[]) => unknown
 
 const listeners = new Map<string, Set<Listener>>()
@@ -39,6 +43,16 @@ export function removeEventListener(event: string, fn: (...args: never[]) => unk
 
 export function definePlugin<T>(fn: () => T): () => T {
   return fn
+}
+
+export const routerHook = {
+  addRoute: (path: string, component: ComponentType) => addRoute(path, component),
+  removeRoute: (path: string) => removeRoute(path),
+}
+
+/** The dev shell always shows the QAM. */
+export function useQuickAccessVisible(): boolean {
+  return true
 }
 
 export const toaster = {

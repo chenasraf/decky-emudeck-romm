@@ -2,9 +2,17 @@
 // outside the Steam client. These render plain HTML in roughly Steam's QAM style: good for layout
 // and state, not pixel-accurate. Add components here as src/ starts using them.
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { ChangeEventHandler, CSSProperties, HTMLAttributes, ReactNode } from 'react'
+
+import { navigate } from './router'
 
 const muted = '#8b929a'
+
+export const Navigation = {
+  Navigate: (path: string) => navigate(path),
+  NavigateBack: () => navigate(null),
+  CloseSideMenus: () => undefined,
+}
 
 export const staticClasses = { Title: 'dev-title' }
 
@@ -84,5 +92,66 @@ export function ButtonItem({
     >
       {children}
     </button>
+  )
+}
+
+export function DialogButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick?: () => void
+  disabled?: boolean
+  children?: ReactNode
+}) {
+  return (
+    <button
+      style={{ ...button, width: 'auto', minWidth: 120, opacity: disabled ? 0.5 : 1 }}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
+export function Focusable({
+  children,
+  style,
+}: HTMLAttributes<HTMLDivElement> & { children?: ReactNode; 'flow-children'?: string }) {
+  return <div style={style}>{children}</div>
+}
+
+export function TextField({
+  label,
+  description,
+  value,
+  disabled,
+  onChange,
+}: {
+  label?: ReactNode
+  description?: ReactNode
+  value?: string
+  disabled?: boolean
+  onChange?: ChangeEventHandler<HTMLInputElement>
+}) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {label && <span style={{ color: '#fff', fontSize: 14 }}>{label}</span>}
+      <input
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        style={{
+          padding: '8px 10px',
+          background: '#0e141b',
+          color: '#fff',
+          border: '1px solid #3d4450',
+          borderRadius: 2,
+          fontSize: 14,
+        }}
+      />
+      {description && <span style={{ color: muted, fontSize: 12 }}>{description}</span>}
+    </label>
   )
 }

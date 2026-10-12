@@ -1,7 +1,8 @@
-import { StrictMode } from 'react'
+import { createElement, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import definePlugin from '../src/index'
+import { navigate, routes, useRoute } from './mocks/router'
 
 const plugin = definePlugin()
 
@@ -16,6 +17,48 @@ const devButton = {
 
 function post(path: string) {
   void fetch(path, { method: 'POST' })
+}
+
+/** Stands in for a full-screen route, which on a Deck replaces the whole Steam UI. */
+function RouteView() {
+  const path = useRoute()
+  if (!path) return null
+  const Page = routes.get(path)
+  return (
+    <div
+      style={{
+        flex: 1,
+        position: 'relative',
+        minHeight: 600,
+        background: '#0e141b',
+        borderRadius: 4,
+        overflow: 'auto',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 12,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+          color: '#8b929a',
+          fontSize: 12,
+        }}
+      >
+        <code>{path}</code>
+        <button style={devButton} onClick={() => navigate(null)}>
+          Close
+        </button>
+      </div>
+      {Page ? (
+        createElement(Page)
+      ) : (
+        <div style={{ padding: 56 }}>No route registered at {path}</div>
+      )}
+    </div>
+  )
 }
 
 function Shell() {
@@ -46,6 +89,7 @@ function Shell() {
           Rebuild backend
         </button>
       </div>
+      <RouteView />
     </div>
   )
 }

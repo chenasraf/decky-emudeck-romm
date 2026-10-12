@@ -1,5 +1,12 @@
-import { addEventListener, definePlugin, removeEventListener } from '@decky/api'
-import { ButtonItem, Field, PanelSection, PanelSectionRow, staticClasses } from '@decky/ui'
+import { addEventListener, definePlugin, removeEventListener, routerHook } from '@decky/api'
+import {
+  ButtonItem,
+  Field,
+  Navigation,
+  PanelSection,
+  PanelSectionRow,
+  staticClasses,
+} from '@decky/ui'
 import { useEffect, useState } from 'react'
 import { FaCompactDisc } from 'react-icons/fa'
 
@@ -10,6 +17,8 @@ import {
   backendStatus,
   restartBackend,
 } from './backend'
+import { SETUP_ROUTE, useConnection } from './connection'
+import { SetupPage } from './setup/SetupPage'
 
 const STATE_LABELS: Record<BackendState, string> = {
   starting: 'Starting…',
@@ -20,7 +29,61 @@ const STATE_LABELS: Record<BackendState, string> = {
   stopped: 'Stopped',
 }
 
-function Content() {
+function openSetup() {
+  Navigation.CloseSideMenus()
+  Navigation.Navigate(SETUP_ROUTE)
+}
+
+function ServerSection() {
+  const status = useConnection()
+
+  if (!status) {
+    return (
+      <PanelSection title="RomM">
+        <PanelSectionRow>
+          <Field label="Status">…</Field>
+        </PanelSectionRow>
+      </PanelSection>
+    )
+  }
+
+  if (status.state === 'not_set_up') {
+    return (
+      <PanelSection title="RomM">
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={openSetup}>
+            Set up RomM
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+    )
+  }
+
+  const connected = status.state === 'connected'
+  return (
+    <PanelSection title="RomM">
+      <PanelSectionRow>
+        <Field label="Status" description={status.problem?.message}>
+          {connected ? 'Connected' : 'Offline'}
+        </Field>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <Field label="Server" description={connected ? `RomM ${status.version}` : undefined}>
+          {status.serverUrl}
+        </Field>
+      </PanelSectionRow>
+      {status.problem?.data?.kind === 'untrusted_cert' && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={openSetup}>
+            Set up RomM
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+    </PanelSection>
+  )
+}
+
+function BackendSection() {
   const [status, setStatus] = useState<BackendStatus | null>(null)
 
   useEffect(() => {
@@ -54,9 +117,25 @@ function Content() {
   )
 }
 
-export default definePlugin(() => ({
-  name: 'EmuDeck RomM Sync',
-  titleView: <div className={staticClasses.Title}>EmuDeck RomM Sync</div>,
-  content: <Content />,
-  icon: <FaCompactDisc />,
-}))
+function Content() {
+  return (
+    <>
+      <ServerSection />
+      <BackendSection />
+    </>
+  )
+}
+
+export default definePlugin(() => {
+  routerHook.addRoute(SETUP_ROUTE, SetupPage, { exact: true })
+
+  return {
+    name: 'EmuDeck RomM Sync',
+    titleView: <div className={staticClasses.Title}>EmuDeck RomM Sync</div>,
+    content: <Content />,
+    icon: <FaCompactDisc />,
+    onDismount() {
+      routerHook.removeRoute(SETUP_ROUTE)
+    },
+  }
+})

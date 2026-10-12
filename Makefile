@@ -18,6 +18,11 @@ generate:
 test:
 	$(MAKE) -C backend test
 
+# Runs the tests that talk to the RomM server named in .env (ROMM_URL).
+.PHONY: test-live
+test-live:
+	dotenvx run -f .env -- go -C backend test -run Live -count=1 -v ./...
+
 .PHONY: lint
 lint:
 	pnpm lint

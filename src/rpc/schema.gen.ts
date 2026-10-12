@@ -28,14 +28,39 @@ export interface Error {
   message: string;
   data?: ErrorData;
 }
+/**
+ * CodeDomain is the error code for every domain error; Data.Kind tells them apart.
+ */
+export const CodeDomain = 1000;
+export type ErrorKind = string;
+export const ErrorInvalidInput: ErrorKind = "invalid_input";
+export const ErrorUnreachable: ErrorKind = "unreachable";
+export const ErrorUntrustedCert: ErrorKind = "untrusted_cert";
+export const ErrorNotRomM: ErrorKind = "not_romm";
+export const ErrorUnsupportedVersion: ErrorKind = "unsupported_version";
+export const ErrorInvalidPairCode: ErrorKind = "invalid_pair_code";
+export const ErrorPairRejected: ErrorKind = "pair_rejected";
+export const ErrorRateLimited: ErrorKind = "rate_limited";
 export interface ErrorData {
-  kind: string;
+  kind: ErrorKind;
+  /**
+   * Fingerprint is the SHA-256 of the certificate behind an untrusted_cert error, to show the
+   * user and send back as trustFingerprint.
+   */
+  fingerprint?: string;
+  /**
+   * Version is the server's RomM version behind an unsupported_version error.
+   */
+  version?: string;
 }
 /**
  * Methods maps each RPC method name to its params and result.
  */
 export interface Methods {
   ping: Method<PingParams, PingResult>;
+  connection_status: Method<ConnectionStatusParams, ConnectionStatus>;
+  check_server: Method<CheckServerParams, CheckServerResult>;
+  sign_in_with_pair_code: Method<SignInWithPairCodeParams, ConnectionStatus>;
 }
 /**
  * Method pairs a method's params with its result.
@@ -48,4 +73,47 @@ export interface PingParams {
 }
 export interface PingResult {
   version: string;
+}
+export type ConnectionState = string;
+export const ConnectionNotSetUp: ConnectionState = "not_set_up";
+export const ConnectionConnected: ConnectionState = "connected";
+export const ConnectionOffline: ConnectionState = "offline";
+export interface ConnectionStatusParams {
+}
+export interface ConnectionStatus {
+  state: ConnectionState;
+  serverUrl?: string;
+  /**
+   * Version is the server's RomM version, set when connected.
+   */
+  version?: string;
+  /**
+   * Problem says why the server is offline.
+   */
+  problem?: Error;
+}
+export interface CheckServerParams {
+  /**
+   * URL is the address as the user typed it; the scheme is optional.
+   */
+  url: string;
+  /**
+   * TrustFingerprint is a certificate the user chose to trust after an untrusted_cert error.
+   */
+  trustFingerprint?: string;
+}
+export interface CheckServerResult {
+  server: Server;
+  version: string;
+}
+/**
+ * Server is a RomM server as check_server found it, passed back unchanged to sign in.
+ */
+export interface Server {
+  url: string;
+  certFingerprint?: string;
+}
+export interface SignInWithPairCodeParams {
+  server: Server;
+  code: string;
 }

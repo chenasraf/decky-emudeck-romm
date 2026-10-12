@@ -10,6 +10,7 @@ Dev-only endpoints: `POST /dev/rebuild` (rebuild the backend and restart it) and
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -86,7 +87,7 @@ async def build_backend() -> bool:
 
 def callable_named(name: str):
     attr = getattr(plugin, name, None)
-    if name.startswith("_") or not asyncio.iscoroutinefunction(attr):
+    if name.startswith("_") or not inspect.iscoroutinefunction(attr):
         return None
     return attr
 
