@@ -35,29 +35,49 @@ type fileSettings struct {
 }
 
 type fileServer struct {
-	URL             string `json:"url"`
-	CertFingerprint string `json:"certFingerprint,omitempty"`
+	URL             string   `json:"url"`
+	CertFingerprint string   `json:"certFingerprint,omitempty"`
+	DeviceID        string   `json:"deviceId,omitempty"`
+	Scopes          []string `json:"scopes,omitempty"`
 }
 
-// Server returns the saved server, or nil when none is set up.
-func (s *Store) Server() (*domain.Server, error) {
+// SignIn returns the saved sign-in, or nil when there is no server or no token.
+func (s *Store) SignIn() (*domain.SignIn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f, err := s.load()
 	if err != nil || f.Server == nil || f.Server.URL == "" {
 		return nil, err
 	}
-	return &domain.Server{URL: f.Server.URL, CertFingerprint: f.Server.CertFingerprint}, nil
+	token, err := s.token()
+	if err != nil || token == "" {
+		return nil, err
+	}
+	return &domain.SignIn{
+		Server:   domain.Server{URL: f.Server.URL, CertFingerprint: f.Server.CertFingerprint},
+		Token:    token,
+		DeviceID: f.Server.DeviceID,
+		Scopes:   f.Server.Scopes,
+	}, nil
 }
 
-func (s *Store) SaveServer(server domain.Server) error {
+// SaveSignIn replaces the saved sign-in.
+func (s *Store) SaveSignIn(in domain.SignIn) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f, err := s.load()
 	if err != nil {
 		return err
 	}
-	f.Server = &fileServer{URL: server.URL, CertFingerprint: server.CertFingerprint}
+	if err := s.write(tokenFile, []byte(in.Token+"\n"), 0o600); err != nil {
+		return err
+	}
+	f.Server = &fileServer{
+		URL:             in.Server.URL,
+		CertFingerprint: in.Server.CertFingerprint,
+		DeviceID:        in.DeviceID,
+		Scopes:          in.Scopes,
+	}
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err
@@ -65,11 +85,7 @@ func (s *Store) SaveServer(server domain.Server) error {
 	return s.write(settingsFile, append(data, '\n'), 0o644)
 }
 
-// Token returns the saved client token, or "" when there is none.
-func (s *Store) Token() (string, error) {
-	if err := s.checkDir(); err != nil {
-		return "", err
-	}
+func (s *Store) token() (string, error) {
 	data, err := os.ReadFile(filepath.Join(s.dir, tokenFile))
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
@@ -78,12 +94,6 @@ func (s *Store) Token() (string, error) {
 		return "", fmt.Errorf("read token: %w", err)
 	}
 	return strings.TrimSpace(string(data)), nil
-}
-
-func (s *Store) SaveToken(token string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.write(tokenFile, []byte(token+"\n"), 0o600)
 }
 
 func (s *Store) load() (fileSettings, error) {

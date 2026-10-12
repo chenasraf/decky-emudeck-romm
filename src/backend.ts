@@ -1,6 +1,6 @@
-import { callable } from '@decky/api'
+import { addEventListener, callable, removeEventListener } from '@decky/api'
 
-import type { Error as RpcErrorObject, Methods } from './rpc/schema.gen'
+import type { Error as RpcErrorObject, Events, Methods } from './rpc/schema.gen'
 
 export type BackendState = 'starting' | 'ready' | 'restarting' | 'down' | 'refused' | 'stopped'
 
@@ -27,6 +27,17 @@ export async function call<M extends keyof Methods>(
   params?: Params<M>,
 ): Promise<Result<M>> {
   return (await relay(method, params)) as Result<M>
+}
+
+/** Listens for a backend event; returns a function that stops listening. */
+export function onEvent<E extends keyof Events>(
+  event: E,
+  fn: (params: Events[E]) => void,
+): () => void {
+  const listener = addEventListener<[Events[E]]>(event, fn)
+  return () => {
+    removeEventListener(event, listener)
+  }
 }
 
 /**

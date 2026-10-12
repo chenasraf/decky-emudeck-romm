@@ -18,6 +18,7 @@ import {
   restartBackend,
 } from './backend'
 import { SETUP_ROUTE, useConnection } from './connection'
+import { disabledReason, featureLabel } from './features'
 import { SetupPage } from './setup/SetupPage'
 
 const STATE_LABELS: Record<BackendState, string> = {
@@ -72,6 +73,13 @@ function ServerSection() {
           {status.serverUrl}
         </Field>
       </PanelSectionRow>
+      {status.disabledFeatures?.map((d) => (
+        <PanelSectionRow key={d.feature}>
+          <Field label={featureLabel(d.feature)} description={disabledReason(d)}>
+            Off
+          </Field>
+        </PanelSectionRow>
+      ))}
       {status.problem?.data?.kind === 'untrusted_cert' && (
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openSetup}>

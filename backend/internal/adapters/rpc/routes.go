@@ -42,6 +42,39 @@ func Routes(s *Server, version string, conn *app.Connection) {
 		}
 		return toWireStatus(status), nil
 	})
+
+	Register(s, "start_device_pairing", func(ctx context.Context, p schema.StartDevicePairingParams) (schema.DevicePairing, error) {
+		server := domain.Server{URL: p.Server.URL, CertFingerprint: p.Server.CertFingerprint}
+		pairing, err := conn.StartDevicePairing(ctx, server)
+		if err != nil {
+			return schema.DevicePairing{}, wireError(err)
+		}
+		return schema.DevicePairing{
+			UserCode:         pairing.UserCode,
+			VerificationURL:  pairing.VerificationURL,
+			ExpiresInSeconds: int(pairing.ExpiresIn.Seconds()),
+		}, nil
+	})
+
+	Register(s, "cancel_device_pairing", func(_ context.Context, p schema.CancelDevicePairingParams) (schema.CancelDevicePairingResult, error) {
+		conn.CancelDevicePairing(p.UserCode)
+		return schema.CancelDevicePairingResult{}, nil
+	})
+}
+
+// PairingEvents returns a listener that sends each pairing update as a device_pairing
+// notification.
+func PairingEvents(s *Server) app.PairingListener {
+	return func(u app.PairingUpdate) {
+		event := schema.DevicePairingEvent{State: schema.PairingState(u.State)}
+		if u.State == app.PairingApproved {
+			status := toWireStatus(u.Status)
+			event.Status = &status
+		}
+		if err := s.Notify("device_pairing", event); err != nil {
+			s.log.Error("send device_pairing", "err", err)
+		}
+	}
 }
 
 func toWireStatus(s app.ConnectionStatus) schema.ConnectionStatus {
@@ -49,6 +82,12 @@ func toWireStatus(s app.ConnectionStatus) schema.ConnectionStatus {
 		State:     schema.ConnectionState(s.State),
 		ServerURL: s.ServerURL,
 		Version:   s.Version,
+	}
+	for _, f := range s.DisabledFeatures {
+		out.DisabledFeatures = append(out.DisabledFeatures, schema.DisabledFeature{
+			Feature:       schema.Feature(f.Feature),
+			MissingScopes: f.MissingScopes,
+		})
 	}
 	if s.Problem != nil {
 		var rpcErr *Error

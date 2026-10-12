@@ -13,6 +13,7 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/settings"
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/system"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/app"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
@@ -43,13 +44,15 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Decky exports the plugin's settings dir to the plugin process, which passes it down.
-	store := settings.New(os.Getenv("DECKY_PLUGIN_SETTINGS_DIR"))
-	userAgent := "decky-emudeck-romm/" + version
-	dial := func(server domain.Server, token string) app.RomM { return romm.New(server, token, userAgent) }
+	// Decky exports the plugin's dirs to the plugin process, which passes them down.
+	settingsDir := os.Getenv("DECKY_PLUGIN_SETTINGS_DIR")
+	store := settings.New(settingsDir)
+	identity := system.NewIdentity(settingsDir)
+	dial := func(server domain.Server, token string) app.RomM { return romm.New(server, token, version) }
 
 	srv := rpc.NewServer(os.Stdout, log)
-	rpc.Routes(srv, version, app.NewConnection(store, dial))
+	conn := app.NewConnection(ctx, store, dial, identity, rpc.PairingEvents(srv), log)
+	rpc.Routes(srv, version, conn)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {
 		return fmt.Errorf("send ready: %w", err)

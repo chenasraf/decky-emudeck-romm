@@ -61,6 +61,15 @@ export interface Methods {
   connection_status: Method<ConnectionStatusParams, ConnectionStatus>;
   check_server: Method<CheckServerParams, CheckServerResult>;
   sign_in_with_pair_code: Method<SignInWithPairCodeParams, ConnectionStatus>;
+  start_device_pairing: Method<StartDevicePairingParams, DevicePairing>;
+  cancel_device_pairing: Method<CancelDevicePairingParams, CancelDevicePairingResult>;
+}
+/**
+ * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
+ * event of the same name, to its params.
+ */
+export interface Events {
+  device_pairing: DevicePairingEvent;
 }
 /**
  * Method pairs a method's params with its result.
@@ -91,6 +100,19 @@ export interface ConnectionStatus {
    * Problem says why the server is offline.
    */
   problem?: Error;
+  /**
+   * DisabledFeatures are the features the token's scopes don't cover.
+   */
+  disabledFeatures?: DisabledFeature[];
+}
+export type Feature = string;
+export const FeatureBrowse: Feature = "browse";
+export const FeatureDownload: Feature = "download";
+export const FeatureBIOS: Feature = "bios";
+export const FeatureSaveSync: Feature = "save_sync";
+export interface DisabledFeature {
+  feature: Feature;
+  missingScopes: string[];
 }
 export interface CheckServerParams {
   /**
@@ -116,4 +138,38 @@ export interface Server {
 export interface SignInWithPairCodeParams {
   server: Server;
   code: string;
+}
+export interface StartDevicePairingParams {
+  server: Server;
+}
+/**
+ * DevicePairing is a pairing request for the user to approve in RomM's web UI. How it ends
+ * arrives as a device_pairing event.
+ */
+export interface DevicePairing {
+  userCode: string;
+  /**
+   * VerificationURL opens the approval page with the code filled in; the QR code encodes it.
+   */
+  verificationUrl: string;
+  expiresInSeconds: number /* int */;
+}
+export interface CancelDevicePairingParams {
+  /**
+   * UserCode names the pairing to cancel; a newer pairing is left alone.
+   */
+  userCode: string;
+}
+export interface CancelDevicePairingResult {
+}
+export type PairingState = string;
+export const PairingApproved: PairingState = "approved";
+export const PairingDenied: PairingState = "denied";
+export const PairingExpired: PairingState = "expired";
+export interface DevicePairingEvent {
+  state: PairingState;
+  /**
+   * Status is the connection once signed in, set when approved.
+   */
+  status?: ConnectionStatus;
 }

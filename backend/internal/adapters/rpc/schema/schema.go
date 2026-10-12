@@ -49,10 +49,18 @@ type ErrorData struct {
 
 // Methods maps each RPC method name to its params and result.
 type Methods struct {
-	Ping               Method[PingParams, PingResult]                     `json:"ping"`
-	ConnectionStatus   Method[ConnectionStatusParams, ConnectionStatus]   `json:"connection_status"`
-	CheckServer        Method[CheckServerParams, CheckServerResult]       `json:"check_server"`
-	SignInWithPairCode Method[SignInWithPairCodeParams, ConnectionStatus] `json:"sign_in_with_pair_code"`
+	Ping                Method[PingParams, PingResult]                               `json:"ping"`
+	ConnectionStatus    Method[ConnectionStatusParams, ConnectionStatus]             `json:"connection_status"`
+	CheckServer         Method[CheckServerParams, CheckServerResult]                 `json:"check_server"`
+	SignInWithPairCode  Method[SignInWithPairCodeParams, ConnectionStatus]           `json:"sign_in_with_pair_code"`
+	StartDevicePairing  Method[StartDevicePairingParams, DevicePairing]              `json:"start_device_pairing"`
+	CancelDevicePairing Method[CancelDevicePairingParams, CancelDevicePairingResult] `json:"cancel_device_pairing"`
+}
+
+// Events maps each notification the backend sends, which main.py re-emits to the frontend as an
+// event of the same name, to its params.
+type Events struct {
+	DevicePairing DevicePairingEvent `json:"device_pairing"`
 }
 
 // Method pairs a method's params with its result.
@@ -84,6 +92,22 @@ type ConnectionStatus struct {
 	Version string `json:"version,omitempty"`
 	// Problem says why the server is offline.
 	Problem *Error `json:"problem,omitempty"`
+	// DisabledFeatures are the features the token's scopes don't cover.
+	DisabledFeatures []DisabledFeature `json:"disabledFeatures,omitempty"`
+}
+
+type Feature string
+
+const (
+	FeatureBrowse   Feature = "browse"
+	FeatureDownload Feature = "download"
+	FeatureBIOS     Feature = "bios"
+	FeatureSaveSync Feature = "save_sync"
+)
+
+type DisabledFeature struct {
+	Feature       Feature  `json:"feature"`
+	MissingScopes []string `json:"missingScopes"`
 }
 
 type CheckServerParams struct {
@@ -107,4 +131,38 @@ type Server struct {
 type SignInWithPairCodeParams struct {
 	Server Server `json:"server"`
 	Code   string `json:"code"`
+}
+
+type StartDevicePairingParams struct {
+	Server Server `json:"server"`
+}
+
+// DevicePairing is a pairing request for the user to approve in RomM's web UI. How it ends
+// arrives as a device_pairing event.
+type DevicePairing struct {
+	UserCode string `json:"userCode"`
+	// VerificationURL opens the approval page with the code filled in; the QR code encodes it.
+	VerificationURL  string `json:"verificationUrl"`
+	ExpiresInSeconds int    `json:"expiresInSeconds"`
+}
+
+type CancelDevicePairingParams struct {
+	// UserCode names the pairing to cancel; a newer pairing is left alone.
+	UserCode string `json:"userCode"`
+}
+
+type CancelDevicePairingResult struct{}
+
+type PairingState string
+
+const (
+	PairingApproved PairingState = "approved"
+	PairingDenied   PairingState = "denied"
+	PairingExpired  PairingState = "expired"
+)
+
+type DevicePairingEvent struct {
+	State PairingState `json:"state"`
+	// Status is the connection once signed in, set when approved.
+	Status *ConnectionStatus `json:"status,omitempty"`
 }

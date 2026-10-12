@@ -1,13 +1,21 @@
 import { DialogButton, Field, Focusable, Navigation, TextField } from '@decky/ui'
-import { type CSSProperties, type ReactNode, useState } from 'react'
+import { type CSSProperties, useState } from 'react'
 
-import { call, rpcError } from '../backend'
+import { call } from '../backend'
 import { publishConnection } from '../connection'
-import type { CheckServerResult, ConnectionStatus, Error as RpcError } from '../rpc/schema.gen'
+import { disabledReason, featureLabel } from '../features'
+import type {
+  CheckServerResult,
+  ConnectionStatus,
+  Error as RpcError,
+  Server,
+} from '../rpc/schema.gen'
+import { asRpcError, ErrorBox, mono, muted } from './common'
+import { DevicePairingPanel } from './DevicePairingPanel'
 
 type Step =
   | { name: 'server' }
-  | { name: 'pair'; found: CheckServerResult }
+  | { name: 'sign_in'; found: CheckServerResult }
   | { name: 'done'; status: ConnectionStatus }
 
 // Routes render under Steam's header bar.
@@ -17,32 +25,6 @@ const page: CSSProperties = {
   flexDirection: 'column',
   gap: 16,
   maxWidth: 720,
-}
-
-const muted: CSSProperties = { color: '#8b929a', fontSize: 14, lineHeight: 1.5 }
-
-const errorBox: CSSProperties = {
-  background: 'rgba(209, 28, 28, 0.15)',
-  borderLeft: '3px solid #d11c1c',
-  padding: '10px 14px',
-  fontSize: 14,
-  lineHeight: 1.5,
-}
-
-const mono: CSSProperties = { fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }
-
-/** Turns a rejected call into an RPC error the page can show. */
-function asRpcError(err: unknown): RpcError {
-  return (
-    rpcError(err) ?? {
-      code: 0,
-      message: err instanceof Error ? err.message : 'Something went wrong.',
-    }
-  )
-}
-
-function ErrorBox({ children }: { children: ReactNode }) {
-  return <div style={errorBox}>{children}</div>
 }
 
 function ServerStep({ onFound }: { onFound: (found: CheckServerResult) => void }) {
@@ -107,13 +89,11 @@ function ServerStep({ onFound }: { onFound: (found: CheckServerResult) => void }
   )
 }
 
-function PairStep({
-  found,
-  onBack,
+function PairCodeForm({
+  server,
   onSignedIn,
 }: {
-  found: CheckServerResult
-  onBack: () => void
+  server: Server
   onSignedIn: (status: ConnectionStatus) => void
 }) {
   const [code, setCode] = useState('')
@@ -124,7 +104,7 @@ function PairStep({
     setBusy(true)
     setError(null)
     try {
-      onSignedIn(await call('sign_in_with_pair_code', { server: found.server, code }))
+      onSignedIn(await call('sign_in_with_pair_code', { server, code }))
     } catch (err) {
       setError(asRpcError(err))
     } finally {
@@ -134,9 +114,6 @@ function PairStep({
 
   return (
     <>
-      <Field label="Server" description={`RomM ${found.version}`}>
-        {found.server.url}
-      </Field>
       <div style={muted}>
         In RomM, open your profile and go to Client API Tokens. Create a token (or Regenerate an
         existing one) and choose Pair Device. Enter the 8-character code it shows before its
@@ -152,12 +129,40 @@ function PairStep({
         }}
       />
       {error && <ErrorBox>{error.message}</ErrorBox>}
-      <Focusable style={{ display: 'flex', gap: 12 }} flow-children="horizontal">
-        <DialogButton disabled={busy} onClick={onBack}>
-          Back
-        </DialogButton>
+      <Focusable style={{ display: 'flex', gap: 12 }}>
         <DialogButton disabled={busy || code.trim() === ''} onClick={() => void signIn()}>
           {busy ? 'Signing in…' : 'Sign in'}
+        </DialogButton>
+      </Focusable>
+    </>
+  )
+}
+
+function SignInStep({
+  found,
+  onBack,
+  onSignedIn,
+}: {
+  found: CheckServerResult
+  onBack: () => void
+  onSignedIn: (status: ConnectionStatus) => void
+}) {
+  const [method, setMethod] = useState<'qr' | 'code'>('qr')
+
+  return (
+    <>
+      <Field label="Server" description={`RomM ${found.version}`}>
+        {found.server.url}
+      </Field>
+      {method === 'qr' ? (
+        <DevicePairingPanel server={found.server} onSignedIn={onSignedIn} />
+      ) : (
+        <PairCodeForm server={found.server} onSignedIn={onSignedIn} />
+      )}
+      <Focusable style={{ display: 'flex', gap: 12 }} flow-children="horizontal">
+        <DialogButton onClick={onBack}>Back</DialogButton>
+        <DialogButton onClick={() => setMethod(method === 'qr' ? 'code' : 'qr')}>
+          {method === 'qr' ? 'Use a pair code instead' : 'Use a QR code instead'}
         </DialogButton>
       </Focusable>
     </>
@@ -170,6 +175,13 @@ function DoneStep({ status }: { status: ConnectionStatus }) {
       <Field label="Signed in" description={status.version && `RomM ${status.version}`}>
         {status.serverUrl}
       </Field>
+      {status.disabledFeatures?.map((d) => (
+        <Field
+          key={d.feature}
+          label={`${featureLabel(d.feature)} is off`}
+          description={disabledReason(d)}
+        />
+      ))}
       <Focusable style={{ display: 'flex', gap: 12 }}>
         <DialogButton onClick={() => Navigation.NavigateBack()}>Done</DialogButton>
       </Focusable>
@@ -180,20 +192,22 @@ function DoneStep({ status }: { status: ConnectionStatus }) {
 export function SetupPage() {
   const [step, setStep] = useState<Step>({ name: 'server' })
 
+  const signedIn = (status: ConnectionStatus) => {
+    publishConnection(status)
+    setStep({ name: 'done', status })
+  }
+
   return (
     <div style={page}>
       <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>Set up RomM</div>
       {step.name === 'server' && (
-        <ServerStep onFound={(found) => setStep({ name: 'pair', found })} />
+        <ServerStep onFound={(found) => setStep({ name: 'sign_in', found })} />
       )}
-      {step.name === 'pair' && (
-        <PairStep
+      {step.name === 'sign_in' && (
+        <SignInStep
           found={step.found}
           onBack={() => setStep({ name: 'server' })}
-          onSignedIn={(status) => {
-            publishConnection(status)
-            setStep({ name: 'done', status })
-          }}
+          onSignedIn={signedIn}
         />
       )}
       {step.name === 'done' && <DoneStep status={step.status} />}

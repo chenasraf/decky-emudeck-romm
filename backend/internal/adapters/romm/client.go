@@ -25,17 +25,20 @@ const (
 	maxBody        = 1 << 20
 )
 
+// clientName is how the plugin names itself to RomM, in the User-Agent and on its Device.
+const clientName = "decky-emudeck-romm"
+
 type Client struct {
 	base      string
 	token     string
+	version   string
 	userAgent string
 	http      *http.Client
 }
 
-// New returns a client for server. token may be empty for the unauthenticated endpoints.
-// userAgent replaces Go's default, which Cloudflare's bot protection blocks before requests reach
-// RomM.
-func New(server domain.Server, token, userAgent string) *Client {
+// New returns a client for server. token may be empty for the unauthenticated endpoints, and
+// version is the plugin's.
+func New(server domain.Server, token, version string) *Client {
 	transport := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
 		DialContext:         (&net.Dialer{Timeout: dialTimeout}).DialContext,
@@ -48,9 +51,12 @@ func New(server domain.Server, token, userAgent string) *Client {
 		},
 	}
 	return &Client{
-		base:      strings.TrimRight(server.URL, "/"),
-		token:     token,
-		userAgent: userAgent,
+		base:    strings.TrimRight(server.URL, "/"),
+		token:   token,
+		version: version,
+		// Go's default User-Agent gets requests blocked by Cloudflare's bot protection before
+		// they reach RomM.
+		userAgent: clientName + "/" + version,
 		http:      &http.Client{Transport: transport, Timeout: requestTimeout},
 	}
 }
@@ -111,32 +117,114 @@ func (c *Client) Heartbeat(ctx context.Context) (string, error) {
 	return body.System.Version, nil
 }
 
+var errRateLimited = &domain.Error{Kind: domain.KindRateLimited, Message: "Too many pairing attempts. Wait a minute and try again."}
+
 // ExchangePairCode redeems a pair code for a client token. RomM regenerates the token's secret on
-// exchange, so any copy of that token made earlier stops working.
-func (c *Client) ExchangePairCode(ctx context.Context, code string) (string, error) {
+// exchange, so any copy of that token made earlier stops working. The result has no Server.
+func (c *Client) ExchangePairCode(ctx context.Context, code string) (domain.SignIn, error) {
 	var body struct {
-		RawToken string `json:"raw_token"`
+		RawToken string   `json:"raw_token"`
+		Scopes   []string `json:"scopes"`
+		DeviceID *string  `json:"device_id"`
 	}
 	status, err := c.do(ctx, http.MethodPost, "/api/client-tokens/exchange", map[string]string{"code": code}, &body)
 	if err != nil {
-		return "", err
+		return domain.SignIn{}, err
 	}
 	switch {
 	case status == http.StatusOK && body.RawToken != "":
-		return body.RawToken, nil
+		in := domain.SignIn{Token: body.RawToken, Scopes: body.Scopes}
+		if body.DeviceID != nil {
+			in.DeviceID = *body.DeviceID
+		}
+		return in, nil
 	case status == http.StatusNotFound:
-		return "", &domain.Error{Kind: domain.KindInvalidPairCode, Message: "That pair code is wrong or has expired. Pair codes last one minute; make a new one in RomM."}
+		return domain.SignIn{}, &domain.Error{Kind: domain.KindInvalidPairCode, Message: "That pair code is wrong or has expired. Make a new one in RomM."}
 	case status == http.StatusForbidden:
-		return "", &domain.Error{Kind: domain.KindPairRejected, Message: "RomM refused the pair code: the account that made it is disabled."}
+		return domain.SignIn{}, &domain.Error{Kind: domain.KindPairRejected, Message: "RomM refused the pair code: the account that made it is disabled."}
 	case status == http.StatusTooManyRequests:
-		return "", &domain.Error{Kind: domain.KindRateLimited, Message: "Too many pairing attempts. Wait a minute and try again."}
+		return domain.SignIn{}, errRateLimited
 	default:
-		return "", fmt.Errorf("pair code exchange: unexpected status %d", status)
+		return domain.SignIn{}, fmt.Errorf("pair code exchange: unexpected status %d", status)
 	}
 }
 
-// do sends a request and decodes a JSON response into out. A non-2xx status is not an error here;
-// callers map statuses to what they mean for their endpoint.
+// StartDeviceAuth asks RomM to pair this Deck as a Device, for the user to approve in RomM's web
+// UI.
+func (c *Client) StartDeviceAuth(ctx context.Context, device domain.DeviceIdentity, scopes []string) (domain.DevicePairing, error) {
+	req := map[string]any{
+		"client_device_identifier": device.Identifier,
+		"name":                     device.Name,
+		"client":                   clientName,
+		"platform":                 device.Platform,
+		"client_version":           c.version,
+		"requested_scopes":         scopes,
+	}
+	var body struct {
+		DeviceCode               string `json:"device_code"`
+		UserCode                 string `json:"user_code"`
+		VerificationPathComplete string `json:"verification_path_complete"`
+		ExpiresIn                int    `json:"expires_in"`
+		Interval                 int    `json:"interval"`
+	}
+	status, err := c.do(ctx, http.MethodPost, "/api/auth/device/init", req, &body)
+	if err != nil {
+		return domain.DevicePairing{}, err
+	}
+	switch status {
+	case http.StatusCreated, http.StatusOK:
+		return domain.DevicePairing{
+			DeviceCode:      body.DeviceCode,
+			UserCode:        body.UserCode,
+			VerificationURL: c.base + body.VerificationPathComplete,
+			ExpiresIn:       time.Duration(body.ExpiresIn) * time.Second,
+			Interval:        time.Duration(body.Interval) * time.Second,
+		}, nil
+	case http.StatusTooManyRequests:
+		return domain.DevicePairing{}, errRateLimited
+	default:
+		return domain.DevicePairing{}, fmt.Errorf("start device pairing: unexpected status %d", status)
+	}
+}
+
+// PollDeviceAuth checks once whether the user has approved a pairing. It returns the token, or one
+// of the domain.ErrPairing errors while there is none. The result has no Server.
+func (c *Client) PollDeviceAuth(ctx context.Context, deviceCode string) (domain.SignIn, error) {
+	var body struct {
+		AccessToken string   `json:"access_token"`
+		DeviceID    string   `json:"device_id"`
+		Scopes      []string `json:"scopes"`
+		Detail      string   `json:"detail"`
+	}
+	status, err := c.do(ctx, http.MethodPost, "/api/auth/device/token", map[string]string{"device_code": deviceCode}, &body)
+	if err != nil {
+		return domain.SignIn{}, err
+	}
+	switch {
+	case status == http.StatusOK && body.AccessToken != "":
+		return domain.SignIn{Token: body.AccessToken, DeviceID: body.DeviceID, Scopes: body.Scopes}, nil
+	case status == http.StatusTooManyRequests:
+		return domain.SignIn{}, domain.ErrPairingSlowDown
+	case status != http.StatusBadRequest:
+		return domain.SignIn{}, fmt.Errorf("poll device pairing: unexpected status %d", status)
+	}
+	switch body.Detail {
+	case "authorization_pending":
+		return domain.SignIn{}, domain.ErrPairingPending
+	case "slow_down":
+		return domain.SignIn{}, domain.ErrPairingSlowDown
+	case "access_denied":
+		return domain.SignIn{}, domain.ErrPairingDenied
+	case "expired_token":
+		return domain.SignIn{}, domain.ErrPairingExpired
+	default:
+		return domain.SignIn{}, fmt.Errorf("poll device pairing: unexpected error %q", body.Detail)
+	}
+}
+
+// do sends a request and decodes its JSON response into out. A non-2xx status is not an error
+// here; callers map statuses to what they mean for their endpoint. Error bodies are decoded too,
+// for endpoints that explain a 4xx in them.
 func (c *Client) do(ctx context.Context, method, path string, in, out any) (int, error) {
 	var body io.Reader
 	if in != nil {
@@ -169,10 +257,13 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) (int,
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 && out != nil {
-		if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out); err != nil {
-			return 0, &domain.Error{Kind: domain.KindNotRomM, Message: "No RomM server answered at this address.", Err: err}
-		}
+	if out == nil {
+		return resp.StatusCode, nil
 	}
+	err = json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
+	if err != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return 0, &domain.Error{Kind: domain.KindNotRomM, Message: "No RomM server answered at this address.", Err: err}
+	}
+	// An error body that isn't JSON leaves out empty, which callers read as "no detail".
 	return resp.StatusCode, nil
 }

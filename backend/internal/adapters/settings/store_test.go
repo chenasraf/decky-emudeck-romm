@@ -3,6 +3,7 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,47 +11,48 @@ import (
 )
 
 func TestEmptyStore(t *testing.T) {
-	s := New(t.TempDir())
-	server, err := s.Server()
-	if err != nil || server != nil {
-		t.Fatalf("got %v, %v", server, err)
-	}
-	tok, err := s.Token()
-	if err != nil || tok != "" {
-		t.Fatalf("got %q, %v", tok, err)
+	got, err := New(t.TempDir()).SignIn()
+	if err != nil || got != nil {
+		t.Fatalf("got %+v, %v", got, err)
 	}
 }
 
 func TestRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	s := New(dir)
-	want := domain.Server{URL: "https://romm.lan", CertFingerprint: "AB:CD"}
-	if err := s.SaveServer(want); err != nil {
-		t.Fatal(err)
+	want := domain.SignIn{
+		Server:   domain.Server{URL: "https://romm.lan", CertFingerprint: "AB:CD"},
+		Token:    "rmm_secret",
+		DeviceID: "dev-1",
+		Scopes:   []string{"roms.read", "me.read"},
 	}
-	if err := s.SaveToken("rmm_secret"); err != nil {
+	if err := New(dir).SaveSignIn(want); err != nil {
 		t.Fatal(err)
 	}
 
 	// A fresh store reads what an earlier process wrote.
-	s = New(dir)
-	got, err := s.Server()
-	if err != nil || got == nil || *got != want {
-		t.Fatalf("server: got %+v, %v", got, err)
+	got, err := New(dir).SignIn()
+	if err != nil || got == nil || !reflect.DeepEqual(*got, want) {
+		t.Fatalf("got %+v, %v; want %+v", got, err, want)
 	}
-	tok, err := s.Token()
-	if err != nil || tok != "rmm_secret" {
-		t.Fatalf("token: got %q, %v", tok, err)
+}
+
+func TestSignInNeedsToken(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if err := s.SaveSignIn(domain.SignIn{Server: domain.Server{URL: "http://romm.lan"}, Token: "rmm_x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, tokenFile)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.SignIn(); err != nil || got != nil {
+		t.Fatalf("got %+v, %v", got, err)
 	}
 }
 
 func TestTokenIsPrivateAndKeptOutOfSettings(t *testing.T) {
 	dir := t.TempDir()
-	s := New(dir)
-	if err := s.SaveServer(domain.Server{URL: "http://romm.lan"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SaveToken("rmm_secret"); err != nil {
+	if err := New(dir).SaveSignIn(domain.SignIn{Server: domain.Server{URL: "http://romm.lan"}, Token: "rmm_secret"}); err != nil {
 		t.Fatal(err)
 	}
 
