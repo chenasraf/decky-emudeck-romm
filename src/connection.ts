@@ -1,7 +1,7 @@
-import { useQuickAccessVisible } from '@decky/api'
+import { addEventListener, removeEventListener, useQuickAccessVisible } from '@decky/api'
 import { useEffect, useState } from 'react'
 
-import { call } from './backend'
+import { BACKEND_STATUS_EVENT, type BackendStatus, call } from './backend'
 import type { ConnectionStatus } from './rpc/schema.gen'
 
 /** Path of the full-screen route for setting up the server and signing in. */
@@ -26,15 +26,22 @@ async function refresh() {
   }
 }
 
-/** The connection status, re-checked each time the Quick Access Menu opens. */
+/**
+ * The connection status, re-checked each time the Quick Access Menu opens and each time the
+ * backend becomes ready, since a check made while it was starting got no answer.
+ */
 export function useConnection(): ConnectionStatus | null {
   const [status, setStatus] = useState(current)
   const visible = useQuickAccessVisible()
 
   useEffect(() => {
     listeners.add(setStatus)
+    const listener = addEventListener<[BackendStatus]>(BACKEND_STATUS_EVENT, (backend) => {
+      if (backend.state === 'ready') void refresh()
+    })
     return () => {
       listeners.delete(setStatus)
+      removeEventListener(BACKEND_STATUS_EVENT, listener)
     }
   }, [])
 

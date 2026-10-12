@@ -34,12 +34,17 @@ function devBridge(): Plugin {
     configureServer(server) {
       start()
       server.watcher.add([`${root}main.py`, `${root}backend`])
+      // A formatter or a multi-file edit touches several .go files at once; rebuild once.
+      let rebuildTimer: ReturnType<typeof setTimeout> | undefined
       server.watcher.on('change', async (file) => {
         if (file === `${root}main.py`) {
           await stop()
           start()
         } else if (file.startsWith(`${root}backend/`) && file.endsWith('.go')) {
-          await fetch(`${bridgeUrl}/dev/rebuild`, { method: 'POST' }).catch(() => undefined)
+          clearTimeout(rebuildTimer)
+          rebuildTimer = setTimeout(() => {
+            void fetch(`${bridgeUrl}/dev/rebuild`, { method: 'POST' }).catch(() => undefined)
+          }, 300)
         }
       })
       server.httpServer?.once('close', () => void stop())

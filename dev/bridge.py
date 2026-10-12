@@ -52,6 +52,8 @@ def install_decky_stub() -> types.ModuleType:
         # The loader exports these to the plugin process, so the backend inherits them.
         os.environ[name] = str(path)
     decky.DECKY_USER_HOME = os.environ["HOME"]
+    # Every RPC call and RomM request, which the Deck's info level leaves out.
+    os.environ.setdefault("BACKEND_LOG_LEVEL", "debug")
     decky.DECKY_PLUGIN_VERSION = json.loads((ROOT / "package.json").read_text())["version"]
     logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s", stream=sys.stdout)
     decky.logger = logging.getLogger("plugin")
@@ -85,6 +87,27 @@ async def build_backend() -> bool:
     return ok
 
 
+# Set once the first build is done and the supervisor runs; callables wait for it, so a page
+# loaded during the build gets answers instead of errors.
+started = asyncio.Event()
+
+rebuild_lock = asyncio.Lock()
+rebuild_queued = False
+
+
+async def rebuild() -> None:
+    """Rebuilds and restarts the backend. Saving several files at once asks for several rebuilds;
+    while one runs, the rest fold into a single follow-up."""
+    global rebuild_queued
+    if rebuild_queued:
+        return
+    rebuild_queued = True
+    async with rebuild_lock:
+        rebuild_queued = False
+        if await build_backend():
+            await plugin.restart_backend()
+
+
 def callable_named(name: str):
     attr = getattr(plugin, name, None)
     if name.startswith("_") or not inspect.iscoroutinefunction(attr):
@@ -115,8 +138,8 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> 
         return await respond(writer, 405, {"error": "method not allowed"})
 
     if path == "/dev/rebuild":
-        if await build_backend():
-            await plugin.restart_backend()
+        await started.wait()
+        await rebuild()
         return await respond(writer, 200, {"result": None})
     if path == "/dev/kill":
         if plugin.backend.proc:
@@ -128,6 +151,7 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> 
     if fn is None:
         return await respond(writer, 404, {"error": f"unknown callable: {name}"})
     args = json.loads(body or b"{}").get("args", [])
+    await started.wait()
     try:
         result = await fn(*args)
     except Exception as e:  # Decky turns any exception into a rejected call with str(e).
@@ -156,10 +180,12 @@ async def stop_when_orphaned(stop: asyncio.Event) -> None:
 
 
 async def run() -> None:
-    await build_backend()
+    # Listen before building, so Vite's proxy has somewhere to send the page's first requests.
     server = await asyncio.start_server(handle, "127.0.0.1", PORT)
-    await plugin._main()
     log.info(f"dev bridge listening on http://127.0.0.1:{PORT}")
+    await build_backend()
+    await plugin._main()
+    started.set()
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
