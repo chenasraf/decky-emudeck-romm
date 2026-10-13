@@ -64,6 +64,8 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			Games:        []schema.GameSummary{},
 			Total:        page.Total,
 		}
+		policy, keep := downloads.Archives(ctx, p.PlatformID)
+		out.Archives, out.KeepArchives = schema.ArchivePolicy(policy), keep
 		for _, r := range page.ROMs {
 			out.Games = append(out.Games, schema.GameSummary{
 				ID:        r.ID,

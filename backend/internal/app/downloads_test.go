@@ -29,6 +29,26 @@ func (p fixedProber) Probe() domain.InstallState {
 	return s
 }
 
+// memPrefs keeps Keep archives toggles in memory; unset is on.
+type memPrefs struct {
+	mu   sync.Mutex
+	keep map[string]bool
+}
+
+func (m *memPrefs) KeepArchives(folder string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	keep, ok := m.keep[folder]
+	return keep || !ok
+}
+
+func (m *memPrefs) SetKeepArchives(folder string, keep bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keep[folder] = keep
+	return nil
+}
+
 // memOwnership is a DownloadStore in memory.
 type memOwnership struct {
 	mu      sync.Mutex
@@ -176,6 +196,7 @@ type downloadFixture struct {
 	// free is what the Emulation drive has free.
 	free    atomic.Int64
 	holds   chan error
+	prefs   *memPrefs
 	updates chan Download
 	deletes chan DeleteUpdate
 	// stop stops the backend the downloads run under.
@@ -215,12 +236,16 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 
 	catalog := &memStore{}
 	if err := catalog.Apply(context.Background(), domain.CatalogSync{
-		Platforms: []domain.Platform{{ID: 1, Slug: "snes", Name: "Super Nintendo"}, {ID: 2, Slug: "unknown-console", Name: "Mystery"}},
+		Platforms: []domain.Platform{{ID: 1, Slug: "snes", Name: "Super Nintendo"}, {ID: 2, Slug: "unknown-console", Name: "Mystery"},
+			{ID: 3, Slug: "psx", Name: "PlayStation"}, {ID: 4, Slug: "arcade", Name: "Arcade"}},
 		ROMs: []domain.ROM{
 			{ID: 1, PlatformID: 1, Name: "Chrono Trigger", SizeBytes: int64(len(chrono))},
 			{ID: 2, PlatformID: 1, Name: "Super Metroid", SizeBytes: int64(len(metroid))},
 			{ID: 3, PlatformID: 1, Name: "Disc Game", MultiFile: true},
 			{ID: 4, PlatformID: 2, Name: "Mystery Game"},
+			{ID: 5, PlatformID: 3, Name: "Ridge Racer", FileName: "Ridge Racer.zip", SizeBytes: 1000},
+			{ID: 6, PlatformID: 4, Name: "Street Fighter II", FileName: "sf2.zip"},
+			{ID: 7, PlatformID: 1, Name: "Zipped", FileName: "Zipped.zip"},
 		},
 		Full: true,
 	}); err != nil {
@@ -229,7 +254,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	install := NewInstall(fixedProber{domain.InstallState{
 		EmuDeck: domain.EmuDeckState{Root: root, ROMsPath: filepath.Join(root, "roms")},
-		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes}},
+		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
+			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")}},
 	}}, log)
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) DownloadServer { return f.server }
@@ -237,7 +263,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	f.stop = stop
 	f.free.Store(1 << 40)
 	f.holds = make(chan error, 16)
-	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, limit, f.listeners(), log)
+	f.prefs = &memPrefs{keep: map[string]bool{}}
+	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, f.prefs, limit, f.listeners(), log)
 	f.downloads.retries = testRetries
 	f.downloads.spacePoll = time.Millisecond
 	return f
@@ -445,7 +472,7 @@ func TestDownloadWithoutStateDB(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	problem := &domain.Error{Kind: domain.KindNewerData, Message: "newer"}
 	d := NewDownloads(t.Context(), f.downloads.catalog, f.downloads.install, f.downloads.conn, f.downloads.dial,
-		nil, problem, f.measure, 2, DownloadListeners{}, f.downloads.log)
+		nil, problem, f.measure, f.prefs, 2, DownloadListeners{}, f.downloads.log)
 
 	if _, err := d.Queue(context.Background(), 1); kindOf(err) != domain.KindNewerData {
 		t.Fatalf("queue: %v", err)
@@ -627,7 +654,7 @@ func TestDismissFailedDeletesPartial(t *testing.T) {
 func (f *downloadFixture) restart(t *testing.T) *Downloads {
 	t.Helper()
 	old := f.downloads
-	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, 2, f.listeners(), old.log)
+	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, f.prefs, 2, f.listeners(), old.log)
 	d.retries = testRetries
 	f.downloads = d
 	return d

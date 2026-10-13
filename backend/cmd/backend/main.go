@@ -104,7 +104,7 @@ func run(log *slog.Logger) error {
 		defer func() { _ = owned.Close() }()
 		ownership = owned
 	}
-	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr, system.FreeBytes,
+	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr, system.FreeBytes, store,
 		store.DownloadConcurrency(), rpc.DownloadListeners(srv), log.With("component", "downloads"))
 
 	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))

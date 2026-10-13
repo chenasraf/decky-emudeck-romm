@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -43,6 +44,12 @@ const spacePoll = 30 * time.Second
 
 // FreeSpace returns how many bytes may still be written to the drive holding path.
 type FreeSpace func(path string) (int64, error)
+
+// ArchivePrefs keeps the Keep archives toggle of each EmuDeck system folder.
+type ArchivePrefs interface {
+	KeepArchives(folder string) bool
+	SetKeepArchives(folder string, keep bool) error
+}
 
 // DownloadServer is the part of the RomM API downloading needs.
 type DownloadServer interface {
@@ -108,6 +115,7 @@ type Downloads struct {
 	store     DownloadStore
 	problem   error
 	free      FreeSpace
+	prefs     ArchivePrefs
 	limit     int
 	onChange  DownloadListener
 	onDelete  DeleteListener
@@ -144,10 +152,10 @@ type job struct {
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
 // turns downloading and deleting off, reporting problem.
 func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial DownloadDialer,
-	store DownloadStore, problem error, free FreeSpace, limit int, listen DownloadListeners, log *slog.Logger,
+	store DownloadStore, problem error, free FreeSpace, prefs ArchivePrefs, limit int, listen DownloadListeners, log *slog.Logger,
 ) *Downloads {
 	return &Downloads{
-		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free,
+		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs,
 		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, log: log,
 		now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx, deleting: map[int]bool{},
 	}
@@ -253,7 +261,8 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	if err != nil {
 		return Download{}, err
 	}
-	if _, err := d.targetDir(rom, platform); err != nil {
+	system, _, err := d.targetDir(rom, platform)
+	if err != nil {
 		return Download{}, err
 	}
 	if _, owned, err := d.store.Owned(ctx, id); err != nil || owned {
@@ -273,6 +282,11 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	if j != nil {
 		// A retry resumes, so only what's left of it needs room.
 		need = j.Total - j.Received
+	}
+	if domain.IsArchive(rom.FileName) && system.ArchivePolicy() != domain.ArchivesKeep {
+		// Extracting needs room for the contents while the archive is still there. Whether a
+		// Keep archives system keeps this one isn't known until it's opened.
+		need += rom.SizeBytes
 	}
 	ahead := d.pending()
 	d.mu.Unlock()
@@ -484,8 +498,8 @@ func (d *Downloads) attempts(ctx context.Context, j *job) error {
 }
 
 // download fetches a single-file game into staging, resuming bytes an earlier attempt left there,
-// and moves it into its ROM folder with one rename, then records it as Plugin-owned. It never
-// replaces a file already at the target.
+// extracts it when it's an archive its system extracts, moves the result into its ROM folder,
+// then records it as Plugin-owned. It never replaces a file already at the target.
 func (d *Downloads) download(ctx context.Context, j *job) error {
 	in, err := d.conn.activeSignIn()
 	if err != nil {
@@ -498,7 +512,7 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 	if err != nil {
 		return err
 	}
-	dir, err := d.targetDir(rom, platform)
+	system, dir, err := d.targetDir(rom, platform)
 	if err != nil {
 		return err
 	}
@@ -512,9 +526,11 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return &domain.Error{Kind: domain.KindCantDownload, Message: fmt.Sprintf("RomM lists %d game files for this game; the plugin places games that are a single file.", len(game))}
 	}
 	file := game[0]
-	target := filepath.Join(dir, file.Name)
-	if err := checkFree(target); err != nil {
-		return err
+	if !domain.IsArchive(file.Name) || system.ArchivePolicy() == domain.ArchivesKeep {
+		// The file is placed as it is, so one already at the target fails it before it downloads.
+		if err := checkFree(filepath.Join(dir, file.Name)); err != nil {
+			return err
+		}
 	}
 
 	staging := d.staging(j.ROMID)
@@ -547,37 +563,134 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return d.conn.observe(*in, err)
 	}
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", dir, err)
-	}
-	// Checked again: a file may have appeared while the download ran.
-	if err := checkFree(target); err != nil {
+	staged, err := d.unpack(system, partial, sum)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(partial, target); err != nil {
-		return fmt.Errorf("move into %s: %w", dir, err)
-	}
-	info, err := os.Stat(target)
+	placed, err := d.place(staged, dir)
 	if err != nil {
 		return err
 	}
 	owned := domain.OwnedROM{
 		ROMID:       j.ROMID,
 		PlatformID:  rom.PlatformID,
-		Files:       []domain.PlacedFile{{Path: target, SizeBytes: info.Size(), ModTime: info.ModTime().UTC(), SHA1: sum}},
+		Files:       placed,
 		Snapshot:    []domain.FileSnapshot{snapshot},
 		InstalledAt: d.now().UTC(),
 	}
-	// The file is in place, so the record is written even if the download is cancelled now.
+	// The files are in place, so the record is written even if the download is cancelled now.
 	if err := d.store.SaveOwned(context.WithoutCancel(ctx), owned); err != nil {
-		// Without a record the file would be User-managed, and the plugin could never update or
-		// delete it. It is the plugin's own download, so it goes.
-		if rmErr := os.Remove(target); rmErr != nil {
-			d.log.Error("remove unrecorded download", "path", target, "err", rmErr)
-		}
+		// Without a record the files would be User-managed, and the plugin could never update or
+		// delete them. They are the plugin's own download, so they go.
+		d.removeFiles(placed, dir)
 		return fmt.Errorf("record download: %w", err)
 	}
 	return nil
+}
+
+// extractedDir is where an archive's contents go in its staging folder.
+const extractedDir = ".extracted"
+
+// stagedFile is a file in staging waiting to move into its ROM folder.
+type stagedFile struct {
+	From string
+	// Rel is where it goes under the ROM folder.
+	Rel  string
+	SHA1 string
+}
+
+// unpack decides whether the downloaded file at path is placed as it is or extracted, and returns
+// what to place: the file itself, or the archive's contents.
+func (d *Downloads) unpack(system domain.System, path, sum string) ([]stagedFile, error) {
+	whole := []stagedFile{{From: path, Rel: filepath.Base(path), SHA1: sum}}
+	if !domain.IsArchive(path) || system.ArchivePolicy() == domain.ArchivesKeep {
+		return whole, nil
+	}
+	members, closeArchive, err := openArchive(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = closeArchive() }()
+	if len(members) == 0 {
+		return nil, &domain.Error{Kind: domain.KindCantDownload, Message: "The archive from RomM is empty."}
+	}
+	if !system.Extracts(len(members), d.prefs.KeepArchives(system.Folder)) {
+		return whole, nil
+	}
+
+	var size int64
+	for _, m := range members {
+		size += m.Size
+	}
+	if err := d.checkSpace(size, 0); err != nil {
+		return nil, err
+	}
+	dest := filepath.Join(filepath.Dir(path), extractedDir)
+	// What an earlier attempt extracted may be incomplete.
+	if err := os.RemoveAll(dest); err != nil {
+		return nil, err
+	}
+	files, err := extract(members, dest)
+	if err != nil {
+		return nil, err
+	}
+	d.log.Info("extracted", "archive", filepath.Base(path), "files", len(files), "bytes", size)
+	out := make([]stagedFile, 0, len(files))
+	for _, f := range files {
+		out = append(out, stagedFile{From: filepath.Join(dest, f.Rel), Rel: f.Rel, SHA1: f.SHA1})
+	}
+	return out, nil
+}
+
+// place moves staged files into dir and returns them as placed. Nothing is moved when any target
+// is taken, and what was moved goes back out when a move fails.
+func (d *Downloads) place(staged []stagedFile, dir string) ([]domain.PlacedFile, error) {
+	for _, f := range staged {
+		if err := checkFree(filepath.Join(dir, f.Rel)); err != nil {
+			return nil, err
+		}
+	}
+	placed := make([]domain.PlacedFile, 0, len(staged))
+	for _, f := range staged {
+		target := filepath.Join(dir, f.Rel)
+		err := os.MkdirAll(filepath.Dir(target), 0o755)
+		if err == nil {
+			err = os.Rename(f.From, target)
+		}
+		var info os.FileInfo
+		if err == nil {
+			info, err = os.Stat(target)
+		}
+		if err != nil {
+			d.removeFiles(placed, dir)
+			return nil, fmt.Errorf("move into %s: %w", dir, err)
+		}
+		placed = append(placed, domain.PlacedFile{Path: target, SizeBytes: info.Size(), ModTime: info.ModTime().UTC(), SHA1: f.SHA1})
+	}
+	return placed, nil
+}
+
+// removeFiles deletes placed files, then the folders under dir they leave empty.
+func (d *Downloads) removeFiles(files []domain.PlacedFile, dir string) {
+	for _, f := range files {
+		if err := os.Remove(f.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			d.log.Error("remove placed file", "path", f.Path, "err", err)
+		}
+		removeEmptyDirs(filepath.Dir(f.Path), dir)
+	}
+}
+
+// removeEmptyDirs removes path and its parents while they are empty, stopping at dir, which stays.
+func removeEmptyDirs(path, dir string) {
+	if dir == "" {
+		return
+	}
+	for path != dir && strings.HasPrefix(path, dir+string(filepath.Separator)) {
+		if os.Remove(path) != nil {
+			return
+		}
+		path = filepath.Dir(path)
+	}
 }
 
 // pending is how many bytes the queue has still to download, failed downloads aside. d.mu must
@@ -800,24 +913,74 @@ func (d *Downloads) lookup(ctx context.Context, id int) (domain.ROM, domain.Plat
 	return rom, platform, err
 }
 
-// targetDir is the ROM folder a game goes in.
-func (d *Downloads) targetDir(rom domain.ROM, platform domain.Platform) (string, error) {
+// targetDir is the System a game belongs to and the ROM folder it goes in.
+func (d *Downloads) targetDir(rom domain.ROM, platform domain.Platform) (domain.System, string, error) {
 	state := d.install.State(false)
 	if !state.EmuDeckFound() {
-		return "", &domain.Error{Kind: domain.KindCantDownload, Message: "EmuDeck wasn't found, so there's nowhere to put the game. See Setup status."}
+		return domain.System{}, "", &domain.Error{Kind: domain.KindCantDownload, Message: "EmuDeck wasn't found, so there's nowhere to put the game. See Setup status."}
 	}
 	system, ok := domain.SystemForSlug(platform.Slug)
 	if !ok {
-		return "", &domain.Error{Kind: domain.KindCantDownload, Message: "EmuDeck has no folder for " + platform.Name + "."}
+		return system, "", &domain.Error{Kind: domain.KindCantDownload, Message: "EmuDeck has no folder for " + platform.Name + "."}
 	}
 	if rom.MultiFile {
-		return "", &domain.Error{Kind: domain.KindCantDownload, Message: "This game is a folder of several files; the plugin places games that are a single file."}
+		return system, "", &domain.Error{Kind: domain.KindCantDownload, Message: "This game is a folder of several files; the plugin places games that are a single file."}
 	}
+	dir := romPath(state, system)
+	if dir == "" {
+		return system, "", fmt.Errorf("no install state for %s", system.Folder)
+	}
+	return system, dir, nil
+}
+
+// romPath is the ROM folder of system, empty when the install state has none.
+func romPath(state domain.InstallState, system domain.System) string {
 	i := slices.IndexFunc(state.Systems, func(s domain.SystemState) bool { return s.Folder == system.Folder })
 	if i < 0 {
-		return "", fmt.Errorf("no install state for %s", system.Folder)
+		return ""
 	}
-	return state.Systems[i].ROMPath, nil
+	return state.Systems[i].ROMPath
+}
+
+// platformDir is the ROM folder of a platform's games, empty when it has none.
+func (d *Downloads) platformDir(ctx context.Context, platformID int) string {
+	system, ok := d.platformSystem(ctx, platformID)
+	if !ok {
+		return ""
+	}
+	return romPath(d.install.State(false), system)
+}
+
+// platformSystem is the System a platform's games go in.
+func (d *Downloads) platformSystem(ctx context.Context, platformID int) (domain.System, bool) {
+	platform, ok, err := d.catalog.Platform(ctx, platformID)
+	if err != nil || !ok {
+		return domain.System{}, false
+	}
+	return domain.SystemForSlug(platform.Slug)
+}
+
+// Archives returns what the plugin does with a platform's archives, and whether its Keep archives
+// toggle is on. The policy is empty for a platform EmuDeck has no folder for.
+func (d *Downloads) Archives(ctx context.Context, platformID int) (domain.ArchivePolicy, bool) {
+	system, ok := d.platformSystem(ctx, platformID)
+	if !ok {
+		return "", false
+	}
+	return system.ArchivePolicy(), d.prefs.KeepArchives(system.Folder)
+}
+
+// SetKeepArchives sets the Keep archives toggle of a platform's system. It applies to downloads
+// from then on; games already placed stay as they are.
+func (d *Downloads) SetKeepArchives(ctx context.Context, platformID int, keep bool) error {
+	system, ok := d.platformSystem(ctx, platformID)
+	if !ok {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "EmuDeck has no folder for that platform."}
+	}
+	if system.ArchivePolicy() != domain.ArchivesOptional {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "Keep archives doesn't apply to " + system.Folder + "."}
+	}
+	return d.prefs.SetKeepArchives(system.Folder, keep)
 }
 
 // checkFree fails when something is at path. The plugin never replaces a file it didn't download.

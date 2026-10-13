@@ -9,6 +9,7 @@ import {
   ProgressBarWithInfo,
   showModal,
   TextField,
+  ToggleField,
 } from '@decky/ui'
 import {
   type CSSProperties,
@@ -30,6 +31,7 @@ import type {
   GameFilter,
   GameState,
   GameSummary,
+  ListGamesResult,
   PlatformSummary,
   Error as RpcError,
   SearchGamesResult,
@@ -248,6 +250,45 @@ function FilterChips({
   )
 }
 
+/**
+ * The Keep archives toggle of a platform whose emulators open archives. Other platforms always or
+ * never extract, so they show nothing.
+ */
+function KeepArchivesToggle({
+  platformId,
+  result,
+  onError,
+}: {
+  platformId: number
+  result: ListGamesResult | null
+  onError: (e: RpcError) => void
+}) {
+  // Holds the switch's position from the moment it's flipped, before list_games says so again.
+  const [keep, setKeep] = useState<boolean | null>(null)
+  if (result?.archives !== 'optional') return null
+  const checked = keep ?? result.keepArchives
+  return (
+    <PanelSectionRow>
+      <ToggleField
+        label="Keep archives"
+        description={
+          checked
+            ? 'Zips and 7z holding one file stay as they are. Applies to new downloads.'
+            : 'Every zip and 7z is extracted. Applies to new downloads.'
+        }
+        checked={checked}
+        onChange={(next) => {
+          setKeep(next)
+          call('set_keep_archives', { platformId, keep: next }).catch((err: unknown) => {
+            setKeep(null)
+            onError(asRpcError(err))
+          })
+        }}
+      />
+    </PanelSectionRow>
+  )
+}
+
 /** Whether a game in state belongs under filter, for narrowing search results like the list. */
 function matchesFilter(state: GameState, filter: GameFilter): boolean {
   switch (filter) {
@@ -279,6 +320,7 @@ export function GamesView({
   const downloads = useDownloads()
   const [games, setGames] = useState<GameSummary[]>([])
   const [total, setTotal] = useState<number | null>(null)
+  const [listing, setListing] = useState<ListGamesResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<RpcError | null>(null)
   const [query, setQuery] = useState('')
@@ -291,6 +333,7 @@ export function GamesView({
         (r) => {
           setGames((prev) => (offset === 0 ? r.games : [...prev, ...r.games]))
           setTotal(r.total)
+          setListing(r)
           setError(null)
           setLoading(false)
         },
@@ -326,6 +369,7 @@ export function GamesView({
           onFilter(f)
         }}
       />
+      <KeepArchivesToggle platformId={platform.id} result={listing} onError={setError} />
       <PanelSectionRow>
         <TextField
           label={`Search ${platform.name}`}

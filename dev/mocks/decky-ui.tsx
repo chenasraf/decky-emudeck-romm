@@ -96,6 +96,31 @@ export function ProgressBarWithInfo({
   )
 }
 
+export function ToggleField({
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label?: ReactNode
+  description?: ReactNode
+  checked: boolean
+  disabled?: boolean
+  onChange?: (checked: boolean) => void
+}) {
+  return (
+    <Field label={label} description={description}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange?.(e.target.checked)}
+      />
+    </Field>
+  )
+}
+
 const button: CSSProperties = {
   width: '100%',
   margin: '6px 0',

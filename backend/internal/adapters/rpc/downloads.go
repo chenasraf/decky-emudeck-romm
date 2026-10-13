@@ -28,6 +28,13 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.DeleteGamesResult{Count: n}, nil
 	})
 
+	Register(s, "set_keep_archives", func(ctx context.Context, p schema.SetKeepArchivesParams) (schema.SetKeepArchivesResult, error) {
+		if err := downloads.SetKeepArchives(ctx, p.PlatformID, p.Keep); err != nil {
+			return schema.SetKeepArchivesResult{}, wireError(err)
+		}
+		return schema.SetKeepArchivesResult{}, nil
+	})
+
 	Register(s, "list_downloads", func(context.Context, schema.ListDownloadsParams) (schema.ListDownloadsResult, error) {
 		out := schema.ListDownloadsResult{Downloads: []schema.DownloadItem{}}
 		for _, d := range downloads.List() {

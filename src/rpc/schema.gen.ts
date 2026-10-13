@@ -102,6 +102,7 @@ export interface Methods {
   cancel_download: Method<CancelDownloadParams, CancelDownloadResult>;
   list_downloads: Method<ListDownloadsParams, ListDownloadsResult>;
   delete_games: Method<DeleteGamesParams, DeleteGamesResult>;
+  set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -391,6 +392,39 @@ export interface ListGamesResult {
    * Total is how many games match the filter, across every page.
    */
   total: number /* int */;
+  /**
+   * Archives is what the plugin does with the platform's games that arrive as archives; empty
+   * when EmuDeck has no folder for it.
+   */
+  archives?: ArchivePolicy;
+  /**
+   * KeepArchives is the platform's Keep archives toggle, which applies when Archives is optional.
+   */
+  keepArchives: boolean;
+}
+export type ArchivePolicy = string;
+/**
+ * ArchivesOptional extracts archives unless Keep archives is on, which keeps those holding a
+ * single file.
+ */
+export const ArchivesOptional: ArchivePolicy = "optional";
+/**
+ * ArchivesKeep never extracts: arcade romsets and DOS games stay archives.
+ */
+export const ArchivesKeep: ArchivePolicy = "keep";
+/**
+ * ArchivesExtract always extracts: the platform's emulator can't open archives.
+ */
+export const ArchivesExtract: ArchivePolicy = "extract";
+/**
+ * SetKeepArchivesParams sets the Keep archives toggle for the EmuDeck folder a platform's games go
+ * in. It applies to downloads from then on.
+ */
+export interface SetKeepArchivesParams {
+  platformId: number /* int */;
+  keep: boolean;
+}
+export interface SetKeepArchivesResult {
 }
 export type GameState = string;
 /**

@@ -153,10 +153,13 @@ func (d *Downloads) deleteGame(ctx context.Context, id int) error {
 			}
 		}
 	}
+	dir := d.platformDir(ctx, rec.PlatformID)
 	for _, f := range rec.Files {
 		if err := os.Remove(f.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("delete %s: %w", f.Path, err)
 		}
+		// Folders an archive's contents brought with them go too.
+		removeEmptyDirs(filepath.Dir(f.Path), dir)
 	}
 	return d.store.DeleteOwned(ctx, id)
 }

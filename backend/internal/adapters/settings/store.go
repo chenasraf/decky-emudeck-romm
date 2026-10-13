@@ -34,6 +34,9 @@ type fileSettings struct {
 	Server *fileServer `json:"server,omitempty"`
 	// DownloadConcurrency is how many games download at once, 1 to 4; unset means 2.
 	DownloadConcurrency int `json:"downloadConcurrency,omitempty"`
+	// KeepArchives is the Keep archives toggle of each EmuDeck system folder that has one set;
+	// unset means on.
+	KeepArchives map[string]bool `json:"keepArchives,omitempty"`
 }
 
 const (
@@ -50,6 +53,34 @@ func (s *Store) DownloadConcurrency() int {
 		return defaultConcurrency
 	}
 	return min(f.DownloadConcurrency, maxConcurrency)
+}
+
+// KeepArchives says whether games in an EmuDeck system folder keep archives holding a single
+// file rather than extract them.
+func (s *Store) KeepArchives(folder string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return true
+	}
+	keep, ok := f.KeepArchives[folder]
+	return keep || !ok
+}
+
+// SetKeepArchives sets the Keep archives toggle of an EmuDeck system folder.
+func (s *Store) SetKeepArchives(folder string, keep bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	if f.KeepArchives == nil {
+		f.KeepArchives = map[string]bool{}
+	}
+	f.KeepArchives[folder] = keep
+	return s.save(f)
 }
 
 type fileServer struct {
@@ -99,6 +130,10 @@ func (s *Store) SaveSignIn(in domain.SignIn) error {
 		Scopes:          in.Scopes,
 		SignedOut:       in.SignedOut,
 	}
+	return s.save(f)
+}
+
+func (s *Store) save(f fileSettings) error {
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return err

@@ -84,6 +84,7 @@ type Methods struct {
 	CancelDownload      Method[CancelDownloadParams, CancelDownloadResult]           `json:"cancel_download"`
 	ListDownloads       Method[ListDownloadsParams, ListDownloadsResult]             `json:"list_downloads"`
 	DeleteGames         Method[DeleteGamesParams, DeleteGamesResult]                 `json:"delete_games"`
+	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -331,7 +332,33 @@ type ListGamesResult struct {
 	Games        []GameSummary `json:"games"`
 	// Total is how many games match the filter, across every page.
 	Total int `json:"total"`
+	// Archives is what the plugin does with the platform's games that arrive as archives; empty
+	// when EmuDeck has no folder for it.
+	Archives ArchivePolicy `json:"archives,omitempty"`
+	// KeepArchives is the platform's Keep archives toggle, which applies when Archives is optional.
+	KeepArchives bool `json:"keepArchives"`
 }
+
+type ArchivePolicy string
+
+const (
+	// ArchivesOptional extracts archives unless Keep archives is on, which keeps those holding a
+	// single file.
+	ArchivesOptional ArchivePolicy = "optional"
+	// ArchivesKeep never extracts: arcade romsets and DOS games stay archives.
+	ArchivesKeep ArchivePolicy = "keep"
+	// ArchivesExtract always extracts: the platform's emulator can't open archives.
+	ArchivesExtract ArchivePolicy = "extract"
+)
+
+// SetKeepArchivesParams sets the Keep archives toggle for the EmuDeck folder a platform's games go
+// in. It applies to downloads from then on.
+type SetKeepArchivesParams struct {
+	PlatformID int  `json:"platformId"`
+	Keep       bool `json:"keep"`
+}
+
+type SetKeepArchivesResult struct{}
 
 type GameState string
 

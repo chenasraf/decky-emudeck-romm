@@ -37,6 +37,29 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestKeepArchives(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if !s.KeepArchives("snes") {
+		t.Fatal("Keep archives is off before anyone set it")
+	}
+	if err := s.SaveSignIn(domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetKeepArchives("snes", false); err != nil {
+		t.Fatal(err)
+	}
+
+	s = New(dir)
+	if s.KeepArchives("snes") || !s.KeepArchives("gba") {
+		t.Fatalf("snes %v, gba %v", s.KeepArchives("snes"), s.KeepArchives("gba"))
+	}
+	// Setting it keeps the sign-in.
+	if in, _ := s.SignIn(); in == nil || in.Server.URL != "https://romm.lan" {
+		t.Fatalf("sign-in %+v", in)
+	}
+}
+
 func TestSignInNeedsToken(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
