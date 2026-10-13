@@ -273,6 +273,12 @@ type ESDEState struct {
 	SettingsPath string
 	// MediaDirectory is where ES-DE reads game media from.
 	MediaDirectory string
+	// ROMDirectory is the folder ES-DE reads systems from: its own setting, or its default when
+	// unset. Empty when ES-DE's settings weren't found.
+	ROMDirectory string
+	// ROMDirectoryMatches says whether ROMDirectory is EmuDeck's ROMs folder, links followed. When
+	// it isn't, ES-DE never shows the games the plugin places.
+	ROMDirectoryMatches bool
 	// ParseGamelistOnly is ES-DE's "only show games from gamelist files" option, which hides games
 	// the plugin adds until ES-DE's gamelists list them.
 	ParseGamelistOnly bool

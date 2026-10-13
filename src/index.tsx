@@ -163,6 +163,14 @@ function InstallSection() {
           </PanelSectionRow>
         </>
       )}
+      {state.esde.settingsFound && state.emudeck.found && !state.esde.romDirectoryMatches && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ ES-DE looks elsewhere"
+            description={`ES-DE reads games from ${state.esde.romDirectory}, not EmuDeck's ROMs folder, so downloaded games won't appear. See Setup status.`}
+          />
+        </PanelSectionRow>
+      )}
       {state.esde.parseGamelistOnly && (
         <PanelSectionRow>
           <Field

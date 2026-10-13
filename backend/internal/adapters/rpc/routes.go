@@ -90,16 +90,19 @@ func Routes(s *Server, version string, svc Services) {
 func toWireInstall(s domain.InstallState) schema.InstallState {
 	out := schema.InstallState{
 		EmuDeck: schema.EmuDeckStatus{
-			Found:  s.EmuDeckFound(),
-			Root:   s.EmuDeck.Root,
-			Source: string(s.EmuDeck.Source),
-			Tried:  nonNil(s.EmuDeck.Tried),
+			Found:    s.EmuDeckFound(),
+			Root:     s.EmuDeck.Root,
+			ROMsPath: s.EmuDeck.ROMsPath,
+			Source:   string(s.EmuDeck.Source),
+			Tried:    nonNil(s.EmuDeck.Tried),
 		},
 		ESDE: schema.ESDEStatus{
-			SettingsFound:     s.ESDE.SettingsPath != "",
-			MediaDirectory:    s.ESDE.MediaDirectory,
-			ParseGamelistOnly: s.ESDE.ParseGamelistOnly,
-			Running:           s.ESDE.Running,
+			SettingsFound:       s.ESDE.SettingsPath != "",
+			MediaDirectory:      s.ESDE.MediaDirectory,
+			ParseGamelistOnly:   s.ESDE.ParseGamelistOnly,
+			ROMDirectory:        s.ESDE.ROMDirectory,
+			ROMDirectoryMatches: s.ESDE.ROMDirectoryMatches,
+			Running:             s.ESDE.Running,
 		},
 		Emulators: []schema.EmulatorStatus{},
 	}

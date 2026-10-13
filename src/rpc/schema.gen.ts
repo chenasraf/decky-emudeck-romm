@@ -281,6 +281,10 @@ export interface EmuDeckStatus {
    */
   root?: string;
   /**
+   * ROMsPath is EmuDeck's ROMs folder, set when found. It can be outside Root.
+   */
+  romsPath?: string;
+  /**
    * Source is where the Emulation folder's location came from, set when found.
    */
   source?: string;
@@ -295,6 +299,15 @@ export interface ESDEStatus {
    */
   settingsFound: boolean;
   mediaDirectory: string;
+  /**
+   * ROMDirectory is the folder ES-DE reads games from, set when SettingsFound.
+   */
+  romDirectory?: string;
+  /**
+   * ROMDirectoryMatches is false when ROMDirectory isn't EmuDeck's ROMs folder, so ES-DE never
+   * shows the games the plugin places.
+   */
+  romDirectoryMatches: boolean;
   /**
    * ParseGamelistOnly hides games the plugin adds until ES-DE's gamelists list them.
    */

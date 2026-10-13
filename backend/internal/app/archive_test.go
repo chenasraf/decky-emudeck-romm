@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -273,5 +275,41 @@ func TestArchiveSpaceCountsTwice(t *testing.T) {
 	f.free.Store(2000 + spaceMargin)
 	if _, err := f.downloads.Queue(ctx, 5); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPlacesAcrossDrives(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	// The PlayStation folder is a link to an SD card: renames into it fail.
+	psx := filepath.Join(f.root, "roms", "psx")
+	rename = func(from, to string) error {
+		if strings.HasPrefix(to, psx+string(filepath.Separator)) {
+			return &os.LinkError{Op: "rename", Old: from, New: to, Err: syscall.EXDEV}
+		}
+		return os.Rename(from, to)
+	}
+	t.Cleanup(func() { rename = os.Rename })
+
+	f.serve(5, "Ridge Racer.zip", zipOf(t, member{"Ridge Racer.cue", "cue"}, member{"Ridge Racer.bin", "disc bytes"}))
+	f.installed(t, 5)
+	if got := listDir(t, psx); len(got) != 2 {
+		t.Fatalf("psx holds %v", got)
+	}
+	if data, _ := os.ReadFile(filepath.Join(psx, "Ridge Racer.bin")); string(data) != "disc bytes" {
+		t.Fatalf("copied %q", data)
+	}
+}
+
+func TestSpaceIsMeasuredWhereTheGameGoes(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	// Staging has room, but the PlayStation folder is on a full SD card.
+	psx := filepath.Join(f.root, "roms", "psx")
+	if err := os.MkdirAll(psx, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.drives.Store(psx, int64(10))
+	_, err := f.downloads.Queue(context.Background(), 5)
+	if kindOf(err) != domain.KindNoSpace || !strings.Contains(err.Error(), psx) {
+		t.Fatalf("want no_space naming %s, got %v", psx, err)
 	}
 }

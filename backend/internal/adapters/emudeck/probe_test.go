@@ -233,6 +233,34 @@ func TestESDESettings(t *testing.T) {
 	}
 }
 
+func TestESDEROMDirectory(t *testing.T) {
+	d := newDeck(t)
+	sd := filepath.Join(filepath.Dir(d.home), "sd")
+	d.mkdir(filepath.Join(sd, "Emulation/roms"))
+	d.write(d.h(".config/EmuDeck/settings.sh"), "emulationPath="+filepath.Join(sd, "Emulation")+"\n")
+	// The SD card is reachable through a link too, the way ES-DE's setting may name it.
+	d.symlink(sd, d.h("sdcard"))
+	settings := func(dir string) {
+		d.write(d.h("ES-DE/settings/es_settings.xml"), `<string name="ROMDirectory" value="`+dir+`" />`)
+	}
+
+	for _, c := range []struct {
+		value, want string
+		matches     bool
+	}{
+		{"", d.h("ROMs"), false},
+		{filepath.Join(sd, "Emulation/roms"), filepath.Join(sd, "Emulation/roms"), true},
+		{"~/sdcard/Emulation/roms/", d.h("sdcard/Emulation/roms"), true},
+		{"~/Emulation/roms", d.h("Emulation/roms"), false},
+	} {
+		settings(c.value)
+		s := d.probe("amd64").ESDE
+		if s.ROMDirectory != c.want || s.ROMDirectoryMatches != c.matches {
+			t.Errorf("ROMDirectory %q: got %q, matches %v", c.value, s.ROMDirectory, s.ROMDirectoryMatches)
+		}
+	}
+}
+
 func TestESDERunning(t *testing.T) {
 	d := newDeck(t)
 	d.write(filepath.Join(d.proc, "1/cmdline"), "/usr/lib/systemd/systemd\x00")

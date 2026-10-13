@@ -195,6 +195,7 @@ type downloadFixture struct {
 	settings  *fakeSettings
 	// free is what the Emulation drive has free.
 	free    atomic.Int64
+	drives  sync.Map
 	holds   chan error
 	prefs   *memPrefs
 	updates chan Download
@@ -270,7 +271,14 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	return f
 }
 
-func (f *downloadFixture) measure(string) (int64, error) { return f.free.Load(), nil }
+// measure is what the drive at path has free: what drives says for a path on its list, the
+// fixture's free otherwise.
+func (f *downloadFixture) measure(path string) (int64, error) {
+	if n, ok := f.drives.Load(path); ok {
+		return n.(int64), nil
+	}
+	return f.free.Load(), nil
+}
 
 func (f *downloadFixture) listeners() DownloadListeners {
 	return DownloadListeners{
@@ -738,7 +746,7 @@ func TestQueueChecksSpace(t *testing.T) {
 		t.Fatalf("want no_space, got %v", err)
 	}
 	// The download ahead of it counts: half of Chrono Trigger is still to come.
-	if want := "Needs 256 MB with the downloads ahead of it, 256 MB free."; de.Message != want {
+	if want := "Needs 256 MB with the downloads ahead of it, 256 MB free in " + f.root + "."; de.Message != want {
 		t.Fatalf("message %q, want %q", de.Message, want)
 	}
 	if len(f.downloads.List()) != 1 {

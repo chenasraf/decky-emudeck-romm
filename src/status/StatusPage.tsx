@@ -117,6 +117,18 @@ function Checks({ state }: { state: InstallState }) {
         }
         fix="ES-DE's settings weren't found. Open ES-DE once so it creates them."
       />
+      {esde.settingsFound && state.emudeck.found && (
+        <Check
+          ok={esde.romDirectoryMatches}
+          label="Reads EmuDeck's ROMs"
+          detail={
+            <>
+              ES-DE reads games from <span style={mono}>{esde.romDirectory}</span>
+            </>
+          }
+          fix={`ES-DE reads games from ${esde.romDirectory}, but EmuDeck's ROMs are in ${state.emudeck.romsPath}, so games the plugin downloads won't appear in ES-DE. Point ES-DE at EmuDeck's ROMs folder: reset ES-DE's configuration from EmuDeck, or set ROMDirectory in ES-DE's es_settings.xml.`}
+        />
+      )}
       <Check
         ok={!esde.parseGamelistOnly}
         label="Shows new games"

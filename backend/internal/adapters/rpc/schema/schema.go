@@ -241,6 +241,8 @@ type EmuDeckStatus struct {
 	Found bool `json:"found"`
 	// Root is the Emulation folder, set when found.
 	Root string `json:"root,omitempty"`
+	// ROMsPath is EmuDeck's ROMs folder, set when found. It can be outside Root.
+	ROMsPath string `json:"romsPath,omitempty"`
 	// Source is where the Emulation folder's location came from, set when found.
 	Source string `json:"source,omitempty"`
 	// Tried lists the ROM folders the plugin looked for.
@@ -251,6 +253,11 @@ type ESDEStatus struct {
 	// SettingsFound is false when ES-DE's es_settings.xml doesn't exist.
 	SettingsFound  bool   `json:"settingsFound"`
 	MediaDirectory string `json:"mediaDirectory"`
+	// ROMDirectory is the folder ES-DE reads games from, set when SettingsFound.
+	ROMDirectory string `json:"romDirectory,omitempty"`
+	// ROMDirectoryMatches is false when ROMDirectory isn't EmuDeck's ROMs folder, so ES-DE never
+	// shows the games the plugin places.
+	ROMDirectoryMatches bool `json:"romDirectoryMatches"`
 	// ParseGamelistOnly hides games the plugin adds until ES-DE's gamelists list them.
 	ParseGamelistOnly bool `json:"parseGamelistOnly"`
 	Running           bool `json:"running"`

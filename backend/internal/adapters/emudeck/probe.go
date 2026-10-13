@@ -43,6 +43,9 @@ func New(home string) *Probe {
 func (p *Probe) Probe() domain.InstallState {
 	state := domain.InstallState{CheckedAt: p.now(), EmuDeck: p.emuDeck(), ESDE: p.esde()}
 	ed := state.EmuDeck
+	if state.ESDE.ROMDirectory != "" && ed.ROMsPath != "" {
+		state.ESDE.ROMDirectoryMatches = sameDir(state.ESDE.ROMDirectory, ed.ROMsPath)
+	}
 
 	systems := map[string][]string{}
 	for _, s := range domain.Systems {
@@ -174,7 +177,24 @@ func (p *Probe) esde() domain.ESDEState {
 		state.MediaDirectory = dir
 	}
 	state.ParseGamelistOnly = settings["ParseGamelistOnly"] == "true"
+	// ES-DE reads ~/ROMs until its ROM directory is set, which EmuDeck does when it configures it.
+	state.ROMDirectory = filepath.Join(p.home, "ROMs")
+	if dir := expandHome(settings["ROMDirectory"], p.home); dir != "" {
+		state.ROMDirectory = filepath.Clean(dir)
+	}
 	return state
+}
+
+// sameDir says whether a and b are the same folder once links are followed. A folder that doesn't
+// exist is compared as written.
+func sameDir(a, b string) bool {
+	resolve := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return filepath.Clean(p)
+	}
+	return resolve(a) == resolve(b)
 }
 
 // readESDESettings reads the name/value pairs of es_settings.xml, whose top level is a list of

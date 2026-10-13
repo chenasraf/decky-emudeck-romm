@@ -261,7 +261,7 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	if err != nil {
 		return Download{}, err
 	}
-	system, _, err := d.targetDir(rom, platform)
+	system, dir, err := d.targetDir(rom, platform)
 	if err != nil {
 		return Download{}, err
 	}
@@ -290,7 +290,7 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	}
 	ahead := d.pending()
 	d.mu.Unlock()
-	if err := d.checkSpace(need, ahead); err != nil {
+	if err := d.checkSpace(need, ahead, dir); err != nil {
 		return Download{}, err
 	}
 
@@ -563,7 +563,7 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return d.conn.observe(*in, err)
 	}
 
-	staged, err := d.unpack(system, partial, sum)
+	staged, err := d.unpack(system, partial, sum, dir)
 	if err != nil {
 		return err
 	}
@@ -599,9 +599,9 @@ type stagedFile struct {
 	SHA1 string
 }
 
-// unpack decides whether the downloaded file at path is placed as it is or extracted, and returns
-// what to place: the file itself, or the archive's contents.
-func (d *Downloads) unpack(system domain.System, path, sum string) ([]stagedFile, error) {
+// unpack decides whether the downloaded file at path is placed as it is or extracted into dir,
+// and returns what to place: the file itself, or the archive's contents.
+func (d *Downloads) unpack(system domain.System, path, sum, dir string) ([]stagedFile, error) {
 	whole := []stagedFile{{From: path, Rel: filepath.Base(path), SHA1: sum}}
 	if !domain.IsArchive(path) || system.ArchivePolicy() == domain.ArchivesKeep {
 		return whole, nil
@@ -622,7 +622,7 @@ func (d *Downloads) unpack(system domain.System, path, sum string) ([]stagedFile
 	for _, m := range members {
 		size += m.Size
 	}
-	if err := d.checkSpace(size, 0); err != nil {
+	if err := d.checkSpace(size, 0, dir); err != nil {
 		return nil, err
 	}
 	dest := filepath.Join(filepath.Dir(path), extractedDir)
@@ -655,7 +655,7 @@ func (d *Downloads) place(staged []stagedFile, dir string) ([]domain.PlacedFile,
 		target := filepath.Join(dir, f.Rel)
 		err := os.MkdirAll(filepath.Dir(target), 0o755)
 		if err == nil {
-			err = os.Rename(f.From, target)
+			err = moveFile(f.From, target)
 		}
 		var info os.FileInfo
 		if err == nil {
@@ -668,6 +668,49 @@ func (d *Downloads) place(staged []stagedFile, dir string) ([]domain.PlacedFile,
 		placed = append(placed, domain.PlacedFile{Path: target, SizeBytes: info.Size(), ModTime: info.ModTime().UTC(), SHA1: f.SHA1})
 	}
 	return placed, nil
+}
+
+// rename is os.Rename, replaced in tests to stand in for a move across drives.
+var rename = os.Rename
+
+// moveFile moves from to to, which must not exist. Across drives (a ROM folder linked to an SD
+// card, say) a rename can't, so it copies to a temporary name beside to and renames that: to
+// never shows up half-written.
+func moveFile(from, to string) error {
+	err := rename(from, to)
+	if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+	tmp := to + ".romm-part"
+	if err := copyFile(from, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, to); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Remove(from)
+}
+
+func copyFile(from, to string) error {
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync()
+	}
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // removeFiles deletes placed files, then the folders under dir they leave empty.
@@ -705,24 +748,46 @@ func (d *Downloads) pending() int64 {
 	return n
 }
 
-// checkSpace fails when the Emulation drive hasn't room for need bytes after the ahead bytes the
-// queue has still to download, keeping spaceMargin free. A drive it can't measure doesn't block:
-// a download that runs out of space still stops cleanly.
-func (d *Downloads) checkSpace(need, ahead int64) error {
-	free, err := d.free(d.install.State(false).EmuDeck.Root)
-	if err != nil {
-		d.log.Warn("measure free space", "err", err)
-		return nil
-	}
+// checkSpace fails when staging's drive or dir's hasn't room for need bytes after the ahead bytes
+// the queue has still to download, keeping spaceMargin free. The two are often one drive, but a
+// ROM folder can be a link to another. A drive it can't measure doesn't block: a download that
+// runs out of space still stops cleanly.
+func (d *Downloads) checkSpace(need, ahead int64, dir string) error {
 	total := need + ahead + spaceMargin
-	if free >= total {
-		return nil
+	for _, path := range []string{d.install.State(false).EmuDeck.Root, dir} {
+		free, err := d.freeAt(path)
+		if err != nil {
+			d.log.Warn("measure free space", "path", path, "err", err)
+			continue
+		}
+		if free >= total {
+			continue
+		}
+		msg := fmt.Sprintf("Needs %s, %s free in %s.", domain.FormatSize(total), domain.FormatSize(free), path)
+		if ahead > 0 {
+			msg = fmt.Sprintf("Needs %s with the downloads ahead of it, %s free in %s.", domain.FormatSize(total), domain.FormatSize(free), path)
+		}
+		return &domain.Error{Kind: domain.KindNoSpace, Message: msg}
 	}
-	msg := fmt.Sprintf("Needs %s, %s free.", domain.FormatSize(total), domain.FormatSize(free))
-	if ahead > 0 {
-		msg = fmt.Sprintf("Needs %s with the downloads ahead of it, %s free.", domain.FormatSize(total), domain.FormatSize(free))
+	return nil
+}
+
+// freeAt measures the drive path is on, or would be on once created: its nearest folder that
+// exists. Links are followed, so a folder linked to another drive measures that drive.
+func (d *Downloads) freeAt(path string) (int64, error) {
+	if path == "" {
+		return 0, errors.New("no path to measure")
 	}
-	return &domain.Error{Kind: domain.KindNoSpace, Message: msg}
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return d.free(path)
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return d.free(path)
+		}
+		path = parent
+	}
 }
 
 // hold stops the queue starting downloads until the drive has room for the next one, so a full
@@ -761,19 +826,16 @@ func (d *Downloads) release() bool {
 		d.mu.Unlock()
 		return true
 	}
-	next := int64(-1)
+	next, platform := int64(-1), 0
 	for _, j := range d.jobs {
 		if j.State == domain.StateQueued && j.cancel == nil {
-			next = max(j.Total-j.Received, 0)
+			next, platform = max(j.Total-j.Received, 0), j.PlatformID
 			break
 		}
 	}
 	d.mu.Unlock()
-	if next >= 0 {
-		free, err := d.free(d.install.State(false).EmuDeck.Root)
-		if err != nil || free < next+spaceMargin {
-			return false
-		}
+	if next >= 0 && d.checkSpace(next, 0, d.platformDir(d.base, platform)) != nil {
+		return false
 	}
 
 	d.mu.Lock()
