@@ -25,6 +25,10 @@ const (
 	dialTimeout    = 5 * time.Second
 	requestTimeout = 10 * time.Second
 	maxBody        = 1 << 20
+	// Catalog pages are large: RomM sends every ROM with its full metadata, about 15 KB each, and
+	// has no way to ask for fewer fields.
+	bulkTimeout = 2 * time.Minute
+	bulkMaxBody = 128 << 20
 )
 
 // clientName is how the plugin names itself to RomM, in the User-Agent and on its Device.
@@ -36,7 +40,9 @@ type Client struct {
 	version   string
 	userAgent string
 	http      *http.Client
-	log       *slog.Logger
+	// bulk is http with room for catalog pages.
+	bulk *http.Client
+	log  *slog.Logger
 }
 
 // WithLogger makes the client log each request at debug level, and failed ones at warn.
@@ -67,6 +73,7 @@ func New(server domain.Server, token, version string) *Client {
 		// they reach RomM.
 		userAgent: clientName + "/" + version,
 		http:      &http.Client{Transport: transport, Timeout: requestTimeout},
+		bulk:      &http.Client{Transport: transport, Timeout: bulkTimeout},
 		log:       slog.New(slog.DiscardHandler),
 	}
 }
@@ -328,6 +335,15 @@ func (c *Client) ApproveDeviceAuth(ctx context.Context, userCode string, scopes 
 // here; callers map statuses to what they mean for their endpoint. Error bodies are decoded too,
 // for endpoints that explain a 4xx in them.
 func (c *Client) do(ctx context.Context, method, path string, in, out any) (int, error) {
+	return c.exchange(ctx, c.http, maxBody, method, path, in, out)
+}
+
+// getBulk is do for a GET whose response can run to many megabytes.
+func (c *Client) getBulk(ctx context.Context, path string, out any) (int, error) {
+	return c.exchange(ctx, c.bulk, bulkMaxBody, http.MethodGet, path, nil, out)
+}
+
+func (c *Client) exchange(ctx context.Context, client *http.Client, limit int64, method, path string, in, out any) (int, error) {
 	var body io.Reader
 	contentType := "application/json"
 	switch v := in.(type) {
@@ -356,7 +372,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) (int,
 	}
 
 	start := time.Now()
-	resp, err := c.http.Do(req)
+	resp, err := client.Do(req)
 	// Tokens and codes travel in headers and bodies, never in the URL, so the URL is safe to log.
 	attrs := []any{"method", method, "url", c.base + path, "duration", time.Since(start).Round(time.Millisecond)}
 	if err != nil {
@@ -373,8 +389,15 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) (int,
 	if out == nil {
 		return resp.StatusCode, nil
 	}
-	err = json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
+	err = json.NewDecoder(io.LimitReader(resp.Body, limit)).Decode(out)
 	if err != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		// A body cut off by a timeout or a dropped connection is the network's doing, not a sign
+		// that something other than RomM answered.
+		var netErr net.Error
+		if errors.As(err, &netErr) || errors.Is(err, io.ErrUnexpectedEOF) || ctx.Err() != nil {
+			c.log.Warn("response cut off", append(attrs, "err", err)...)
+			return 0, &domain.Error{Kind: domain.KindUnreachable, Message: "Couldn't reach the server.", Err: err}
+		}
 		return 0, &domain.Error{Kind: domain.KindNotRomM, Message: "No RomM server answered at this address.", Err: err}
 	}
 	// An error body that isn't JSON leaves out empty, which callers read as "no detail".

@@ -1,0 +1,132 @@
+package cache
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
+)
+
+var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+func openStore(t *testing.T, path string) *Store {
+	t.Helper()
+	s, err := Open(context.Background(), path, discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func rom(id, platform int, name string) domain.ROM {
+	return domain.ROM{ID: id, PlatformID: platform, Name: name, FileName: name + ".gba", Extension: "gba",
+		SizeBytes: 1024, Regions: []string{"USA"}, UpdatedAt: time.Unix(int64(1000+id), 0).UTC()}
+}
+
+var platforms = []domain.Platform{{ID: 1, Slug: "gba", Name: "Game Boy Advance", ROMCount: 3}, {ID: 2, Slug: "nes", Name: "NES", ROMCount: 0}}
+
+func TestFullThenDeltaSync(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
+
+	if c, at, err := s.SyncState(ctx); err != nil || !c.IsZero() || !at.IsZero() {
+		t.Fatalf("empty store: %v %v %v", c, at, err)
+	}
+
+	at := time.Unix(5000, 0).UTC()
+	if err := s.Apply(ctx, domain.CatalogSync{
+		Platforms: platforms,
+		ROMs:      []domain.ROM{rom(1, 1, "zelda"), rom(2, 1, "Advance Wars"), rom(3, 1, "metroid")},
+		Full:      true,
+		Cursor:    time.Unix(1003, 0),
+		At:        at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Platforms without games are left out.
+	ps, err := s.Platforms(ctx)
+	if err != nil || len(ps) != 1 || ps[0].Games != 3 || ps[0].Name != "Game Boy Advance" {
+		t.Fatalf("platforms %+v, %v", ps, err)
+	}
+	page, err := s.ROMs(ctx, 1, 0, 2)
+	if err != nil || page.Total != 3 || len(page.ROMs) != 2 || page.ROMs[0].Name != "Advance Wars" || page.ROMs[1].Name != "metroid" {
+		t.Fatalf("first page %+v, %v", page, err)
+	}
+	if page, _ := s.ROMs(ctx, 1, 2, 2); len(page.ROMs) != 1 || page.ROMs[0].Name != "zelda" {
+		t.Fatalf("second page %+v", page)
+	}
+
+	// A delta renames one ROM, adds one, and the id list drops metroid.
+	renamed := rom(1, 1, "The Legend of Zelda")
+	if err := s.Apply(ctx, domain.CatalogSync{
+		Platforms: platforms,
+		ROMs:      []domain.ROM{renamed, rom(4, 1, "Golden Sun")},
+		KeepIDs:   []int{1, 2, 4},
+		Cursor:    time.Unix(1004, 0),
+		At:        at.Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.ROM(ctx, 3); ok {
+		t.Fatal("deleted ROM still there")
+	}
+	got, ok, err := s.ROM(ctx, 1)
+	if err != nil || !ok || got.Name != "The Legend of Zelda" || got.Regions[0] != "USA" || !got.UpdatedAt.Equal(renamed.UpdatedAt) {
+		t.Fatalf("renamed %+v %v %v", got, ok, err)
+	}
+	if p, r, _ := s.Counts(ctx); p != 1 || r != 3 {
+		t.Fatalf("counts %d %d", p, r)
+	}
+	if c, a, _ := s.SyncState(ctx); !c.Equal(time.Unix(1004, 0)) || !a.Equal(at.Add(time.Minute)) {
+		t.Fatalf("sync state %v %v", c, a)
+	}
+}
+
+func TestDamagedFileIsRebuilt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cache.db")
+	if err := os.WriteFile(path, []byte("not a database, just junk bytes that are long enough to matter"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := openStore(t, path)
+	if p, r, err := s.Counts(context.Background()); err != nil || p != 0 || r != 0 {
+		t.Fatalf("rebuilt store: %d %d %v", p, r, err)
+	}
+}
+
+func TestOtherSchemaIsRebuilt(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "cache.db")
+	s := openStore(t, path)
+	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms, ROMs: []domain.ROM{rom(1, 1, "zelda")}, Full: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, "PRAGMA user_version = 99"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+
+	s = openStore(t, path)
+	if _, r, err := s.Counts(ctx); err != nil || r != 0 {
+		t.Fatalf("want an empty rebuilt store, got %d ROMs, %v", r, err)
+	}
+}
+
+func TestDeletedFileIsRecreated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cache.db")
+	s := openStore(t, path)
+	_ = s.Close()
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		_ = os.Remove(p)
+	}
+	openStore(t, path)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+}

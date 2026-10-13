@@ -40,6 +40,7 @@ const (
 	ErrorAccountDisabled    ErrorKind = "account_disabled"
 	ErrorMissingPermission  ErrorKind = "missing_permission"
 	ErrorSignedOut          ErrorKind = "signed_out"
+	ErrorNotFound           ErrorKind = "not_found"
 )
 
 type ErrorData struct {
@@ -61,6 +62,11 @@ type Methods struct {
 	StartDevicePairing  Method[StartDevicePairingParams, DevicePairing]              `json:"start_device_pairing"`
 	CancelDevicePairing Method[CancelDevicePairingParams, CancelDevicePairingResult] `json:"cancel_device_pairing"`
 	InstallState        Method[InstallStateParams, InstallState]                     `json:"install_state"`
+	CatalogStatus       Method[CatalogStatusParams, CatalogStatus]                   `json:"catalog_status"`
+	RefreshCatalog      Method[RefreshCatalogParams, CatalogStatus]                  `json:"refresh_catalog"`
+	ListPlatforms       Method[ListPlatformsParams, ListPlatformsResult]             `json:"list_platforms"`
+	ListGames           Method[ListGamesParams, ListGamesResult]                     `json:"list_games"`
+	GetGame             Method[GetGameParams, Game]                                  `json:"get_game"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -70,6 +76,8 @@ type Events struct {
 	// Connection fires each time the plugin signs in, wherever the sign-in finished, and once each
 	// time the server stops accepting the plugin's token.
 	Connection ConnectionStatus `json:"connection"`
+	// Catalog fires each time a library refresh starts, makes progress or ends.
+	Catalog CatalogStatus `json:"catalog"`
 }
 
 // Method pairs a method's params with its result.
@@ -240,4 +248,98 @@ type SaveDirStatus struct {
 	Path string `json:"path"`
 	// Resolved is where Path leads once symlinks are followed, empty when it leads nowhere.
 	Resolved string `json:"resolved,omitempty"`
+}
+
+type CatalogStatusParams struct{}
+
+type RefreshCatalogParams struct {
+	// Force refreshes even when the library is under five minutes old, as Refresh library does.
+	Force bool `json:"force,omitempty"`
+}
+
+// CatalogStatus is the state of the plugin's local copy of the server's library.
+type CatalogStatus struct {
+	Refreshing bool `json:"refreshing"`
+	// Fetched is how many games the running refresh has received so far.
+	Fetched int `json:"fetched"`
+	// SyncedAt is when the library was last refreshed, as RFC 3339, empty before the first time.
+	SyncedAt  string `json:"syncedAt,omitempty"`
+	Platforms int    `json:"platforms"`
+	Games     int    `json:"games"`
+	// Problem says why the last refresh failed.
+	Problem *Error `json:"problem,omitempty"`
+}
+
+type ListPlatformsParams struct{}
+
+type ListPlatformsResult struct {
+	Platforms []PlatformSummary `json:"platforms"`
+}
+
+type PlatformSummary struct {
+	ID   int    `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+	// Games is how many of the platform's games the library holds.
+	Games int `json:"games"`
+	// Installed is how many of them are on this Deck.
+	Installed int `json:"installed"`
+}
+
+type GameFilter string
+
+const (
+	GameFilterAll          GameFilter = "all"
+	GameFilterInstalled    GameFilter = "installed"
+	GameFilterNotInstalled GameFilter = "not_installed"
+	GameFilterUpdates      GameFilter = "updates"
+)
+
+type ListGamesParams struct {
+	PlatformID int        `json:"platformId"`
+	Filter     GameFilter `json:"filter,omitempty"`
+	Offset     int        `json:"offset,omitempty"`
+	// Limit is capped at 200; zero means 50.
+	Limit int `json:"limit,omitempty"`
+}
+
+type ListGamesResult struct {
+	PlatformName string        `json:"platformName"`
+	Games        []GameSummary `json:"games"`
+	// Total is how many games match the filter, across every page.
+	Total int `json:"total"`
+}
+
+type GameState string
+
+const (
+	// GameOnRomM is a game on the server and not on this Deck.
+	GameOnRomM GameState = "on_romm"
+)
+
+type GameSummary struct {
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`
+	SizeBytes int64     `json:"sizeBytes"`
+	Regions   []string  `json:"regions"`
+	State     GameState `json:"state"`
+}
+
+type GetGameParams struct {
+	ID int `json:"id"`
+}
+
+type Game struct {
+	ID           int    `json:"id"`
+	PlatformID   int    `json:"platformId"`
+	PlatformName string `json:"platformName"`
+	Name         string `json:"name"`
+	// FileName is the game's file or folder name on the server.
+	FileName  string   `json:"fileName"`
+	SizeBytes int64    `json:"sizeBytes"`
+	Regions   []string `json:"regions"`
+	Revision  string   `json:"revision,omitempty"`
+	// MultiFile is set when the game is a folder of several files.
+	MultiFile bool      `json:"multiFile"`
+	State     GameState `json:"state"`
 }

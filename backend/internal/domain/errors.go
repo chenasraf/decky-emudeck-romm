@@ -19,6 +19,7 @@ const (
 	KindAccountDisabled    Kind = "account_disabled"
 	KindMissingPermission  Kind = "missing_permission"
 	KindSignedOut          Kind = "signed_out"
+	KindNotFound           Kind = "not_found"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

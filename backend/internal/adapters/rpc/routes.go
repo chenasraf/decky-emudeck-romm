@@ -9,8 +9,18 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
+// Services are the use cases the routes call.
+type Services struct {
+	Connection *app.Connection
+	Install    *app.Install
+	Catalog    *app.Catalog
+}
+
 // Routes registers a handler for every method in schema.Methods.
-func Routes(s *Server, version string, conn *app.Connection, install *app.Install) {
+func Routes(s *Server, version string, svc Services) {
+	conn, install := svc.Connection, svc.Install
+	catalogRoutes(s, svc.Catalog)
+
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil
 	})

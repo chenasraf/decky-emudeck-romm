@@ -1,0 +1,91 @@
+package romm
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
+)
+
+func TestPlatforms(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": 1, "slug": "gba", "name": "Game Boy Advance", "custom_name": "", "display_name": "GBA", "rom_count": 10},
+			{"id": 2, "slug": "nes", "name": "Nintendo Entertainment System", "custom_name": "Famicom", "rom_count": 0},
+		})
+	}))
+	defer srv.Close()
+
+	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).Platforms(context.Background())
+	if err != nil || len(got) != 2 || got[0].Name != "GBA" || got[0].ROMCount != 10 || got[1].Name != "Famicom" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+}
+
+func TestROMsPage(t *testing.T) {
+	var query map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{
+				"id": 7, "platform_id": 1, "name": "", "fs_name": "Golden Sun (USA).gba", "fs_extension": "gba",
+				"fs_size_bytes": 8388608, "regions": []string{"USA"}, "revision": "", "has_multiple_files": false,
+				"updated_at": "2026-09-10T15:30:57.123456+00:00", "path_cover_small": "/assets/s.png", "path_cover_large": "/assets/l.png",
+				"summary": "ignored",
+			}},
+			"total": 1,
+		})
+	}))
+	defer srv.Close()
+
+	since := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).ROMs(context.Background(), since, 500, 250)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	r := got[0]
+	// A ROM RomM couldn't match has no name; its file name stands in.
+	if r.Name != "Golden Sun (USA).gba" || r.SizeBytes != 8388608 || r.UpdatedAt.Nanosecond() != 123456000 || r.CoverLarge != "/assets/l.png" {
+		t.Fatalf("rom %+v", r)
+	}
+	for key, want := range map[string]string{
+		"offset": "500", "limit": "250", "order_by": "id", "updated_after": "2026-09-01T00:00:00Z",
+		"with_char_index": "false", "with_filter_values": "false", "with_rom_id_index": "false",
+	} {
+		if !slices.Equal(query[key], []string{want}) {
+			t.Errorf("%s = %v, want %s", key, query[key], want)
+		}
+	}
+}
+
+func TestROMIDs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("with_rom_id_index") != "true" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}, "rom_id_index": []int{3, 1, 2}})
+	}))
+	defer srv.Close()
+
+	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).ROMIDs(context.Background())
+	if err != nil || !slices.Equal(got, []int{3, 1, 2}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}
+
+func TestCatalogSignedOut(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	if _, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).Platforms(context.Background()); kindOf(err) != domain.KindSignedOut {
+		t.Fatalf("want signed_out, got %v", err)
+	}
+}

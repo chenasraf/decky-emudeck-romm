@@ -20,6 +20,8 @@ import {
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
+import { GamesView, GameView, LibrarySection, PlatformsView } from './library/Library'
+import type { GameFilter, PlatformSummary } from './rpc/schema.gen'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
 
@@ -204,10 +206,46 @@ function BackendSection() {
   )
 }
 
+/** Where the QAM is in the library: the home sections, or a level of the drill-down. */
+type View =
+  | { name: 'home' }
+  | { name: 'platforms' }
+  | { name: 'games'; platform: PlatformSummary; filter: GameFilter; game?: number }
+
 function Content() {
+  const [view, setView] = useState<View>({ name: 'home' })
+
+  if (view.name === 'platforms') {
+    return (
+      <PlatformsView
+        onBack={() => setView({ name: 'home' })}
+        onOpen={(platform) => setView({ name: 'games', platform, filter: 'all' })}
+      />
+    )
+  }
+  if (view.name === 'games') {
+    return (
+      <>
+        {/* Kept mounted while a game is open, so Back returns to the same place in a long list. */}
+        <div style={{ display: view.game === undefined ? undefined : 'none' }}>
+          <GamesView
+            platform={view.platform}
+            filter={view.filter}
+            onFilter={(filter) => setView({ ...view, filter })}
+            onBack={() => setView({ name: 'platforms' })}
+            onOpen={(game) => setView({ ...view, game: game.id })}
+          />
+        </div>
+        {view.game !== undefined && (
+          <GameView id={view.game} onBack={() => setView({ ...view, game: undefined })} />
+        )}
+      </>
+    )
+  }
   return (
     <>
       <ServerSection />
+      <LibrarySection onBrowse={() => setView({ name: 'platforms' })} />
       <InstallSection />
       <BackendSection />
     </>

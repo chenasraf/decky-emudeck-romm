@@ -98,15 +98,17 @@ export function ButtonItem({
 export function DialogButton({
   onClick,
   disabled,
+  style,
   children,
 }: {
   onClick?: () => void
   disabled?: boolean
+  style?: CSSProperties
   children?: ReactNode
 }) {
   return (
     <button
-      style={{ ...button, width: 'auto', minWidth: 120, opacity: disabled ? 0.5 : 1 }}
+      style={{ ...button, width: 'auto', minWidth: 120, opacity: disabled ? 0.5 : 1, ...style }}
       disabled={disabled}
       onClick={onClick}
     >

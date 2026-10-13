@@ -238,6 +238,16 @@ func (c *Connection) saveSignIn(in domain.SignIn) error {
 	return nil
 }
 
+// activeSignIn returns the sign-in work talks to RomM with, or nil when there is none to use: not
+// set up, or Signed out.
+func (c *Connection) activeSignIn() (*domain.SignIn, error) {
+	in, err := c.settings.SignIn()
+	if err != nil || in == nil || in.SignedOut {
+		return nil, err
+	}
+	return in, nil
+}
+
 // WaitSignedIn returns once the plugin holds a token RomM accepts, as far as it knows. Work calls
 // it before each request so that it pauses while Signed out, and resumes after Sign in again,
 // instead of failing.

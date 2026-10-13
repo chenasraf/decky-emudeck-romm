@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	cachedb "github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/cache"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/emudeck"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/romm"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
@@ -65,12 +68,32 @@ func run(log *slog.Logger) error {
 		return romm.New(server, token, version).WithLogger(rommLog)
 	}
 
+	runtimeDir := os.Getenv("DECKY_PLUGIN_RUNTIME_DIR")
+	if runtimeDir == "" {
+		return errors.New("DECKY_PLUGIN_RUNTIME_DIR isn't set, so there's nowhere to keep the library cache")
+	}
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		return fmt.Errorf("create runtime dir: %w", err)
+	}
+	cache, err := cachedb.Open(ctx, filepath.Join(runtimeDir, "cache.db"), log.With("component", "cache"))
+	if err != nil {
+		return fmt.Errorf("open cache: %w", err)
+	}
+	defer func() { _ = cache.Close() }()
+
 	srv := rpc.NewServer(os.Stdout, log)
-	conn := app.NewConnection(ctx, store, dial, identity, rpc.NewConnectionEvents(srv), log.With("component", "connection"))
+	events := &connectionEvents{ConnectionEvents: rpc.NewConnectionEvents(srv)}
+	conn := app.NewConnection(ctx, store, dial, identity, events, log.With("component", "connection"))
 	install := app.NewInstall(emudeck.New(userHome(log)), log.With("component", "install"))
-	rpc.Routes(srv, version, conn, install)
+	catalogDial := func(server domain.Server, token string) app.CatalogServer {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
+	catalog := app.NewCatalog(ctx, cache, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))
+	events.catalog = catalog
+	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go install.State(false)
+	catalog.Refresh(false)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {
 		return fmt.Errorf("send ready: %w", err)
@@ -78,6 +101,20 @@ func run(log *slog.Logger) error {
 	log.Info("started", "version", version, "protocol", schema.ProtocolVersion, "settings_dir", settingsDir)
 
 	return srv.Serve(ctx, os.Stdin)
+}
+
+// connectionEvents sends connection changes to the frontend, and refreshes the library once a
+// sign-in lands.
+type connectionEvents struct {
+	rpc.ConnectionEvents
+	catalog *app.Catalog
+}
+
+func (e *connectionEvents) Changed(status app.ConnectionStatus) {
+	e.ConnectionEvents.Changed(status)
+	if status.State == app.Connected {
+		e.catalog.Refresh(false)
+	}
 }
 
 // userHome is the Deck user's home directory, where EmuDeck and ES-DE live. main.py passes Decky's

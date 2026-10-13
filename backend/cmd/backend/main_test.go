@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -21,6 +22,7 @@ func TestRelayEndToEnd(t *testing.T) {
 	}
 
 	cmd := exec.Command(bin)
+	cmd.Env = append(os.Environ(), "DECKY_PLUGIN_RUNTIME_DIR="+t.TempDir(), "DECKY_PLUGIN_SETTINGS_DIR="+t.TempDir())
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

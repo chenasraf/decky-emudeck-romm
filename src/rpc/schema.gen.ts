@@ -45,6 +45,7 @@ export const ErrorBadCredentials: ErrorKind = "bad_credentials";
 export const ErrorAccountDisabled: ErrorKind = "account_disabled";
 export const ErrorMissingPermission: ErrorKind = "missing_permission";
 export const ErrorSignedOut: ErrorKind = "signed_out";
+export const ErrorNotFound: ErrorKind = "not_found";
 export interface ErrorData {
   kind: ErrorKind;
   /**
@@ -69,6 +70,11 @@ export interface Methods {
   start_device_pairing: Method<StartDevicePairingParams, DevicePairing>;
   cancel_device_pairing: Method<CancelDevicePairingParams, CancelDevicePairingResult>;
   install_state: Method<InstallStateParams, InstallState>;
+  catalog_status: Method<CatalogStatusParams, CatalogStatus>;
+  refresh_catalog: Method<RefreshCatalogParams, CatalogStatus>;
+  list_platforms: Method<ListPlatformsParams, ListPlatformsResult>;
+  list_games: Method<ListGamesParams, ListGamesResult>;
+  get_game: Method<GetGameParams, Game>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -81,6 +87,10 @@ export interface Events {
    * time the server stops accepting the plugin's token.
    */
   connection: ConnectionStatus;
+  /**
+   * Catalog fires each time a library refresh starts, makes progress or ends.
+   */
+  catalog: CatalogStatus;
 }
 /**
  * Method pairs a method's params with its result.
@@ -274,4 +284,105 @@ export interface SaveDirStatus {
    * Resolved is where Path leads once symlinks are followed, empty when it leads nowhere.
    */
   resolved?: string;
+}
+export interface CatalogStatusParams {
+}
+export interface RefreshCatalogParams {
+  /**
+   * Force refreshes even when the library is under five minutes old, as Refresh library does.
+   */
+  force?: boolean;
+}
+/**
+ * CatalogStatus is the state of the plugin's local copy of the server's library.
+ */
+export interface CatalogStatus {
+  refreshing: boolean;
+  /**
+   * Fetched is how many games the running refresh has received so far.
+   */
+  fetched: number /* int */;
+  /**
+   * SyncedAt is when the library was last refreshed, as RFC 3339, empty before the first time.
+   */
+  syncedAt?: string;
+  platforms: number /* int */;
+  games: number /* int */;
+  /**
+   * Problem says why the last refresh failed.
+   */
+  problem?: Error;
+}
+export interface ListPlatformsParams {
+}
+export interface ListPlatformsResult {
+  platforms: PlatformSummary[];
+}
+export interface PlatformSummary {
+  id: number /* int */;
+  slug: string;
+  name: string;
+  /**
+   * Games is how many of the platform's games the library holds.
+   */
+  games: number /* int */;
+  /**
+   * Installed is how many of them are on this Deck.
+   */
+  installed: number /* int */;
+}
+export type GameFilter = string;
+export const GameFilterAll: GameFilter = "all";
+export const GameFilterInstalled: GameFilter = "installed";
+export const GameFilterNotInstalled: GameFilter = "not_installed";
+export const GameFilterUpdates: GameFilter = "updates";
+export interface ListGamesParams {
+  platformId: number /* int */;
+  filter?: GameFilter;
+  offset?: number /* int */;
+  /**
+   * Limit is capped at 200; zero means 50.
+   */
+  limit?: number /* int */;
+}
+export interface ListGamesResult {
+  platformName: string;
+  games: GameSummary[];
+  /**
+   * Total is how many games match the filter, across every page.
+   */
+  total: number /* int */;
+}
+export type GameState = string;
+/**
+ * GameOnRomM is a game on the server and not on this Deck.
+ */
+export const GameOnRomM: GameState = "on_romm";
+export interface GameSummary {
+  id: number /* int */;
+  name: string;
+  sizeBytes: number /* int64 */;
+  regions: string[];
+  state: GameState;
+}
+export interface GetGameParams {
+  id: number /* int */;
+}
+export interface Game {
+  id: number /* int */;
+  platformId: number /* int */;
+  platformName: string;
+  name: string;
+  /**
+   * FileName is the game's file or folder name on the server.
+   */
+  fileName: string;
+  sizeBytes: number /* int64 */;
+  regions: string[];
+  revision?: string;
+  /**
+   * MultiFile is set when the game is a folder of several files.
+   */
+  multiFile: boolean;
+  state: GameState;
 }

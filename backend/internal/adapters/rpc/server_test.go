@@ -220,7 +220,7 @@ func TestServeCancelsInFlightCallsOnEOF(t *testing.T) {
 
 func TestRoutesCoverSchema(t *testing.T) {
 	s := NewServer(io.Discard, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	Routes(s, "test", nil, nil)
+	Routes(s, "test", Services{})
 
 	methods := reflect.TypeFor[schema.Methods]()
 	for i := range methods.NumField() {
