@@ -290,14 +290,47 @@ func TestForgetServerDropsEveryRecord(t *testing.T) {
 	if err := s.SaveOwnedBIOS(ctx, domain.OwnedBIOS{FirmwareID: 4, PlatformID: 1, File: domain.PlacedFile{Path: "/e/bios/x.bin"}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.PutSaveRecord(ctx, domain.SaveRecord{ROMID: 1, Path: "/e/saves/a.srm"}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := s.ForgetServer(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var rows int
 	if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM owned_roms) + (SELECT COUNT(*) FROM owned_files) +
-		(SELECT COUNT(*) FROM linked_games) + (SELECT COUNT(*) FROM download_queue) + (SELECT COUNT(*) FROM owned_bios)`).Scan(&rows); err != nil || rows != 0 {
+		(SELECT COUNT(*) FROM linked_games) + (SELECT COUNT(*) FROM download_queue) + (SELECT COUNT(*) FROM owned_bios) +
+		(SELECT COUNT(*) FROM save_records)`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("%d rows left, %v", rows, err)
+	}
+}
+
+func TestSaveRecordRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+	at := time.Date(2026, 10, 13, 8, 0, 0, 123, time.UTC)
+	r := domain.SaveRecord{
+		ROMID: 7, Path: "/e/saves/retroarch/saves/Chrono.srm", Slot: domain.AutosaveSlot, Emulator: "snes9x",
+		LocalHash: "abc", ServerSaveID: 70, ServerHash: "abc", SyncedAt: at, State: domain.SaveConflict, CheckedAt: at,
+	}
+	if err := s.PutSaveRecord(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	// One never synced keeps its times zero.
+	if err := s.PutSaveRecord(ctx, domain.SaveRecord{ROMID: 8, Path: "/e/saves/b.srm", State: domain.SaveFailed, Problem: "oops"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.SaveRecords(ctx)
+	if err != nil || len(got) != 2 || got[0] != r || !got[1].SyncedAt.IsZero() || got[1].Problem != "oops" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+
+	r.State = domain.SaveSynced
+	if err := s.PutSaveRecord(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.SaveRecords(ctx); len(got) != 2 || got[0].State != domain.SaveSynced {
+		t.Fatalf("replaced: %+v", got)
 	}
 }
 

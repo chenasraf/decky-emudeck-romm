@@ -5,7 +5,7 @@ import { formatSize } from '../catalog'
 import { Cover } from '../covers'
 import { percent } from '../downloads'
 import { ErrorBox, mono, muted } from '../setup/common'
-import { BiosSection, useGameDetail } from './Library'
+import { BiosSection, SavesSection, useGameDetail } from './Library'
 
 const hero: CSSProperties = {
   position: 'relative',
@@ -141,6 +141,7 @@ export function GameHero({ id }: { id: number }) {
         )}
         <div style={{ margin: '0 -16px' }}>
           <BiosSection platformId={game.platformId} nudge />
+          {(state === 'installed' || state === 'update_available') && <SavesSection id={game.id} />}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
           {game.installedPaths?.map((p) => (

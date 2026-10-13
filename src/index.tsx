@@ -20,7 +20,7 @@ import {
   restartBackend,
 } from './backend'
 import { watchBios } from './bios'
-import { LIBRARY_ROUTE } from './catalog'
+import { LIBRARY_ROUTE, timeAgo } from './catalog'
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
@@ -38,6 +38,8 @@ import {
 } from './library/Library'
 import { LibraryPage } from './library/LibraryPage'
 import type { GameFilter, Preferences } from './rpc/schema.gen'
+import { useSaveSummary, watchSaves } from './saves'
+import { asRpcError } from './setup/common'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
 
@@ -197,6 +199,78 @@ function InstallSection() {
       <PanelSectionRow>
         <ButtonItem layout="below" onClick={openStatus}>
           Setup status
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
+  )
+}
+
+function SaveSyncSection() {
+  const connection = useConnection()
+  const summary = useSaveSummary()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!summary || !connection || connection.state === 'not_set_up') return null
+
+  const syncAll = async () => {
+    setBusy(true)
+    try {
+      await call('sync_saves', {})
+      setError(null)
+    } catch (err) {
+      setError(asRpcError(err).message)
+    }
+    setBusy(false)
+  }
+  const { conflicts, waiting, failed } = summary.counts
+  const status = summary.syncing
+    ? 'Syncing…'
+    : summary.lastCheckedAt
+      ? `Synced ${timeAgo(summary.lastCheckedAt)}`
+      : 'Not synced yet'
+
+  return (
+    <PanelSection title="Saves">
+      <PanelSectionRow>
+        <Field label="RetroArch saves">{status}</Field>
+      </PanelSectionRow>
+      {conflicts > 0 && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ Save conflicts"
+            description={`${conflicts === 1 ? '1 game' : `${conflicts} games`} changed both on this Deck and on RomM. Neither copy was overwritten.`}
+          />
+        </PanelSectionRow>
+      )}
+      {waiting > 0 && (
+        <PanelSectionRow>
+          <Field
+            label="Waiting for RetroArch"
+            description={`RomM has newer saves for ${waiting === 1 ? '1 game' : `${waiting} games`}. Close RetroArch and sync again.`}
+          />
+        </PanelSectionRow>
+      )}
+      {failed > 0 && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ Sync failed"
+            description={`${failed === 1 ? "1 game's save" : `${failed} games' saves`} didn't sync. Its page says why.`}
+          />
+        </PanelSectionRow>
+      )}
+      {error && (
+        <PanelSectionRow>
+          <Field label="⚠ Couldn't sync" description={error} />
+        </PanelSectionRow>
+      )}
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          disabled={busy || summary.syncing}
+          onClick={() => void syncAll()}
+        >
+          {summary.syncing ? 'Syncing saves…' : 'Sync all saves'}
         </ButtonItem>
       </PanelSectionRow>
     </PanelSection>
@@ -372,6 +446,7 @@ function Content() {
         onCollections={() => setView({ name: 'collections' })}
         onSearch={() => setView({ name: 'search', query: '' })}
       />
+      <SaveSyncSection />
       <SettingsSection />
       <InstallSection />
       <BackendSection />
@@ -387,6 +462,7 @@ export default definePlugin(() => {
   const stopWatchingDownloads = watchDownloads()
   const stopWatchingBios = watchBios()
   const stopWatchingESDE = watchESDE()
+  const stopWatchingSaves = watchSaves()
 
   return {
     name: 'EmuDeck RomM Sync',
@@ -401,6 +477,7 @@ export default definePlugin(() => {
       stopWatchingDownloads()
       stopWatchingBios()
       stopWatchingESDE()
+      stopWatchingSaves()
     },
   }
 })

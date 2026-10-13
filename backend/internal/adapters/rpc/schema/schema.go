@@ -53,6 +53,11 @@ const (
 	ErrorChangedOnDisk ErrorKind = "changed_on_disk"
 	// ErrorNoSpace means the Emulation drive hasn't room for a download.
 	ErrorNoSpace ErrorKind = "no_space"
+	// ErrorSaveConflict means RomM refused a save upload because its slot changed since this Deck
+	// last synced it.
+	ErrorSaveConflict ErrorKind = "save_conflict"
+	// ErrorSyncDisabled means RomM has save sync turned off for this Deck's Device.
+	ErrorSyncDisabled ErrorKind = "sync_disabled"
 )
 
 type ErrorData struct {
@@ -105,6 +110,9 @@ type Methods struct {
 	DownloadBIOS        Method[DownloadBIOSParams, DownloadBIOSResult]               `json:"download_bios"`
 	GetPreferences      Method[GetPreferencesParams, Preferences]                    `json:"get_preferences"`
 	SetPreferences      Method[SetPreferencesParams, Preferences]                    `json:"set_preferences"`
+	SyncSaves           Method[SyncSavesParams, SyncSavesResult]                     `json:"sync_saves"`
+	SaveStatus          Method[SaveStatusParams, SaveStatus]                         `json:"save_status"`
+	SaveSummary         Method[SaveSummaryParams, SaveSummary]                       `json:"save_summary"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -132,6 +140,8 @@ type Events struct {
 	ESDERescan ESDERescanEvent `json:"esde_rescan"`
 	// BIOS fires when a platform's BIOS download starts and when it ends.
 	BIOS BIOSEvent `json:"bios"`
+	// SaveSync fires when a save sync starts and when it ends.
+	SaveSync SaveSyncEvent `json:"save_sync"`
 }
 
 // Method pairs a method's params with its result.
@@ -973,4 +983,80 @@ type ESDERescanEvent struct {
 	Batch ESDENotice `json:"batch"`
 	// Notice is everything ES-DE needs a rescan to see.
 	Notice ESDENotice `json:"notice"`
+}
+
+// SyncSavesParams syncs the saves of the games with ids, or of every game when ids is empty. The
+// sync runs in the background; save_sync events tell when it starts and ends.
+type SyncSavesParams struct {
+	IDs []int `json:"ids,omitempty"`
+}
+
+type SyncSavesResult struct{}
+
+type SaveStatusParams struct {
+	ID int `json:"id"`
+}
+
+// SaveState is where a game's save stands after the last sync that looked at it.
+type SaveState string
+
+const (
+	// SaveSynced means the save on this Deck is the one RomM has, or neither has one.
+	SaveSynced SaveState = "synced"
+	// SaveConflict means both this Deck's save and RomM's changed since they last matched; neither
+	// was overwritten.
+	SaveConflict SaveState = "conflict"
+	// SaveRemovedOnServer means RomM's slot was emptied after this Deck synced it.
+	SaveRemovedOnServer SaveState = "removed_on_server"
+	// SaveWaiting means a newer save from RomM waits for RetroArch to close.
+	SaveWaiting SaveState = "waiting"
+	// SaveFailed means the last sync of the game failed; problem says why.
+	SaveFailed SaveState = "failed"
+)
+
+// SaveStatus is where a game's save sync stands.
+type SaveStatus struct {
+	ID int `json:"id"`
+	// Syncs is unset when the plugin doesn't sync the game's saves; why says why.
+	Syncs bool   `json:"syncs"`
+	Why   string `json:"why,omitempty"`
+	// Path is the save file, and emulator the RetroArch core it's tagged with on RomM.
+	Path     string `json:"path,omitempty"`
+	Emulator string `json:"emulator,omitempty"`
+	// State is unset until a sync looks at the game.
+	State   SaveState `json:"state,omitempty"`
+	Problem string    `json:"problem,omitempty"`
+	// CheckedAt is when a sync last looked at the game, as RFC 3339.
+	CheckedAt string `json:"checkedAt,omitempty"`
+	Syncing   bool   `json:"syncing"`
+}
+
+type SaveSummaryParams struct{}
+
+// SaveCounts counts what a sync did, or where save sync stands across games.
+type SaveCounts struct {
+	Games      int `json:"games"`
+	Uploaded   int `json:"uploaded"`
+	Downloaded int `json:"downloaded"`
+	Conflicts  int `json:"conflicts"`
+	Waiting    int `json:"waiting"`
+	Failed     int `json:"failed"`
+}
+
+// SaveSummary is where save sync stands across every game a sync looked at.
+type SaveSummary struct {
+	Counts SaveCounts `json:"counts"`
+	// LastCheckedAt is when a sync last looked at any game, as RFC 3339.
+	LastCheckedAt string `json:"lastCheckedAt,omitempty"`
+	Syncing       bool   `json:"syncing"`
+}
+
+type SaveSyncEvent struct {
+	Syncing bool `json:"syncing"`
+	// IDs are the games the sync covers, empty for every game.
+	IDs []int `json:"ids,omitempty"`
+	// Counts is what the sync did, set when it ends.
+	Counts SaveCounts `json:"counts"`
+	// Problem says why the sync couldn't run.
+	Problem *Error `json:"problem,omitempty"`
 }

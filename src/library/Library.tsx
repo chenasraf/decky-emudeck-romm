@@ -46,6 +46,7 @@ import type {
   SearchGamesResult,
   SearchHit,
 } from '../rpc/schema.gen'
+import { saveStateDetail, saveStateLabel, useSaveStatus } from '../saves'
 import { asRpcError } from '../setup/common'
 import { showFindGames } from './FindGames'
 
@@ -464,6 +465,58 @@ export function BiosSection({ platformId, nudge }: { platformId: number; nudge?:
           <Field label="BIOS">All {bios.files.length} present</Field>
         </PanelSectionRow>
       )}
+    </>
+  )
+}
+
+/** Where a downloaded game's save sync stands, with Sync now. */
+export function SavesSection({ id }: { id: number }) {
+  const status = useSaveStatus(id)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<RpcError | null>(null)
+  if (!status) return null
+
+  if (!status.syncs) {
+    return (
+      <PanelSectionRow>
+        <Field label="Saves" description={status.why}>
+          Not synced
+        </Field>
+      </PanelSectionRow>
+    )
+  }
+
+  const sync = async () => {
+    setBusy(true)
+    try {
+      await call('sync_saves', { ids: [id] })
+      setError(null)
+    } catch (err) {
+      setError(asRpcError(err))
+    }
+    setBusy(false)
+  }
+  const checked = status.checkedAt ? ` · checked ${timeAgo(status.checkedAt)}` : ''
+
+  return (
+    <>
+      <Problem error={error} />
+      <PanelSectionRow>
+        <Field label="Saves" description={saveStateDetail(status)}>
+          {saveStateLabel(status)}
+          {!status.syncing && checked}
+        </Field>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" disabled={busy || status.syncing} onClick={() => void sync()}>
+          {status.syncing ? 'Syncing saves…' : 'Sync saves now'}
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <Field label="Save file" description={`RomM slot autosave · ${status.emulator}`}>
+          <span style={{ wordBreak: 'break-all' }}>{status.path}</span>
+        </Field>
+      </PanelSectionRow>
     </>
   )
 }
@@ -1265,6 +1318,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
             </PanelSectionRow>
           )}
           <BiosSection platformId={game.platformId} nudge />
+          {(state === 'installed' || state === 'update_available') && <SavesSection id={game.id} />}
           {download?.state === 'downloading' && !download.converting && (
             <PanelSectionRow>
               <ProgressBarWithInfo

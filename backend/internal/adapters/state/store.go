@@ -117,6 +117,21 @@ CREATE TABLE owned_media (
 );
 CREATE INDEX owned_media_by_rom ON owned_media (rom_id);
 `,
+	`
+CREATE TABLE save_records (
+	rom_id         INTEGER PRIMARY KEY,
+	path           TEXT NOT NULL,
+	slot           TEXT NOT NULL,
+	emulator       TEXT NOT NULL,
+	local_hash     TEXT NOT NULL,
+	server_save_id INTEGER NOT NULL,
+	server_hash    TEXT NOT NULL,
+	synced_at      INTEGER NOT NULL,
+	state          TEXT NOT NULL,
+	problem        TEXT NOT NULL,
+	checked_at     INTEGER NOT NULL
+);
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -560,19 +575,67 @@ func (s *Store) OwnedBIOS(ctx context.Context, platformID int) ([]domain.OwnedBI
 }
 
 // ForgetServer drops every record tied to the Server: Plugin-owned ROMs and BIOS files, Linked
-// games and the download queue. The files stay on disk, User-managed.
+// games, the download queue and what save sync knew. The files stay on disk, User-managed.
 func (s *Store) ForgetServer(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue"} {
+	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// PutSaveRecord writes what save sync knows of a game's save, replacing what it knew.
+func (s *Store) PutSaveRecord(ctx context.Context, r domain.SaveRecord) error {
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO save_records
+		(rom_id, path, slot, emulator, local_hash, server_save_id, server_hash, synced_at, state, problem, checked_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ROMID, r.Path, r.Slot, r.Emulator, r.LocalHash, r.ServerSaveID, r.ServerHash, unixNano(r.SyncedAt),
+		string(r.State), r.Problem, unixNano(r.CheckedAt))
+	return err
+}
+
+// SaveRecords returns what save sync knows of every game it looked at.
+func (s *Store) SaveRecords(ctx context.Context) ([]domain.SaveRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT rom_id, path, slot, emulator, local_hash, server_save_id, server_hash,
+		synced_at, state, problem, checked_at FROM save_records ORDER BY rom_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.SaveRecord
+	for rows.Next() {
+		var r domain.SaveRecord
+		var state string
+		var synced, checked int64
+		if err := rows.Scan(&r.ROMID, &r.Path, &r.Slot, &r.Emulator, &r.LocalHash, &r.ServerSaveID, &r.ServerHash,
+			&synced, &state, &r.Problem, &checked); err != nil {
+			return nil, err
+		}
+		r.State, r.SyncedAt, r.CheckedAt = domain.SaveState(state), fromUnixNano(synced), fromUnixNano(checked)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// unixNano stores a time, zero for the zero time.
+func unixNano(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()
+}
+
+func fromUnixNano(n int64) time.Time {
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n).UTC()
 }
 
 // SetUpdateAvailable records whether the Server has an update of the Plugin-owned ROM with id.

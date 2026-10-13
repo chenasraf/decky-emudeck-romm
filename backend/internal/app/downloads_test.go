@@ -409,6 +409,8 @@ type downloadFixture struct {
 	media      *Media
 	art        *fakeArt
 	mediaPrefs *memMediaPrefs
+	// raSaves is RetroArch's saves folder.
+	raSaves string
 }
 
 var (
@@ -441,6 +443,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		root:      root,
 		snes:      filepath.Join(root, "roms", "snes"),
 		mediaDir:  filepath.Join(root, "downloaded_media"),
+		raSaves:   filepath.Join(root, "saves", "retroarch", "saves"),
 	}
 
 	catalog := &memStore{}
@@ -475,7 +478,11 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			SettingsPath: filepath.Join(root, "es_settings.xml"), MediaDirectory: f.mediaDir,
 			ROMDirectory: filepath.Join(root, "roms"), ROMDirectoryMatches: true,
 		},
-		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
+		Emulators: []domain.EmulatorState{{ID: domain.RetroArchID, Installed: true, Saves: []domain.SaveDirState{
+			{Path: filepath.Join(root, "saves", "retroarch", "saves"), Resolved: f.raSaves},
+			{Path: filepath.Join(root, "saves", "retroarch", "states"), Resolved: filepath.Join(root, "saves", "retroarch", "states")},
+		}}},
+		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes, Emulator: domain.RetroArchID}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
 			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")},
 			{Folder: "dreamcast", ROMPath: filepath.Join(root, "roms", "dreamcast")},
 			{Folder: "dos", ROMPath: filepath.Join(root, "roms", "dos")},

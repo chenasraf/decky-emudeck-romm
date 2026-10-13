@@ -68,6 +68,15 @@ export const ErrorChangedOnDisk: ErrorKind = "changed_on_disk";
  * ErrorNoSpace means the Emulation drive hasn't room for a download.
  */
 export const ErrorNoSpace: ErrorKind = "no_space";
+/**
+ * ErrorSaveConflict means RomM refused a save upload because its slot changed since this Deck
+ * last synced it.
+ */
+export const ErrorSaveConflict: ErrorKind = "save_conflict";
+/**
+ * ErrorSyncDisabled means RomM has save sync turned off for this Deck's Device.
+ */
+export const ErrorSyncDisabled: ErrorKind = "sync_disabled";
 export interface ErrorData {
   kind: ErrorKind;
   /**
@@ -123,6 +132,9 @@ export interface Methods {
   download_bios: Method<DownloadBIOSParams, DownloadBIOSResult>;
   get_preferences: Method<GetPreferencesParams, Preferences>;
   set_preferences: Method<SetPreferencesParams, Preferences>;
+  sync_saves: Method<SyncSavesParams, SyncSavesResult>;
+  save_status: Method<SaveStatusParams, SaveStatus>;
+  save_summary: Method<SaveSummaryParams, SaveSummary>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -169,6 +181,10 @@ export interface Events {
    * BIOS fires when a platform's BIOS download starts and when it ends.
    */
   bios: BIOSEvent;
+  /**
+   * SaveSync fires when a save sync starts and when it ends.
+   */
+  save_sync: SaveSyncEvent;
 }
 /**
  * Method pairs a method's params with its result.
@@ -1219,4 +1235,106 @@ export interface ESDERescanEvent {
    * Notice is everything ES-DE needs a rescan to see.
    */
   notice: ESDENotice;
+}
+/**
+ * SyncSavesParams syncs the saves of the games with ids, or of every game when ids is empty. The
+ * sync runs in the background; save_sync events tell when it starts and ends.
+ */
+export interface SyncSavesParams {
+  ids?: number /* int */[];
+}
+export interface SyncSavesResult {
+}
+export interface SaveStatusParams {
+  id: number /* int */;
+}
+/**
+ * SaveState is where a game's save stands after the last sync that looked at it.
+ */
+export type SaveState = string;
+/**
+ * SaveSynced means the save on this Deck is the one RomM has, or neither has one.
+ */
+export const SaveSynced: SaveState = "synced";
+/**
+ * SaveConflict means both this Deck's save and RomM's changed since they last matched; neither
+ * was overwritten.
+ */
+export const SaveConflict: SaveState = "conflict";
+/**
+ * SaveRemovedOnServer means RomM's slot was emptied after this Deck synced it.
+ */
+export const SaveRemovedOnServer: SaveState = "removed_on_server";
+/**
+ * SaveWaiting means a newer save from RomM waits for RetroArch to close.
+ */
+export const SaveWaiting: SaveState = "waiting";
+/**
+ * SaveFailed means the last sync of the game failed; problem says why.
+ */
+export const SaveFailed: SaveState = "failed";
+/**
+ * SaveStatus is where a game's save sync stands.
+ */
+export interface SaveStatus {
+  id: number /* int */;
+  /**
+   * Syncs is unset when the plugin doesn't sync the game's saves; why says why.
+   */
+  syncs: boolean;
+  why?: string;
+  /**
+   * Path is the save file, and emulator the RetroArch core it's tagged with on RomM.
+   */
+  path?: string;
+  emulator?: string;
+  /**
+   * State is unset until a sync looks at the game.
+   */
+  state?: SaveState;
+  problem?: string;
+  /**
+   * CheckedAt is when a sync last looked at the game, as RFC 3339.
+   */
+  checkedAt?: string;
+  syncing: boolean;
+}
+export interface SaveSummaryParams {
+}
+/**
+ * SaveCounts counts what a sync did, or where save sync stands across games.
+ */
+export interface SaveCounts {
+  games: number /* int */;
+  uploaded: number /* int */;
+  downloaded: number /* int */;
+  conflicts: number /* int */;
+  waiting: number /* int */;
+  failed: number /* int */;
+}
+/**
+ * SaveSummary is where save sync stands across every game a sync looked at.
+ */
+export interface SaveSummary {
+  counts: SaveCounts;
+  /**
+   * LastCheckedAt is when a sync last looked at any game, as RFC 3339.
+   */
+  lastCheckedAt?: string;
+  syncing: boolean;
+}
+export interface SaveSyncEvent {
+  syncing: boolean;
+  /**
+   * IDs are the games the sync covers, empty for every game.
+   */
+  ids?: number /* int */[];
+  /**
+   * Counts is what the sync did, set when it ends.
+   */
+  counts: SaveCounts;
+  /**
+   * Problem says why the sync couldn't run.
+   */
+  problem?: Error;
 }

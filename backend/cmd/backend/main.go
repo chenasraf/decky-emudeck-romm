@@ -15,6 +15,7 @@ import (
 	cachedb "github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/cache"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/covers"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/emudeck"
+	esdecfg "github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/esde"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/romm"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
@@ -132,14 +133,15 @@ func run(log *slog.Logger) error {
 		}
 	}
 	gamesLog := log.With("component", "games")
-	games := app.NewGames(func() (domain.Emulator, bool) {
+	runningGame := func() (domain.Emulator, bool) {
 		procs, err := system.Processes("/proc")
 		if err != nil {
 			gamesLog.Warn("list processes", "err", err)
 			return domain.Emulator{}, false
 		}
 		return domain.RunningEmulator(procs)
-	}, store, gamesLog)
+	}
+	games := app.NewGames(runningGame, store, gamesLog)
 	esdeLog := log.With("component", "esde")
 	esde := app.NewESDE(func() (int, bool) {
 		procs, err := system.Processes("/proc")
@@ -167,8 +169,18 @@ func run(log *slog.Logger) error {
 	}, log.With("component", "catalog"))
 	events.catalog = catalog
 	servers := app.NewServerSwitch(conn, downloads, catalog, log.With("component", "servers"))
+	saveDial := func(server domain.Server, token string) app.SaveServer {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
+	var saveStore app.SaveStore
+	if owned != nil {
+		saveStore = owned
+	}
+	saves := app.NewSaves(ctx, cache, install, conn, saveDial, ownership, saveStore, stateErr, esdecfg.New(userHome(log)), runningGame,
+		filepath.Join(runtimeDir, "backups"), rpc.SaveEvents(srv), log.With("component", "saves"))
 	rpc.Routes(srv, version, rpc.Services{
 		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde, Media: media,
+		Saves: saves,
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)

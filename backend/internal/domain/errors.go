@@ -32,6 +32,11 @@ const (
 	KindChangedOnDisk Kind = "changed_on_disk"
 	// KindNoSpace means the Emulation drive hasn't room for a download.
 	KindNoSpace Kind = "no_space"
+	// KindSaveConflict means RomM refused a save upload because its slot changed since this Deck
+	// last synced it.
+	KindSaveConflict Kind = "save_conflict"
+	// KindSyncDisabled means RomM has save sync turned off for this Deck's Device.
+	KindSyncDisabled Kind = "sync_disabled"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

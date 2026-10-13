@@ -5,6 +5,7 @@ go 1.25.0
 tool github.com/gzuidhof/tygo
 
 require (
+	github.com/CalebQ42/squashfs v1.4.1
 	github.com/bodgit/sevenzip v1.6.5
 	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.59.0
@@ -22,8 +23,10 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
+	github.com/rasky/go-lzo v0.0.0-20200203143853-96a758eda86e // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cobra v1.3.0 // indirect

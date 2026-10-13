@@ -21,6 +21,7 @@ type Services struct {
 	ESDE       *app.ESDE
 	Servers    *app.ServerSwitch
 	Media      *app.Media
+	Saves      *app.Saves
 }
 
 // Routes registers a handler for every method in schema.Methods.
@@ -32,6 +33,7 @@ func Routes(s *Server, version string, svc Services) {
 	preferenceRoutes(s, svc.BIOS, svc.Games, svc.Media)
 	coverRoutes(s, svc.Covers)
 	esdeRoutes(s, svc.ESDE)
+	saveRoutes(s, svc.Saves)
 
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil
