@@ -137,6 +137,18 @@ ALTER TABLE save_records ADD COLUMN conflict_save_id INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE save_records ADD COLUMN conflict_server_at INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE save_records ADD COLUMN parked_hash TEXT NOT NULL DEFAULT '';
 `,
+	`
+CREATE TABLE save_activity (
+	id       INTEGER PRIMARY KEY AUTOINCREMENT,
+	rom_id   INTEGER NOT NULL,
+	at       INTEGER NOT NULL,
+	kind     TEXT NOT NULL,
+	message  TEXT NOT NULL,
+	resolved INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX save_activity_by_rom ON save_activity (rom_id, at);
+CREATE INDEX save_activity_by_at ON save_activity (at);
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -587,7 +599,7 @@ func (s *Store) ForgetServer(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records"} {
+	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records", "save_activity"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -628,6 +640,62 @@ func (s *Store) SaveRecords(ctx context.Context) ([]domain.SaveRecord, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// AddActivity appends an entry to the activity log.
+func (s *Store) AddActivity(ctx context.Context, a domain.SaveActivity) error {
+	_, err := s.db.ExecContext(ctx, "INSERT INTO save_activity (rom_id, at, kind, message, resolved) VALUES (?, ?, ?, ?, ?)",
+		a.ROMID, a.At.UnixNano(), string(a.Kind), a.Message, a.Resolved)
+	return err
+}
+
+// Activity returns the newest limit entries of the activity log, of the ROM with id or of every
+// ROM when id is zero, newest first.
+func (s *Store) Activity(ctx context.Context, id, limit int) ([]domain.SaveActivity, error) {
+	query := "SELECT id, rom_id, at, kind, message, resolved FROM save_activity"
+	args := []any{}
+	if id != 0 {
+		query += " WHERE rom_id = ?"
+		args = append(args, id)
+	}
+	query += " ORDER BY at DESC, id DESC LIMIT ?"
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.SaveActivity
+	for rows.Next() {
+		var a domain.SaveActivity
+		var at int64
+		var kind string
+		if err := rows.Scan(&a.ID, &a.ROMID, &at, &kind, &a.Message, &a.Resolved); err != nil {
+			return nil, err
+		}
+		a.At, a.Kind = time.Unix(0, at).UTC(), domain.ActivityKind(kind)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ResolveConflicts marks the ROM's conflict entries in the activity log settled.
+func (s *Store) ResolveConflicts(ctx context.Context, id int) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE save_activity SET resolved = 1 WHERE rom_id = ? AND kind = ?", id, string(domain.ActivityConflict))
+	return err
+}
+
+// PruneActivity drops the activity log entries older than before, and all but the newest keep,
+// except unresolved conflicts, which stay until settled. It returns how many it dropped.
+func (s *Store) PruneActivity(ctx context.Context, before time.Time, keep int) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM save_activity
+		WHERE NOT (kind = ? AND resolved = 0)
+		AND (at < ? OR id NOT IN (SELECT id FROM save_activity ORDER BY at DESC, id DESC LIMIT ?))`,
+		string(domain.ActivityConflict), before.UnixNano(), keep)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // unixNano stores a time, zero for the zero time.

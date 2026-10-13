@@ -335,6 +335,55 @@ func TestSaveRecordRoundTrip(t *testing.T) {
 	}
 }
 
+func TestActivityLog(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	add := func(rom int, at time.Time, kind domain.ActivityKind) {
+		t.Helper()
+		if err := s.AddActivity(ctx, domain.SaveActivity{ROMID: rom, At: at, Kind: kind, Message: string(kind)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := now.Add(-100 * 24 * time.Hour)
+	add(1, old, domain.ActivityUploaded)
+	add(1, old, domain.ActivityConflict)
+	add(2, old, domain.ActivityConflict)
+	add(1, now.Add(-time.Hour), domain.ActivityDownloaded)
+	add(2, now, domain.ActivityUploaded)
+
+	all, err := s.Activity(ctx, 0, 10)
+	if err != nil || len(all) != 5 || all[0].ROMID != 2 || all[0].Kind != domain.ActivityUploaded || !all[0].At.Equal(now) {
+		t.Fatalf("all %+v, %v", all, err)
+	}
+	if one, _ := s.Activity(ctx, 1, 10); len(one) != 3 || one[0].Kind != domain.ActivityDownloaded {
+		t.Fatalf("rom 1 %+v", one)
+	}
+	if two, _ := s.Activity(ctx, 0, 2); len(two) != 2 {
+		t.Fatalf("limited to %d", len(two))
+	}
+
+	if err := s.ResolveConflicts(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	// Old entries go, but the unresolved conflict of ROM 2 stays however old.
+	n, err := s.PruneActivity(ctx, now.Add(-domain.ActivityKeepFor), domain.ActivityKeepMax)
+	if err != nil || n != 2 {
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	left, _ := s.Activity(ctx, 0, 10)
+	if len(left) != 3 || left[2].ROMID != 2 || left[2].Kind != domain.ActivityConflict || left[2].Resolved {
+		t.Fatalf("left %+v", left)
+	}
+	// Past the cap only the newest stay.
+	if n, _ := s.PruneActivity(ctx, old, 1); n != 1 {
+		t.Fatalf("capped %d", n)
+	}
+	if left, _ := s.Activity(ctx, 0, 10); len(left) != 2 || left[0].ROMID != 2 || left[1].Kind != domain.ActivityConflict {
+		t.Fatalf("after cap %+v", left)
+	}
+}
+
 func TestUpdateFlagAndSweep(t *testing.T) {
 	ctx := context.Background()
 	s := open(t, filepath.Join(t.TempDir(), "state.db"))

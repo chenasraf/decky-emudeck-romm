@@ -38,7 +38,7 @@ import {
 } from './library/Library'
 import { LibraryPage } from './library/LibraryPage'
 import type { GameFilter, Preferences } from './rpc/schema.gen'
-import { useSaveSummary, watchSaves } from './saves'
+import { useSaveActivity, useSaveSummary, watchSaves } from './saves'
 import { asRpcError } from './setup/common'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
@@ -282,7 +282,30 @@ function SaveSyncSection({ onOpen }: { onOpen: (id: number) => void }) {
           {summary.syncing ? 'Syncing saves…' : 'Sync all saves'}
         </ButtonItem>
       </PanelSectionRow>
+      <RecentSaveActivity onOpen={onOpen} />
     </PanelSection>
+  )
+}
+
+/** What save sync last did, across games; each entry opens its game. */
+function RecentSaveActivity({ onOpen }: { onOpen: (id: number) => void }) {
+  const entries = useSaveActivity(0, 5)
+  if (!entries || entries.length === 0) return null
+  return (
+    <>
+      {entries.map((e, i) => (
+        <PanelSectionRow key={e.id}>
+          <Field
+            label={i === 0 ? 'Recent activity' : undefined}
+            description={`${e.name} · ${timeAgo(e.at)}`}
+            onActivate={() => onOpen(e.game)}
+            focusable
+          >
+            {e.message}
+          </Field>
+        </PanelSectionRow>
+      ))}
+    </>
   )
 }
 

@@ -117,6 +117,9 @@ type Methods struct {
 	SaveStatus          Method[SaveStatusParams, SaveStatus]                         `json:"save_status"`
 	SaveSummary         Method[SaveSummaryParams, SaveSummary]                       `json:"save_summary"`
 	ResolveSaveConflict Method[ResolveSaveConflictParams, SaveStatus]                `json:"resolve_save_conflict"`
+	SaveActivity        Method[SaveActivityParams, SaveActivity]                     `json:"save_activity"`
+	SaveBackups         Method[SaveBackupsParams, SaveBackups]                       `json:"save_backups"`
+	RestoreSaveBackup   Method[RestoreSaveBackupParams, SaveStatus]                  `json:"restore_save_backup"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1069,6 +1072,66 @@ type ResolveSaveConflictParams struct {
 
 // SaveConflictGame is a game whose save is in conflict.
 type SaveConflictGame struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// SaveActivityParams asks for the newest entries of the save activity log, of the game with id or
+// of every game when id is 0. Limit defaults to 20, at most 200.
+type SaveActivityParams struct {
+	ID    int `json:"id,omitempty"`
+	Limit int `json:"limit,omitempty"`
+}
+
+type ActivityKind string
+
+const (
+	ActivityUploaded        ActivityKind = "uploaded"
+	ActivityDownloaded      ActivityKind = "downloaded"
+	ActivityConflict        ActivityKind = "conflict"
+	ActivityResolved        ActivityKind = "resolved"
+	ActivityFailed          ActivityKind = "failed"
+	ActivityRemovedOnServer ActivityKind = "removed_on_server"
+	ActivityRestored        ActivityKind = "restored"
+)
+
+// SaveActivityEntry is something save sync did to a game's save.
+type SaveActivityEntry struct {
+	ID   int64  `json:"id"`
+	Game int    `json:"game"`
+	Name string `json:"name"`
+	// At is when it happened, as RFC 3339.
+	At      string       `json:"at"`
+	Kind    ActivityKind `json:"kind"`
+	Message string       `json:"message"`
+	// Resolved is set on a conflict the user settled since.
+	Resolved bool `json:"resolved"`
+}
+
+type SaveActivity struct {
+	Entries []SaveActivityEntry `json:"entries"`
+}
+
+type SaveBackupsParams struct {
+	ID int `json:"id"`
+}
+
+// SaveBackup is a copy of a game's save the plugin set aside before replacing it.
+type SaveBackup struct {
+	Name string `json:"name"`
+	// At is when it was set aside, as RFC 3339.
+	At        string `json:"at"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+type SaveBackups struct {
+	// Backups are newest first.
+	Backups []SaveBackup `json:"backups"`
+}
+
+// RestoreSaveBackupParams puts a game's backup, by name, back in place of its save. The save it
+// replaces is backed up first, and the restored one then syncs like any change.
+type RestoreSaveBackupParams struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 }

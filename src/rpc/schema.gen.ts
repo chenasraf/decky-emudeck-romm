@@ -141,6 +141,9 @@ export interface Methods {
   save_status: Method<SaveStatusParams, SaveStatus>;
   save_summary: Method<SaveSummaryParams, SaveSummary>;
   resolve_save_conflict: Method<ResolveSaveConflictParams, SaveStatus>;
+  save_activity: Method<SaveActivityParams, SaveActivity>;
+  save_backups: Method<SaveBackupsParams, SaveBackups>;
+  restore_save_backup: Method<RestoreSaveBackupParams, SaveStatus>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1349,6 +1352,71 @@ export interface ResolveSaveConflictParams {
  * SaveConflictGame is a game whose save is in conflict.
  */
 export interface SaveConflictGame {
+  id: number /* int */;
+  name: string;
+}
+/**
+ * SaveActivityParams asks for the newest entries of the save activity log, of the game with id or
+ * of every game when id is 0. Limit defaults to 20, at most 200.
+ */
+export interface SaveActivityParams {
+  id?: number /* int */;
+  limit?: number /* int */;
+}
+export type ActivityKind = string;
+export const ActivityUploaded: ActivityKind = "uploaded";
+export const ActivityDownloaded: ActivityKind = "downloaded";
+export const ActivityConflict: ActivityKind = "conflict";
+export const ActivityResolved: ActivityKind = "resolved";
+export const ActivityFailed: ActivityKind = "failed";
+export const ActivityRemovedOnServer: ActivityKind = "removed_on_server";
+export const ActivityRestored: ActivityKind = "restored";
+/**
+ * SaveActivityEntry is something save sync did to a game's save.
+ */
+export interface SaveActivityEntry {
+  id: number /* int64 */;
+  game: number /* int */;
+  name: string;
+  /**
+   * At is when it happened, as RFC 3339.
+   */
+  at: string;
+  kind: ActivityKind;
+  message: string;
+  /**
+   * Resolved is set on a conflict the user settled since.
+   */
+  resolved: boolean;
+}
+export interface SaveActivity {
+  entries: SaveActivityEntry[];
+}
+export interface SaveBackupsParams {
+  id: number /* int */;
+}
+/**
+ * SaveBackup is a copy of a game's save the plugin set aside before replacing it.
+ */
+export interface SaveBackup {
+  name: string;
+  /**
+   * At is when it was set aside, as RFC 3339.
+   */
+  at: string;
+  sizeBytes: number /* int64 */;
+}
+export interface SaveBackups {
+  /**
+   * Backups are newest first.
+   */
+  backups: SaveBackup[];
+}
+/**
+ * RestoreSaveBackupParams puts a game's backup, by name, back in place of its save. The save it
+ * replaces is backed up first, and the restored one then syncs like any change.
+ */
+export interface RestoreSaveBackupParams {
   id: number /* int */;
   name: string;
 }

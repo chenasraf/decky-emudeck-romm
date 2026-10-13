@@ -47,7 +47,14 @@ import type {
   SearchGamesResult,
   SearchHit,
 } from '../rpc/schema.gen'
-import { refreshSaves, saveStateDetail, saveStateLabel, useSaveStatus } from '../saves'
+import {
+  refreshSaves,
+  saveStateDetail,
+  saveStateLabel,
+  useSaveActivity,
+  useSaveBackups,
+  useSaveStatus,
+} from '../saves'
 import { asRpcError } from '../setup/common'
 import { showFindGames } from './FindGames'
 
@@ -584,6 +591,60 @@ export function SavesSection({ id }: { id: number }) {
           <span style={{ wordBreak: 'break-all' }}>{status.path}</span>
         </Field>
       </PanelSectionRow>
+      <SaveHistory id={id} />
+      <SaveBackups id={id} onError={setError} />
+    </>
+  )
+}
+
+/** What save sync last did to a game's save. */
+function SaveHistory({ id }: { id: number }) {
+  const entries = useSaveActivity(id, 5)
+  if (!entries || entries.length === 0) return null
+  return (
+    <>
+      {entries.map((e, i) => (
+        <PanelSectionRow key={e.id}>
+          <Field label={i === 0 ? 'Save history' : undefined} description={e.message}>
+            {timeAgo(e.at)}
+          </Field>
+        </PanelSectionRow>
+      ))}
+    </>
+  )
+}
+
+/** The copies of a game's save the plugin set aside, each with Restore. */
+function SaveBackups({ id, onError }: { id: number; onError: (e: RpcError | null) => void }) {
+  const backups = useSaveBackups(id)
+  if (!backups || backups.length === 0) return null
+
+  const restore = (name: string, at: string) =>
+    showModal(
+      <ConfirmModal
+        strTitle="Restore this backup?"
+        strDescription={`The save from ${timeAgo(at)} replaces the one on this Deck, then syncs to RomM like any change. The save it replaces is backed up first.`}
+        strOKButtonText="Restore"
+        onOK={() => {
+          call('restore_save_backup', { id, name }).then(
+            () => onError(null),
+            (err: unknown) => onError(asRpcError(err)),
+          )
+        }}
+      />,
+    )
+
+  return (
+    <>
+      {backups.map((b, i) => (
+        <PanelSectionRow key={b.name}>
+          <Field label={i === 0 ? 'Save backups' : undefined} description={formatSize(b.sizeBytes)}>
+            <DialogButton style={{ minWidth: 0 }} onClick={() => restore(b.name, b.at)}>
+              {`Restore · ${timeAgo(b.at)}`}
+            </DialogButton>
+          </Field>
+        </PanelSectionRow>
+      ))}
     </>
   )
 }

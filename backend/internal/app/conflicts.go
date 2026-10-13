@@ -12,6 +12,10 @@ import (
 // on RomM outside every slot, so it outlives whatever happens to the Deck until the user chooses.
 // Neither side's save is touched.
 func (p *savePass) conflict(ctx context.Context, t saveTarget, op domain.SyncOperation, local localSave, r *domain.SaveRecord) {
+	if r.State != domain.SaveConflict {
+		p.logActivity(ctx, t.romID, domain.ActivityConflict,
+			"The save changed both on this Deck and on RomM. Neither was overwritten; this Deck's copy is also kept on RomM.")
+	}
 	r.State, r.Problem = domain.SaveConflict, ""
 	r.ConflictSaveID, r.ConflictServerAt = op.SaveID, op.ServerUpdatedAt
 	p.summary.Conflicts++
@@ -88,9 +92,11 @@ func (s *Saves) Resolve(ctx context.Context, id int, keep domain.SaveChoice, see
 		r.State, r.Problem = domain.SaveSynced, ""
 		clearConflict(&r)
 		p.put(ctx, r)
+		s.settled(ctx, id, "The conflict settled on its own: RomM has no save of this game left to compare with.")
 	case op.SaveID == 0, local.exists && local.hash == op.ServerHash:
 		p.log.Info("save conflict settled on its own", "rom_id", id, "action", op.Action)
 		p.step(ctx, t, op, plan.SessionID)
+		s.settled(ctx, id, "The conflict settled on its own: the two saves match now.")
 	case op.SaveID != seen:
 		r := p.record(records, t)
 		p.conflict(ctx, t, op, local, &r)
@@ -109,6 +115,11 @@ func (s *Saves) Resolve(ctx context.Context, id int, keep domain.SaveChoice, see
 		clearConflict(&r)
 		p.put(ctx, r)
 		p.log.Info("save conflict resolved", "rom_id", id, "kept", keep)
+		if keep == domain.KeepDeck {
+			s.settled(ctx, id, "Kept this Deck's save in the conflict. RomM keeps its own as an older version.")
+		} else {
+			s.settled(ctx, id, "Used RomM's save in the conflict. This Deck's is in this game's backups.")
+		}
 	}
 	s.onChange(SaveSyncEvent{ROMIDs: []int{id}, Summary: p.summary})
 	return nil

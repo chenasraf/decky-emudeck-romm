@@ -34,10 +34,19 @@ type SaveServer interface {
 // SaveDialer returns a SaveServer for server, authenticated with token.
 type SaveDialer func(server domain.Server, token string) SaveServer
 
-// SaveStore keeps what save sync knows of each game's save.
+// SaveStore keeps what save sync knows of each game's save, and the activity log of what it did.
 type SaveStore interface {
 	PutSaveRecord(ctx context.Context, r domain.SaveRecord) error
 	SaveRecords(ctx context.Context) ([]domain.SaveRecord, error)
+	AddActivity(ctx context.Context, a domain.SaveActivity) error
+	// Activity returns the newest limit entries, of the ROM with id or of every ROM when id is
+	// zero, newest first.
+	Activity(ctx context.Context, id, limit int) ([]domain.SaveActivity, error)
+	// ResolveConflicts marks the ROM's conflict entries settled.
+	ResolveConflicts(ctx context.Context, id int) error
+	// PruneActivity drops entries older than before, and all but the newest keep, except
+	// unresolved conflicts.
+	PruneActivity(ctx context.Context, before time.Time, keep int) (int64, error)
 }
 
 // Launchers finds the command ES-DE launches a game with, rel being its path under its system's
@@ -284,10 +293,11 @@ type SaveWatch interface {
 	Changes() <-chan string
 }
 
-// Run syncs saves on their own until ctx ends: every game's at start and every pullEvery, a game's
-// once its save settles after RetroArch writes it, and a download that waits for RetroArch once it
-// closes. A nil watch leaves out the syncs on writes.
+// Run trims the activity log, then syncs saves on their own until ctx ends: every game's at start
+// and every pullEvery, a game's once its save settles after RetroArch writes it, and a download that
+// waits for RetroArch once it closes. A nil watch leaves out the syncs on writes.
 func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
+	s.pruneActivity(ctx)
 	s.request(nil, false)
 	pull := time.NewTicker(s.pullEvery)
 	defer pull.Stop()
@@ -829,10 +839,17 @@ func (p *savePass) plan(ctx context.Context, targets []saveTarget) (domain.SyncP
 			continue
 		}
 		updated := local.mod
-		// RetroArch writes the save again whenever a game closes, changed or not. A save that still
-		// matches what was synced reports when it was synced, so it never reads as a new change.
-		if r, ok := p.records[t.romID]; ok && r.Path == t.path && r.LocalHash == local.hash && !r.SyncedAt.IsZero() {
-			updated = r.SyncedAt
+		if r, ok := p.records[t.romID]; ok && r.Path == t.path && r.LocalHash != "" && !r.SyncedAt.IsZero() {
+			if r.LocalHash == local.hash {
+				// RetroArch writes the save again whenever a game closes, changed or not. A save that
+				// still matches what was synced reports when it was synced, so it never reads as a new
+				// change.
+				updated = r.SyncedAt
+			} else if !updated.After(r.SyncedAt) {
+				// A save that differs from what was synced changed since, whatever this Deck's clock
+				// says against RomM's.
+				updated = r.SyncedAt.Add(time.Second)
+			}
 		}
 		req.Saves = append(req.Saves, domain.ClientSave{
 			ROMID: t.romID, FileName: filepath.Base(t.path), Slot: domain.AutosaveSlot, Emulator: t.emulator,
@@ -852,6 +869,7 @@ func (p *savePass) plan(ctx context.Context, targets []saveTarget) (domain.SyncP
 // step carries out what RomM planned for one game, and records where its save stands after.
 func (p *savePass) step(ctx context.Context, t saveTarget, op domain.SyncOperation, session int) {
 	r := p.record(p.records, t)
+	before, problem := r.State, r.Problem
 	local := p.local[t.romID]
 	var err error
 	switch op.Action {
@@ -864,6 +882,9 @@ func (p *savePass) step(ctx context.Context, t saveTarget, op domain.SyncOperati
 	case domain.SyncDelete:
 		r.State, r.Problem = domain.SaveRemovedOnServer, ""
 		p.log.Info("save removed on server", "rom_id", t.romID)
+		if before != domain.SaveRemovedOnServer {
+			p.logActivity(ctx, t.romID, domain.ActivityRemovedOnServer, "RomM's save was deleted. The save on this Deck stays.")
+		}
 	default:
 		// The two sides match. The first sync that finds them so takes them as where both stand.
 		r.State, r.Problem = domain.SaveSynced, ""
@@ -879,6 +900,10 @@ func (p *savePass) step(ctx context.Context, t saveTarget, op domain.SyncOperati
 		p.summary.Failed++
 		p.failed++
 		p.log.Warn("save sync failed", "rom_id", t.romID, "action", op.Action, "err", err)
+		// A failure that repeats sync after sync is logged once.
+		if before != domain.SaveFailed || problem != r.Problem {
+			p.logActivity(ctx, t.romID, domain.ActivityFailed, "Sync failed: "+r.Problem)
+		}
 	}
 	if r.State != domain.SaveConflict {
 		clearConflict(&r)
@@ -915,6 +940,7 @@ func (p *savePass) upload(ctx context.Context, t saveTarget, local localSave, op
 	p.summary.Uploaded++
 	p.done++
 	p.log.Info("save uploaded", "rom_id", t.romID, "save_id", saved.ID, "bytes", len(local.data))
+	p.logActivity(ctx, t.romID, domain.ActivityUploaded, "Uploaded this Deck's save to RomM.")
 	return nil
 }
 
@@ -941,7 +967,7 @@ func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOpe
 		return errors.New("the save from RomM didn't match its hash")
 	}
 	if local.exists {
-		if err := p.backup(t, local); err != nil {
+		if err := p.backupSave(t.romID, t.path, local.data); err != nil {
 			return fmt.Errorf("back up the save: %w", err)
 		}
 	}
@@ -960,17 +986,27 @@ func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOpe
 	p.summary.Downloaded++
 	p.done++
 	p.log.Info("save downloaded", "rom_id", t.romID, "save_id", op.SaveID, "bytes", len(data), "replaced", local.exists)
+	msg := "Downloaded RomM's save."
+	if local.exists {
+		msg = "Downloaded RomM's save. The one it replaced is in this game's backups."
+	}
+	p.logActivity(ctx, t.romID, domain.ActivityDownloaded, msg)
 	return nil
 }
 
-// backup copies the save a download replaces aside, keeping the newest saveBackups of the game.
-func (p *savePass) backup(t saveTarget, local localSave) error {
-	dir := filepath.Join(p.backups, domain.RetroArchID, strconv.Itoa(t.romID))
+// backupTime is how a backup's name starts: when it was taken, so names sort oldest first. The
+// save's extension follows.
+const backupTime = "20060102-150405.000"
+
+// backupSave sets data, the save at path of the ROM with id, aside before it's replaced, keeping
+// the newest saveBackups of the game.
+func (s *Saves) backupSave(id int, path string, data []byte) error {
+	dir := s.backupDir(id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	name := p.now().UTC().Format("20060102-150405.000") + filepath.Ext(t.path)
-	if err := writeAtomic(filepath.Join(dir, name), local.data); err != nil {
+	name := s.now().UTC().Format(backupTime) + filepath.Ext(path)
+	if err := writeAtomic(filepath.Join(dir, name), data); err != nil {
 		return err
 	}
 	entries, err := os.ReadDir(dir)
@@ -987,11 +1023,15 @@ func (p *savePass) backup(t saveTarget, local localSave) error {
 	sort.Strings(names)
 	for _, old := range names[:max(len(names)-saveBackups, 0)] {
 		if err := os.Remove(filepath.Join(dir, old)); err != nil {
-			p.log.Warn("prune save backup", "path", old, "err", err)
+			s.log.Warn("prune save backup", "path", old, "err", err)
 		}
 	}
-	p.log.Info("save backed up", "rom_id", t.romID, "path", filepath.Join(dir, name))
+	s.log.Info("save backed up", "rom_id", id, "path", filepath.Join(dir, name))
 	return nil
+}
+
+func (s *Saves) backupDir(id int) string {
+	return filepath.Join(s.backups, domain.RetroArchID, strconv.Itoa(id))
 }
 
 // writeAtomic writes data to path through a file beside it, so path is never half-written.

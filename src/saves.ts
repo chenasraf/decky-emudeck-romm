@@ -2,7 +2,14 @@ import { toaster } from '@decky/api'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
 import { call, onEvent } from './backend'
-import type { SaveCounts, SaveStatus, SaveSummary, SaveSyncEvent } from './rpc/schema.gen'
+import type {
+  SaveActivityEntry,
+  SaveBackup,
+  SaveCounts,
+  SaveStatus,
+  SaveSummary,
+  SaveSyncEvent,
+} from './rpc/schema.gen'
 
 /** Goes up each time a save sync starts or ends, so views showing save status reload. */
 let changes = 0
@@ -96,6 +103,19 @@ function useReloading<T>(fetch: () => Promise<T>, deps: unknown[]): T | null {
 /** Where a game's save sync stands. */
 export function useSaveStatus(id: number): SaveStatus | null {
   return useReloading(() => call('save_status', { id }), [id])
+}
+
+/** The newest save activity, of the game with id or of every game when id is 0. */
+export function useSaveActivity(id: number, limit: number): SaveActivityEntry[] | null {
+  return useReloading(
+    () => call('save_activity', { id, limit }).then((r) => r.entries),
+    [id, limit],
+  )
+}
+
+/** A game's save backups, newest first. */
+export function useSaveBackups(id: number): SaveBackup[] | null {
+  return useReloading(() => call('save_backups', { id }).then((r) => r.backups), [id])
 }
 
 /** Where save sync stands across games. */

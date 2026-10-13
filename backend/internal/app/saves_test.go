@@ -238,8 +238,55 @@ func (f *fakeRomMSaves) head(romID int) (fakeVersion, bool) {
 
 // memSaveStore is a SaveStore in memory.
 type memSaveStore struct {
-	mu      sync.Mutex
-	records map[int]domain.SaveRecord
+	mu       sync.Mutex
+	records  map[int]domain.SaveRecord
+	activity []domain.SaveActivity
+}
+
+func (m *memSaveStore) AddActivity(_ context.Context, a domain.SaveActivity) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a.ID = int64(len(m.activity) + 1)
+	m.activity = append(m.activity, a)
+	return nil
+}
+
+func (m *memSaveStore) Activity(_ context.Context, id, limit int) ([]domain.SaveActivity, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.SaveActivity
+	for i := len(m.activity) - 1; i >= 0 && len(out) < limit; i-- {
+		if a := m.activity[i]; id == 0 || a.ROMID == id {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (m *memSaveStore) ResolveConflicts(_ context.Context, id int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, a := range m.activity {
+		if a.ROMID == id && a.Kind == domain.ActivityConflict {
+			m.activity[i].Resolved = true
+		}
+	}
+	return nil
+}
+
+func (m *memSaveStore) PruneActivity(context.Context, time.Time, int) (int64, error) { return 0, nil }
+
+// kinds lists the activity log's kinds of a ROM, oldest first.
+func (m *memSaveStore) kinds(id int) []domain.ActivityKind {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.ActivityKind
+	for _, a := range m.activity {
+		if a.ROMID == id {
+			out = append(out, a.Kind)
+		}
+	}
+	return out
 }
 
 func (m *memSaveStore) PutSaveRecord(_ context.Context, r domain.SaveRecord) error {
@@ -472,6 +519,22 @@ func TestChangedSaveUploadsAgain(t *testing.T) {
 	f.writeSave(t, "level 1", time.Now().Add(-time.Hour))
 	f.sync(t)
 	f.writeSave(t, "level 2", time.Now().Add(time.Hour))
+
+	if s := f.sync(t); s.Uploaded != 1 {
+		t.Fatalf("summary %+v", s)
+	}
+	if head, _ := f.romm.head(1); string(head.data) != "level 2" {
+		t.Fatalf("head %q", head.data)
+	}
+}
+
+// A Deck clock behind RomM's still has a changed save upload: it changed since the last sync,
+// whatever its time says.
+func TestChangedSaveUploadsWithASlowClock(t *testing.T) {
+	f := newSaveFixture(t)
+	f.writeSave(t, "level 1", time.Now())
+	f.sync(t)
+	f.writeSave(t, "level 2", time.Now().Add(-time.Hour))
 
 	if s := f.sync(t); s.Uploaded != 1 {
 		t.Fatalf("summary %+v", s)

@@ -66,6 +66,44 @@ func ParkedSaveName(fileName string, at time.Time) string {
 	return strings.TrimSuffix(fileName, ext) + " [conflict " + at.UTC().Format("2006-01-02_15-04-05") + "]" + ext
 }
 
+// ActivityKind is what save sync did, as the activity log records it.
+type ActivityKind string
+
+const (
+	ActivityUploaded        ActivityKind = "uploaded"
+	ActivityDownloaded      ActivityKind = "downloaded"
+	ActivityConflict        ActivityKind = "conflict"
+	ActivityResolved        ActivityKind = "resolved"
+	ActivityFailed          ActivityKind = "failed"
+	ActivityRemovedOnServer ActivityKind = "removed_on_server"
+	ActivityRestored        ActivityKind = "restored"
+)
+
+// SaveActivity is one entry of the activity log: something save sync did to a game's save.
+type SaveActivity struct {
+	ID      int64
+	ROMID   int
+	At      time.Time
+	Kind    ActivityKind
+	Message string
+	// Resolved is set on a conflict entry once the user settled it. Unresolved ones are never
+	// pruned.
+	Resolved bool
+}
+
+// ActivityKeep is how long, and how many, activity log entries are kept.
+const (
+	ActivityKeepFor = 90 * 24 * time.Hour
+	ActivityKeepMax = 5000
+)
+
+// SaveBackup is a copy of a game's save the plugin set aside before replacing it.
+type SaveBackup struct {
+	Name      string
+	At        time.Time
+	SizeBytes int64
+}
+
 // SaveChoice is which copy of a conflicting save the user keeps.
 type SaveChoice string
 

@@ -47,6 +47,43 @@ func saveRoutes(s *Server, saves *app.Saves) {
 		return status(ctx, p.ID)
 	})
 
+	Register(s, "save_activity", func(ctx context.Context, p schema.SaveActivityParams) (schema.SaveActivity, error) {
+		limit := p.Limit
+		if limit <= 0 {
+			limit = 20
+		}
+		entries, err := saves.Activity(ctx, p.ID, min(limit, 200))
+		if err != nil {
+			return schema.SaveActivity{}, wireError(err)
+		}
+		out := schema.SaveActivity{Entries: []schema.SaveActivityEntry{}}
+		for _, e := range entries {
+			out.Entries = append(out.Entries, schema.SaveActivityEntry{
+				ID: e.ID, Game: e.ROMID, Name: e.Name, At: rfc3339(e.At), Kind: schema.ActivityKind(e.Kind), Message: e.Message, Resolved: e.Resolved,
+			})
+		}
+		return out, nil
+	})
+
+	Register(s, "save_backups", func(_ context.Context, p schema.SaveBackupsParams) (schema.SaveBackups, error) {
+		backups, err := saves.Backups(p.ID)
+		if err != nil {
+			return schema.SaveBackups{}, wireError(err)
+		}
+		out := schema.SaveBackups{Backups: []schema.SaveBackup{}}
+		for _, b := range backups {
+			out.Backups = append(out.Backups, schema.SaveBackup{Name: b.Name, At: rfc3339(b.At), SizeBytes: b.SizeBytes})
+		}
+		return out, nil
+	})
+
+	Register(s, "restore_save_backup", func(ctx context.Context, p schema.RestoreSaveBackupParams) (schema.SaveStatus, error) {
+		if err := saves.RestoreBackup(ctx, p.ID, p.Name); err != nil {
+			return schema.SaveStatus{}, wireError(err)
+		}
+		return status(ctx, p.ID)
+	})
+
 	Register(s, "save_summary", func(ctx context.Context, _ schema.SaveSummaryParams) (schema.SaveSummary, error) {
 		counts, last, syncing, err := saves.Summary(ctx)
 		if err != nil {
