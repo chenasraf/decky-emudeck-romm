@@ -25,7 +25,12 @@ make build       # frontend into dist/, backend binaries into backend/out/
 make test
 make lint
 make package     # the installable zip into out/, built like the plugin store does (needs the decky CLI)
+make deploy      # build, copy onto a Steam Deck over SSH and reload Decky (DECK=deck@deck)
 ```
+
+`make deploy` needs SSH on the Deck, set up once in Desktop Mode: set a password with `passwd`, then
+run `sudo systemctl enable --now sshd`. From then on the Deck can stay in Gaming Mode; each deploy
+asks for the Deck's sudo password once and restarts Decky, not Steam.
 
 `pnpm dev` runs `dev/bridge.py`, which loads `main.py` with a stand-in for Decky's `decky` module
 (its folders live in `dev/.data/`) and builds the backend for your machine. `@decky/api` and
