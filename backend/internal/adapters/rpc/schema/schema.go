@@ -84,6 +84,8 @@ type Methods struct {
 	CancelDownload      Method[CancelDownloadParams, CancelDownloadResult]           `json:"cancel_download"`
 	ListDownloads       Method[ListDownloadsParams, ListDownloadsResult]             `json:"list_downloads"`
 	DeleteGames         Method[DeleteGamesParams, DeleteGamesResult]                 `json:"delete_games"`
+	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
+	DownloadAll         Method[DownloadAllParams, DownloadAllResult]                 `json:"download_all"`
 	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
 	PlatformBIOS        Method[PlatformBIOSParams, PlatformBIOS]                     `json:"platform_bios"`
 	DownloadBIOS        Method[DownloadBIOSParams, DownloadBIOSResult]               `json:"download_bios"`
@@ -509,6 +511,46 @@ type DownloadEvent struct {
 	TotalBytes    int64     `json:"totalBytes"`
 	Problem       *Error    `json:"problem,omitempty"`
 	Converting    bool      `json:"converting,omitempty"`
+}
+
+// PlanDownloadAllParams names the platform whose missing games Download all missing would queue.
+type PlanDownloadAllParams struct {
+	PlatformID int `json:"platformId"`
+}
+
+// DownloadAllPlan is what downloading every missing game of a platform would take: those on the
+// server that aren't on this Deck or in the queue.
+type DownloadAllPlan struct {
+	PlatformName string `json:"platformName"`
+	// Count is how many missing games the plugin can place, and TotalBytes how much they download.
+	Count      int   `json:"count"`
+	TotalBytes int64 `json:"totalBytes"`
+	// NeedBytes is the room they take while downloading; an archive that's extracted counts twice.
+	NeedBytes int64 `json:"needBytes"`
+	// FreeBytes is the room left once the queue ahead and a margin are taken off, set when
+	// FreeKnown.
+	FreeBytes int64 `json:"freeBytes"`
+	FreeKnown bool  `json:"freeKnown"`
+	// Fits says every game fits. When it doesn't, FitCount games fit, taken by name, downloading
+	// FitBytes.
+	Fits     bool  `json:"fits"`
+	FitCount int   `json:"fitCount"`
+	FitBytes int64 `json:"fitBytes"`
+	// Unplaceable counts missing games laid out in a way the plugin can't place in EmuDeck.
+	Unplaceable int `json:"unplaceable"`
+}
+
+// DownloadAllParams queues a platform's missing games: every one, which fails with no_space when
+// they don't fit, or with OnlyWhatFits those that fit.
+type DownloadAllParams struct {
+	PlatformID   int  `json:"platformId"`
+	OnlyWhatFits bool `json:"onlyWhatFits,omitempty"`
+}
+
+type DownloadAllResult struct {
+	Queued int `json:"queued"`
+	// Failed counts games that didn't queue; the backend log says why.
+	Failed int `json:"failed"`
 }
 
 // DeleteGamesParams names the games to delete: IDs, or with PlatformID every game the plugin

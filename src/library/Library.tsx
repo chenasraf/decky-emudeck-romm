@@ -1,3 +1,4 @@
+import { toaster } from '@decky/api'
 import {
   ButtonItem,
   ConfirmModal,
@@ -467,6 +468,17 @@ export function GamesView({
               <Field label={`${total} games`} />
             </PanelSectionRow>
           )}
+          {filter !== 'installed' && total !== null && total > 0 && (
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                disabled={downloads.problem !== null}
+                onClick={() => void confirmDownloadAll(platform.id, setError)}
+              >
+                Download all missing
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
           {filter === 'installed' && total !== null && total > 0 && (
             <PanelSectionRow>
               <ButtonItem
@@ -669,6 +681,78 @@ function confirmDelete(what: string, params: DeleteGamesParams, onError: (e: Rpc
       onOK={() => {
         call('delete_games', params).catch((err: unknown) => onError(asRpcError(err)))
       }}
+    />,
+  )
+}
+
+function games(n: number): string {
+  return n === 1 ? '1 game' : `${n} games`
+}
+
+/**
+ * Asks before queueing every missing game of a platform, with how many and how big. When they don't
+ * all fit, offers to queue the ones that do, taken by name.
+ */
+async function confirmDownloadAll(platformId: number, onError: (e: RpcError) => void) {
+  let plan
+  try {
+    plan = await call('plan_download_all', { platformId })
+  } catch (err) {
+    onError(asRpcError(err))
+    return
+  }
+  const queue = (onlyWhatFits: boolean) =>
+    call('download_all', { platformId, onlyWhatFits }).then(
+      (r) =>
+        toaster.toast({
+          title: `Queued ${games(r.queued)}`,
+          body: r.failed > 0 ? `${games(r.failed)} didn't queue.` : plan.platformName,
+        }),
+      (err: unknown) => onError(asRpcError(err)),
+    )
+  const left =
+    plan.unplaceable > 0
+      ? ` ${games(plan.unplaceable)} the plugin can't lay out in EmuDeck ${plan.unplaceable === 1 ? 'is' : 'are'} left out.`
+      : ''
+
+  if (plan.count === 0) {
+    showModal(
+      <ConfirmModal
+        bAlertDialog
+        strTitle="Nothing to download"
+        strDescription={`Every ${plan.platformName} game is on this Deck or in the queue.${left}`}
+      />,
+    )
+    return
+  }
+  if (plan.fits) {
+    showModal(
+      <ConfirmModal
+        strTitle={`Download ${games(plan.count)}?`}
+        strDescription={`${formatSize(plan.totalBytes)} from RomM.${left}`}
+        strOKButtonText="Download"
+        onOK={() => void queue(false)}
+      />,
+    )
+    return
+  }
+  const room = `They need ${formatSize(plan.needBytes)}, and ${formatSize(plan.freeBytes)} is free after the downloads already queued.`
+  if (plan.fitCount === 0) {
+    showModal(
+      <ConfirmModal
+        bAlertDialog
+        strTitle="Not enough space"
+        strDescription={`${room} None of them fits.`}
+      />,
+    )
+    return
+  }
+  showModal(
+    <ConfirmModal
+      strTitle={`Not enough space for ${games(plan.count)}`}
+      strDescription={`${room} Queue the ${games(plan.fitCount)} that fit (${formatSize(plan.fitBytes)}), by name?${left}`}
+      strOKButtonText="Queue what fits"
+      onOK={() => void queue(true)}
     />,
   )
 }

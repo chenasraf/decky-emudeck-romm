@@ -28,6 +28,33 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.DeleteGamesResult{Count: n}, nil
 	})
 
+	Register(s, "plan_download_all", func(ctx context.Context, p schema.PlanDownloadAllParams) (schema.DownloadAllPlan, error) {
+		plan, err := downloads.PlanAll(ctx, p.PlatformID)
+		if err != nil {
+			return schema.DownloadAllPlan{}, wireError(err)
+		}
+		return schema.DownloadAllPlan{
+			PlatformName: plan.PlatformName,
+			Count:        len(plan.Games),
+			TotalBytes:   plan.TotalBytes,
+			NeedBytes:    plan.NeedBytes,
+			FreeBytes:    max(plan.FreeBytes, 0),
+			FreeKnown:    plan.FreeKnown,
+			Fits:         plan.Fits(),
+			FitCount:     len(plan.Fit),
+			FitBytes:     plan.FitBytes,
+			Unplaceable:  plan.Unplaceable,
+		}, nil
+	})
+
+	Register(s, "download_all", func(ctx context.Context, p schema.DownloadAllParams) (schema.DownloadAllResult, error) {
+		queued, failed, err := downloads.QueueAll(ctx, p.PlatformID, p.OnlyWhatFits)
+		if err != nil {
+			return schema.DownloadAllResult{}, wireError(err)
+		}
+		return schema.DownloadAllResult{Queued: queued, Failed: failed}, nil
+	})
+
 	Register(s, "set_keep_archives", func(ctx context.Context, p schema.SetKeepArchivesParams) (schema.SetKeepArchivesResult, error) {
 		if err := downloads.SetKeepArchives(ctx, p.PlatformID, p.Keep); err != nil {
 			return schema.SetKeepArchivesResult{}, wireError(err)

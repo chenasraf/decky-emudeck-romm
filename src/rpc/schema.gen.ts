@@ -102,6 +102,8 @@ export interface Methods {
   cancel_download: Method<CancelDownloadParams, CancelDownloadResult>;
   list_downloads: Method<ListDownloadsParams, ListDownloadsResult>;
   delete_games: Method<DeleteGamesParams, DeleteGamesResult>;
+  plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
+  download_all: Method<DownloadAllParams, DownloadAllResult>;
   set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
   platform_bios: Method<PlatformBIOSParams, PlatformBIOS>;
   download_bios: Method<DownloadBIOSParams, DownloadBIOSResult>;
@@ -615,6 +617,60 @@ export interface DownloadEvent {
   totalBytes: number /* int64 */;
   problem?: Error;
   converting?: boolean;
+}
+/**
+ * PlanDownloadAllParams names the platform whose missing games Download all missing would queue.
+ */
+export interface PlanDownloadAllParams {
+  platformId: number /* int */;
+}
+/**
+ * DownloadAllPlan is what downloading every missing game of a platform would take: those on the
+ * server that aren't on this Deck or in the queue.
+ */
+export interface DownloadAllPlan {
+  platformName: string;
+  /**
+   * Count is how many missing games the plugin can place, and TotalBytes how much they download.
+   */
+  count: number /* int */;
+  totalBytes: number /* int64 */;
+  /**
+   * NeedBytes is the room they take while downloading; an archive that's extracted counts twice.
+   */
+  needBytes: number /* int64 */;
+  /**
+   * FreeBytes is the room left once the queue ahead and a margin are taken off, set when
+   * FreeKnown.
+   */
+  freeBytes: number /* int64 */;
+  freeKnown: boolean;
+  /**
+   * Fits says every game fits. When it doesn't, FitCount games fit, taken by name, downloading
+   * FitBytes.
+   */
+  fits: boolean;
+  fitCount: number /* int */;
+  fitBytes: number /* int64 */;
+  /**
+   * Unplaceable counts missing games laid out in a way the plugin can't place in EmuDeck.
+   */
+  unplaceable: number /* int */;
+}
+/**
+ * DownloadAllParams queues a platform's missing games: every one, which fails with no_space when
+ * they don't fit, or with OnlyWhatFits those that fit.
+ */
+export interface DownloadAllParams {
+  platformId: number /* int */;
+  onlyWhatFits?: boolean;
+}
+export interface DownloadAllResult {
+  queued: number /* int */;
+  /**
+   * Failed counts games that didn't queue; the backend log says why.
+   */
+  failed: number /* int */;
 }
 /**
  * DeleteGamesParams names the games to delete: IDs, or with PlatformID every game the plugin

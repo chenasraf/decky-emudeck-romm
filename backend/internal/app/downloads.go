@@ -289,15 +289,10 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 		d.mu.Unlock()
 		return j.Download, nil
 	}
-	need := rom.SizeBytes
+	need := roomFor(system, rom)
 	if j != nil {
 		// A retry resumes, so only what's left of it needs room.
-		need = j.Total - j.Received
-	}
-	if domain.IsArchive(rom.FileName) && system.ArchivePolicy() != domain.ArchivesKeep {
-		// Extracting needs room for the contents while the archive is still there. Whether a
-		// Keep archives system keeps this one isn't known until it's opened.
-		need += rom.SizeBytes
+		need += j.Total - j.Received - rom.SizeBytes
 	}
 	ahead := d.pending()
 	d.mu.Unlock()
@@ -333,6 +328,17 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	}
 	d.pump()
 	return queued, nil
+}
+
+// roomFor is how much room a download of rom needs on its drive.
+func roomFor(system domain.System, rom domain.ROM) int64 {
+	need := rom.SizeBytes
+	if domain.IsArchive(rom.FileName) && system.ArchivePolicy() != domain.ArchivesKeep {
+		// Extracting needs room for the contents while the archive is still there. Whether a
+		// Keep archives system keeps this one isn't known until it's opened.
+		need += rom.SizeBytes
+	}
+	return need
 }
 
 // Cancel stops a game's download, takes it out of the queue, or dismisses its failure, deleting
