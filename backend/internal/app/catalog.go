@@ -60,6 +60,8 @@ type CatalogStore interface {
 	Search(ctx context.Context, q domain.SearchQuery) ([]domain.ROM, error)
 	// ROMsByID returns the ROMs with ids in their order, skipping any the Catalog doesn't hold.
 	ROMsByID(ctx context.Context, ids []int) ([]domain.ROM, error)
+	// Recent returns the limit ROMs added to the Server last, newest first.
+	Recent(ctx context.Context, limit int) ([]domain.ROM, error)
 	Counts(ctx context.Context) (platforms, roms int, err error)
 }
 
@@ -371,6 +373,37 @@ func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef,
 	page, err := c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: ids}, offset, limit)
 	page.States = states
 	return col, page, err
+}
+
+// Shelves returns the library home's rows, each up to perShelf games: the newest on the Server,
+// those on this Deck by name, and each platform's first by name.
+func (c *Catalog) Shelves(ctx context.Context, perShelf int) (domain.Shelves, error) {
+	var out domain.Shelves
+	states, err := c.states.States(ctx)
+	if err != nil {
+		return out, err
+	}
+	out.States = states
+	if out.Recent, err = c.store.Recent(ctx, perShelf); err != nil {
+		return out, err
+	}
+	if out.Installed, err = c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: installedIDs(states)}, 0, perShelf); err != nil {
+		return out, err
+	}
+	platforms, err := c.Platforms(ctx)
+	if err != nil {
+		return out, err
+	}
+	out.PlatformNames = map[int]string{}
+	for _, p := range platforms {
+		out.PlatformNames[p.ID] = p.Name
+		page, err := c.store.ROMs(ctx, p.ID, nil, 0, perShelf)
+		if err != nil {
+			return out, err
+		}
+		out.Platforms = append(out.Platforms, domain.PlatformShelf{Platform: p, ROMs: page.ROMs})
+	}
+	return out, nil
 }
 
 // installedIDs are the games on this Deck, counting those being deleted until their files are gone.

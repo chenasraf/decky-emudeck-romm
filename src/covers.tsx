@@ -54,8 +54,21 @@ const SIZES: Record<CoverSize, CSSProperties> = {
   large: { width: 120, height: 160 },
 }
 
-/** A game's cover, or a blank of the same shape while it loads or when there's none. */
-export function Cover({ id, size, hasCover }: { id: number; size: CoverSize; hasCover: boolean }) {
+/**
+ * A game's cover, or a blank of the same shape while it loads or when there's none. style
+ * overrides the size's box, e.g. to fill a tile.
+ */
+export function Cover({
+  id,
+  size,
+  hasCover,
+  style: override,
+}: {
+  id: number
+  size: CoverSize
+  hasCover: boolean
+  style?: CSSProperties
+}) {
   const key = `${size}/${id}`
   // The cover loaded last, with the game and size it's for, so a reused component never shows the
   // previous game's cover while the new one loads.
@@ -83,6 +96,7 @@ export function Cover({ id, size, hasCover }: { id: number; size: CoverSize; has
     borderRadius: 2,
     objectFit: 'cover',
     background: 'rgba(255, 255, 255, 0.08)',
+    ...override,
   }
   return url ? <img src={url} style={style} alt="" /> : <div style={style} />
 }

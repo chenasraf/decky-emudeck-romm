@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { BACKEND_STATUS_EVENT, type BackendStatus, call, onEvent } from './backend'
 import type { CatalogStatus } from './rpc/schema.gen'
 
+/** Path of the full-screen library: shelves of games to browse with the gamepad. */
+export const LIBRARY_ROUTE = '/emudeck-romm/library'
+
 type Listener = (status: CatalogStatus | null) => void
 
 let current: CatalogStatus | null = null

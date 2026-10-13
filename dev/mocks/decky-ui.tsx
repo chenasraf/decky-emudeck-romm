@@ -209,11 +209,38 @@ export function DialogButton({
   )
 }
 
+/**
+ * Gamepad-only props are dropped. An element with onActivate takes keyboard focus and activates on
+ * Enter, standing in for the A button.
+ */
 export function Focusable({
   children,
   style,
-}: HTMLAttributes<HTMLDivElement> & { children?: ReactNode; 'flow-children'?: string }) {
-  return <div style={style}>{children}</div>
+  className,
+  onClick,
+  onActivate,
+}: HTMLAttributes<HTMLDivElement> & {
+  children?: ReactNode
+  'flow-children'?: string
+  focusClassName?: string
+  onActivate?: () => void
+  onCancelButton?: () => void
+  onCancelActionDescription?: ReactNode
+  onOptionsButton?: () => void
+  onOptionsActionDescription?: ReactNode
+  onGamepadFocus?: (e: { currentTarget: EventTarget }) => void
+}) {
+  return (
+    <div
+      style={style}
+      className={className}
+      tabIndex={onActivate ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onActivate ? (e) => e.key === 'Enter' && onActivate() : undefined}
+    >
+      {children}
+    </div>
+  )
 }
 
 export function TextField({

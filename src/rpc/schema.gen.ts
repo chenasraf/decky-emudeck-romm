@@ -97,6 +97,7 @@ export interface Methods {
   list_platforms: Method<ListPlatformsParams, ListPlatformsResult>;
   list_games: Method<ListGamesParams, ListGamesResult>;
   list_collections: Method<ListCollectionsParams, ListCollectionsResult>;
+  library_shelves: Method<LibraryShelvesParams, LibraryShelves>;
   get_game: Method<GetGameParams, Game>;
   get_cover: Method<GetCoverParams, Cover>;
   search_games: Method<SearchGamesParams, SearchGamesResult>;
@@ -559,13 +560,43 @@ export interface GameSummary {
   regions: string[];
   state: GameState;
   /**
-   * PlatformName is set in a collection's list, where games come from several platforms.
+   * PlatformName is set in a collection's list and on shelves, where games come from several
+   * platforms.
    */
   platformName?: string;
   /**
    * HasCover is set when get_cover has a small cover to ask for.
    */
   hasCover: boolean;
+}
+export interface LibraryShelvesParams {
+  /**
+   * Limit is how many games each shelf holds, capped at 50; zero means 8.
+   */
+  limit?: number /* int */;
+}
+/**
+ * LibraryShelves are the rows of the full-screen library's home.
+ */
+export interface LibraryShelves {
+  /**
+   * Recent are the games added to RomM last, newest first.
+   */
+  recent: GameSummary[];
+  /**
+   * Installed are the games on this Deck, by name, and InstalledTotal how many there are.
+   */
+  installed: GameSummary[];
+  installedTotal: number /* int */;
+  /**
+   * Platforms are every platform the library holds games for, by name, each with its first
+   * games by name.
+   */
+  platforms: PlatformShelf[];
+}
+export interface PlatformShelf {
+  platform: PlatformSummary;
+  games: GameSummary[];
 }
 export interface SearchGamesParams {
   /**

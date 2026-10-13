@@ -166,6 +166,22 @@ func (s *memStore) ROMsByID(_ context.Context, ids []int) ([]domain.ROM, error) 
 	return out, nil
 }
 
+func (s *memStore) Recent(_ context.Context, limit int) ([]domain.ROM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []domain.ROM
+	for _, r := range s.roms {
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+	return out[:min(limit, len(out))], nil
+}
+
 func (s *memStore) CountByPlatform(_ context.Context, ids []int) (map[int]int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -573,5 +589,42 @@ func TestCatalogSearchFallsBackToCatalog(t *testing.T) {
 	// Signed out, the Catalog answers without asking the Server.
 	if got, _ := f.catalog.Search(ctx, anywhere("golden")); !got.Local || len(got.ROMs) != 3 {
 		t.Fatalf("signed out: %+v", got)
+	}
+}
+
+func TestCatalogShelves(t *testing.T) {
+	library := &fakeLibrary{roms: map[int]domain.ROM{}}
+	for id, name := range map[int]string{1: "Advance Wars", 2: "Boktai", 3: "Castlevania", 4: "Drill Dozer"} {
+		library.roms[id] = domain.ROM{ID: id, PlatformID: 1, Name: name, UpdatedAt: time.Unix(int64(id), 0).UTC()}
+	}
+	// RomM added 1 last; 4 has no time and sorts after every game that has one.
+	for id, at := range map[int]int64{1: 300, 2: 100, 3: 200} {
+		r := library.roms[id]
+		r.CreatedAt = time.Unix(at, 0).UTC()
+		library.roms[id] = r
+	}
+	f := newCatalogFixture(t, library)
+	f.refresh(t, false)
+	f.states[3] = domain.StateInstalled
+
+	got, err := f.catalog.Shelves(context.Background(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recent []int
+	for _, r := range got.Recent {
+		recent = append(recent, r.ID)
+	}
+	if !slices.Equal(recent, []int{1, 3, 2}) {
+		t.Fatalf("recent: %v", recent)
+	}
+	if got.Installed.Total != 1 || got.Installed.ROMs[0].ID != 3 {
+		t.Fatalf("installed: %+v", got.Installed)
+	}
+	if len(got.Platforms) != 1 || len(got.Platforms[0].ROMs) != 3 || got.Platforms[0].Platform.Installed != 1 {
+		t.Fatalf("platforms: %+v", got.Platforms)
+	}
+	if got.PlatformNames[1] != "Game Boy Advance" || domain.StateOf(got.States, 3) != domain.StateInstalled {
+		t.Fatalf("names %v, states %v", got.PlatformNames, got.States)
 	}
 }

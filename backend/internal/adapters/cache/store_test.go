@@ -215,6 +215,29 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestRecent(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
+	roms := []domain.ROM{rom(1, 1, "a"), rom(2, 1, "b"), rom(3, 1, "c"), rom(4, 1, "d")}
+	// 2 was added last; 3 and 4 have no time and come after, highest id first.
+	roms[0].CreatedAt = time.Unix(100, 0).UTC()
+	roms[1].CreatedAt = time.Unix(200, 0).UTC()
+	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms, ROMs: roms, Full: true, At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Recent(ctx, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int
+	for _, r := range got {
+		ids = append(ids, r.ID)
+	}
+	if !slices.Equal(ids, []int{2, 1, 4}) || !got[0].CreatedAt.Equal(roms[1].CreatedAt) || !got[2].CreatedAt.IsZero() {
+		t.Fatalf("recent: %v %+v", ids, got)
+	}
+}
+
 func TestDamagedFileIsRebuilt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cache.db")
 	if err := os.WriteFile(path, []byte("not a database, just junk bytes that are long enough to matter"), 0o644); err != nil {

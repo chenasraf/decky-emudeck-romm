@@ -24,6 +24,8 @@ type ROM struct {
 	Revision  string
 	// MultiFile is set when the ROM is a folder of several files rather than a single file.
 	MultiFile bool
+	// CreatedAt is when the ROM was added to the Server, zero when the Server didn't say.
+	CreatedAt time.Time
 	UpdatedAt time.Time
 	// CoverSmall and CoverLarge are the Server-relative paths of its cover images, empty when it
 	// has none.
@@ -140,6 +142,24 @@ func StateOf(states map[int]GameState, id int) GameState {
 		return s
 	}
 	return StateOnRomM
+}
+
+// Shelves are the rows of the library's home: the newest games, the installed ones, and each
+// platform's first games by name.
+type Shelves struct {
+	Recent    []ROM
+	Installed ROMPage
+	Platforms []PlatformShelf
+	// PlatformNames names the platform of each ROM, by platform id.
+	PlatformNames map[int]string
+	// States holds the state of each ROM that isn't StateOnRomM.
+	States map[int]GameState
+}
+
+// PlatformShelf is a platform with its first games by name.
+type PlatformShelf struct {
+	Platform PlatformSummary
+	ROMs     []ROM
 }
 
 // SearchQuery is what a search looks for.

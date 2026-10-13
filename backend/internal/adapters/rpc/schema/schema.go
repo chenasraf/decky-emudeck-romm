@@ -79,6 +79,7 @@ type Methods struct {
 	ListPlatforms       Method[ListPlatformsParams, ListPlatformsResult]             `json:"list_platforms"`
 	ListGames           Method[ListGamesParams, ListGamesResult]                     `json:"list_games"`
 	ListCollections     Method[ListCollectionsParams, ListCollectionsResult]         `json:"list_collections"`
+	LibraryShelves      Method[LibraryShelvesParams, LibraryShelves]                 `json:"library_shelves"`
 	GetGame             Method[GetGameParams, Game]                                  `json:"get_game"`
 	GetCover            Method[GetCoverParams, Cover]                                `json:"get_cover"`
 	SearchGames         Method[SearchGamesParams, SearchGamesResult]                 `json:"search_games"`
@@ -463,10 +464,33 @@ type GameSummary struct {
 	SizeBytes int64     `json:"sizeBytes"`
 	Regions   []string  `json:"regions"`
 	State     GameState `json:"state"`
-	// PlatformName is set in a collection's list, where games come from several platforms.
+	// PlatformName is set in a collection's list and on shelves, where games come from several
+	// platforms.
 	PlatformName string `json:"platformName,omitempty"`
 	// HasCover is set when get_cover has a small cover to ask for.
 	HasCover bool `json:"hasCover"`
+}
+
+type LibraryShelvesParams struct {
+	// Limit is how many games each shelf holds, capped at 50; zero means 8.
+	Limit int `json:"limit,omitempty"`
+}
+
+// LibraryShelves are the rows of the full-screen library's home.
+type LibraryShelves struct {
+	// Recent are the games added to RomM last, newest first.
+	Recent []GameSummary `json:"recent"`
+	// Installed are the games on this Deck, by name, and InstalledTotal how many there are.
+	Installed      []GameSummary `json:"installed"`
+	InstalledTotal int           `json:"installedTotal"`
+	// Platforms are every platform the library holds games for, by name, each with its first
+	// games by name.
+	Platforms []PlatformShelf `json:"platforms"`
+}
+
+type PlatformShelf struct {
+	Platform PlatformSummary `json:"platform"`
+	Games    []GameSummary   `json:"games"`
 }
 
 type SearchGamesParams struct {

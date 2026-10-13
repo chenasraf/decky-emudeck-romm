@@ -6,6 +6,7 @@ import {
   DropdownItem,
   Field,
   Focusable,
+  Navigation,
   PanelSection,
   PanelSectionRow,
   ProgressBarWithInfo,
@@ -24,7 +25,7 @@ import {
 
 import { call } from '../backend'
 import { usePlatformBios } from '../bios'
-import { formatSize, refreshLibrary, timeAgo, useCatalog } from '../catalog'
+import { formatSize, LIBRARY_ROUTE, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
 import { Cover } from '../covers'
 import { type Downloads, percent, useDownloads } from '../downloads'
@@ -105,7 +106,7 @@ function Problem({ error }: { error: RpcError | null }) {
 }
 
 /** A download's short state: Queued, Converting, Waiting, its progress, or Failed. */
-function downloadLabel(d: DownloadItem): string {
+export function downloadLabel(d: DownloadItem): string {
   if (d.state === 'queued') return 'Queued'
   if (d.state === 'failed') return 'Failed'
   if (d.converting) return 'Converting'
@@ -117,7 +118,10 @@ function downloadLabel(d: DownloadItem): string {
  * A game's state for its row: its download's state while in the queue, "Installed" once on this
  * Deck, and null while it's only on RomM.
  */
-function stateLabel(game: { id: number; state: GameState }, downloads: Downloads): string | null {
+export function stateLabel(
+  game: { id: number; state: GameState },
+  downloads: Downloads,
+): string | null {
   const d = downloads.items.find((i) => i.id === game.id)
   if (d) return downloadLabel(d)
   if (game.state === 'failed') return 'Failed'
@@ -127,7 +131,7 @@ function stateLabel(game: { id: number; state: GameState }, downloads: Downloads
 }
 
 /** Says the server is down while the library shows from the local copy. */
-function OfflineBanner() {
+export function OfflineBanner() {
   const connection = useConnection()
   const catalog = useCatalog()
   const offline = connection?.state === 'offline' || catalog?.problem?.data?.kind === 'unreachable'
@@ -176,6 +180,17 @@ export function LibrarySection({
       </PanelSectionRow>
       {catalog.games > 0 && (
         <>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={() => {
+                Navigation.CloseSideMenus()
+                Navigation.Navigate(LIBRARY_ROUTE)
+              }}
+            >
+              Open RomM library
+            </ButtonItem>
+          </PanelSectionRow>
           <Row label="Search" onClick={onSearch} />
           <Row label="Browse library" onClick={onBrowse} />
           <Row label="Collections" onClick={onCollections} />
@@ -689,7 +704,7 @@ export function GamesView({
 /** How long typing must pause before a search runs, so each keystroke doesn't ask the server. */
 const SEARCH_DELAY_MS = 350
 
-interface Search {
+export interface Search {
   /** Set while the query is blank, when there's nothing to show. */
   blank: boolean
   /** Set while a search for the current query hasn't answered. */
@@ -699,7 +714,7 @@ interface Search {
 }
 
 /** Searches the library for query, in one platform or every platform when platformId is unset. */
-function useSearch(query: string, platformId?: number): Search {
+export function useSearch(query: string, platformId?: number): Search {
   const catalog = useCatalog()
   const downloads = useDownloads()
   // The latest answer, and the query it answers: while it isn't for the current query, a search

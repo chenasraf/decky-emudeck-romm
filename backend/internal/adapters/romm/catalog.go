@@ -90,6 +90,7 @@ func (c *Client) ROMs(ctx context.Context, since time.Time, offset, limit int) (
 			Regions          []string `json:"regions"`
 			Revision         string   `json:"revision"`
 			HasMultipleFiles bool     `json:"has_multiple_files"`
+			CreatedAt        string   `json:"created_at"`
 			UpdatedAt        string   `json:"updated_at"`
 			PathCoverSmall   string   `json:"path_cover_small"`
 			PathCoverLarge   string   `json:"path_cover_large"`
@@ -102,6 +103,7 @@ func (c *Client) ROMs(ctx context.Context, since time.Time, offset, limit int) (
 	out := make([]domain.ROM, 0, len(body.Items))
 	for _, r := range body.Items {
 		updated, _ := time.Parse(time.RFC3339Nano, r.UpdatedAt)
+		created, _ := time.Parse(time.RFC3339Nano, r.CreatedAt)
 		out = append(out, domain.ROM{
 			ID:         r.ID,
 			PlatformID: r.PlatformID,
@@ -112,6 +114,7 @@ func (c *Client) ROMs(ctx context.Context, since time.Time, offset, limit int) (
 			Regions:    r.Regions,
 			Revision:   r.Revision,
 			MultiFile:  r.HasMultipleFiles,
+			CreatedAt:  created.UTC(),
 			UpdatedAt:  updated.UTC(),
 			CoverSmall: r.PathCoverSmall,
 			CoverLarge: r.PathCoverLarge,

@@ -65,7 +65,7 @@ func TestROMsPage(t *testing.T) {
 			"items": []map[string]any{{
 				"id": 7, "platform_id": 1, "name": "", "fs_name": "Golden Sun (USA).gba", "fs_extension": "gba",
 				"fs_size_bytes": 8388608, "regions": []string{"USA"}, "revision": "", "has_multiple_files": false,
-				"updated_at": "2026-09-10T15:30:57.123456+00:00", "path_cover_small": "/assets/s.png", "path_cover_large": "/assets/l.png",
+				"created_at": "2026-08-01T10:00:00+00:00", "updated_at": "2026-09-10T15:30:57.123456+00:00", "path_cover_small": "/assets/s.png", "path_cover_large": "/assets/l.png",
 				"summary": "ignored",
 			}},
 			"total": 1,
@@ -80,7 +80,8 @@ func TestROMsPage(t *testing.T) {
 	}
 	r := got[0]
 	// A ROM RomM couldn't match has no name; its file name stands in.
-	if r.Name != "Golden Sun (USA).gba" || r.SizeBytes != 8388608 || r.UpdatedAt.Nanosecond() != 123456000 || r.CoverLarge != "/assets/l.png" {
+	if r.Name != "Golden Sun (USA).gba" || r.SizeBytes != 8388608 || r.UpdatedAt.Nanosecond() != 123456000 ||
+		!r.CreatedAt.Equal(time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)) || r.CoverLarge != "/assets/l.png" {
 		t.Fatalf("rom %+v", r)
 	}
 	for key, want := range map[string]string{

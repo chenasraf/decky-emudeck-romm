@@ -16,6 +16,8 @@ const (
 	maxGamesPage     = 200
 	defaultSearch    = 50
 	maxSearch        = 100
+	defaultShelf     = 8
+	maxShelf         = 50
 )
 
 func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
@@ -85,14 +87,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 		out.Total = page.Total
 		names := map[int]string{}
 		for _, r := range page.ROMs {
-			g := schema.GameSummary{
-				ID:        r.ID,
-				Name:      r.Name,
-				SizeBytes: r.SizeBytes,
-				HasCover:  r.CoverSmall != "",
-				Regions:   nonNil(r.Regions),
-				State:     schema.GameState(domain.StateOf(page.States, r.ID)),
-			}
+			g := toWireGame(r, page.States)
 			if p.Collection != nil {
 				if _, ok := names[r.PlatformID]; !ok {
 					names[r.PlatformID] = catalog.PlatformName(ctx, r.PlatformID)
@@ -118,6 +113,39 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 				Favorite:  c.Favorite,
 				Games:     c.Games,
 				Installed: c.Installed,
+			})
+		}
+		return out, nil
+	})
+
+	Register(s, "library_shelves", func(ctx context.Context, p schema.LibraryShelvesParams) (schema.LibraryShelves, error) {
+		limit := p.Limit
+		if limit <= 0 {
+			limit = defaultShelf
+		}
+		shelves, err := catalog.Shelves(ctx, min(limit, maxShelf))
+		if err != nil {
+			return schema.LibraryShelves{}, wireError(err)
+		}
+		summaries := func(roms []domain.ROM) []schema.GameSummary {
+			out := []schema.GameSummary{}
+			for _, r := range roms {
+				g := toWireGame(r, shelves.States)
+				g.PlatformName = shelves.PlatformNames[r.PlatformID]
+				out = append(out, g)
+			}
+			return out
+		}
+		out := schema.LibraryShelves{
+			Recent:         summaries(shelves.Recent),
+			Installed:      summaries(shelves.Installed.ROMs),
+			InstalledTotal: shelves.Installed.Total,
+			Platforms:      []schema.PlatformShelf{},
+		}
+		for _, ps := range shelves.Platforms {
+			out.Platforms = append(out.Platforms, schema.PlatformShelf{
+				Platform: toWirePlatform(ps.Platform),
+				Games:    summaries(ps.ROMs),
 			})
 		}
 		return out, nil
@@ -209,6 +237,17 @@ func toWireCatalog(s app.CatalogStatus) schema.CatalogStatus {
 		out.Problem = problemOf(s.Problem)
 	}
 	return out
+}
+
+func toWireGame(r domain.ROM, states map[int]domain.GameState) schema.GameSummary {
+	return schema.GameSummary{
+		ID:        r.ID,
+		Name:      r.Name,
+		SizeBytes: r.SizeBytes,
+		HasCover:  r.CoverSmall != "",
+		Regions:   nonNil(r.Regions),
+		State:     schema.GameState(domain.StateOf(states, r.ID)),
+	}
 }
 
 func toWirePlatform(p domain.PlatformSummary) schema.PlatformSummary {

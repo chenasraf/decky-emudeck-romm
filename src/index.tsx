@@ -20,6 +20,7 @@ import {
   restartBackend,
 } from './backend'
 import { watchBios } from './bios'
+import { LIBRARY_ROUTE } from './catalog'
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
@@ -34,6 +35,7 @@ import {
   PlatformsView,
   SearchView,
 } from './library/Library'
+import { LibraryPage } from './library/LibraryPage'
 import type { GameFilter, Preferences } from './rpc/schema.gen'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
@@ -361,6 +363,7 @@ function Content() {
 export default definePlugin(() => {
   routerHook.addRoute(SETUP_ROUTE, SetupPage, { exact: true })
   routerHook.addRoute(STATUS_ROUTE, StatusPage, { exact: true })
+  routerHook.addRoute(LIBRARY_ROUTE, LibraryPage, { exact: true })
   const stopWatchingConnection = watchConnection()
   const stopWatchingDownloads = watchDownloads()
   const stopWatchingBios = watchBios()
@@ -373,6 +376,7 @@ export default definePlugin(() => {
     onDismount() {
       routerHook.removeRoute(SETUP_ROUTE)
       routerHook.removeRoute(STATUS_ROUTE)
+      routerHook.removeRoute(LIBRARY_ROUTE)
       stopWatchingConnection()
       stopWatchingDownloads()
       stopWatchingBios()

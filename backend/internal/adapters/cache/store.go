@@ -20,7 +20,7 @@ import (
 
 // schemaVersion is stored as SQLite's user_version. A file with any other version is rebuilt, so
 // changing the schema below means bumping it.
-const schemaVersion = 2
+const schemaVersion = 3
 
 const schema = `
 CREATE TABLE platforms (
@@ -39,11 +39,13 @@ CREATE TABLE roms (
 	regions     TEXT NOT NULL,
 	revision    TEXT NOT NULL,
 	multi_file  INTEGER NOT NULL,
+	created_at  INTEGER NOT NULL,
 	updated_at  INTEGER NOT NULL,
 	cover_small TEXT NOT NULL,
 	cover_large TEXT NOT NULL
 );
 CREATE INDEX roms_by_platform ON roms (platform_id, name COLLATE NOCASE, id);
+CREATE INDEX roms_by_created ON roms (created_at DESC, id DESC);
 CREATE TABLE collections (
 	kind     TEXT NOT NULL,
 	id       INTEGER NOT NULL,
@@ -196,8 +198,8 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 		}
 	}
 	upsert, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO roms
-		(id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, updated_at, cover_small, cover_large)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		(id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, created_at, updated_at, cover_small, cover_large)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -208,7 +210,7 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 			return err
 		}
 		if _, err := upsert.ExecContext(ctx, r.ID, r.PlatformID, r.Name, r.FileName, r.Extension, r.SizeBytes,
-			string(regions), r.Revision, r.MultiFile, r.UpdatedAt.Unix(), r.CoverSmall, r.CoverLarge); err != nil {
+			string(regions), r.Revision, r.MultiFile, unixOrZero(r.CreatedAt), r.UpdatedAt.Unix(), r.CoverSmall, r.CoverLarge); err != nil {
 			return err
 		}
 	}
@@ -376,7 +378,7 @@ func (s *Store) Counts(ctx context.Context) (platforms, roms int, err error) {
 	return platforms, roms, err
 }
 
-const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, updated_at, cover_small, cover_large"
+const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, created_at, updated_at, cover_small, cover_large"
 
 // ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, by name,
 // narrowed by only when it isn't nil.
@@ -417,6 +419,16 @@ func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter,
 		page.ROMs = append(page.ROMs, r)
 	}
 	return page, rows.Err()
+}
+
+// Recent returns the limit ROMs added to the Server last, newest first. ROMs the Server gave no
+// time for come after, highest id first.
+func (s *Store) Recent(ctx context.Context, limit int) ([]domain.ROM, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms ORDER BY created_at DESC, id DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanROMs(rows)
 }
 
 // Search returns up to q.Limit ROMs, from q's platform or every platform, whose name or file name
@@ -540,14 +552,25 @@ type scanner interface{ Scan(dest ...any) error }
 func scanROM(row scanner) (domain.ROM, error) {
 	var r domain.ROM
 	var regions string
-	var updated int64
+	var created, updated int64
 	if err := row.Scan(&r.ID, &r.PlatformID, &r.Name, &r.FileName, &r.Extension, &r.SizeBytes, &regions,
-		&r.Revision, &r.MultiFile, &updated, &r.CoverSmall, &r.CoverLarge); err != nil {
+		&r.Revision, &r.MultiFile, &created, &updated, &r.CoverSmall, &r.CoverLarge); err != nil {
 		return r, err
 	}
 	if err := json.Unmarshal([]byte(regions), &r.Regions); err != nil {
 		return r, fmt.Errorf("rom %d regions: %w", r.ID, err)
 	}
+	if created != 0 {
+		r.CreatedAt = time.Unix(created, 0).UTC()
+	}
 	r.UpdatedAt = time.Unix(updated, 0).UTC()
 	return r, nil
+}
+
+// unixOrZero stores an unknown time as 0, which sorts before every real one.
+func unixOrZero(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
 }
