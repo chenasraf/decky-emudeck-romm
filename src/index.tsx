@@ -247,7 +247,7 @@ function SaveSyncSection() {
         <PanelSectionRow>
           <Field
             label="Waiting for RetroArch"
-            description={`RomM has newer saves for ${waiting === 1 ? '1 game' : `${waiting} games`}. Close RetroArch and sync again.`}
+            description={`RomM has newer saves for ${waiting === 1 ? '1 game' : `${waiting} games`}. They download once RetroArch closes.`}
           />
         </PanelSectionRow>
       )}
@@ -371,6 +371,11 @@ type View =
 
 function Content() {
   const [view, setView] = useState<View>({ name: 'home' })
+
+  // Decky mounts the panel each time the QAM opens it. A sync that can't run says so in Saves.
+  useEffect(() => {
+    call('sync_saves', { opened: true }).catch(() => undefined)
+  }, [])
 
   if (view.name === 'search') {
     return (

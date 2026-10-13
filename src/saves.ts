@@ -26,6 +26,21 @@ function apply(e: SaveSyncEvent) {
   changes++
   for (const fn of listeners) fn()
   if (e.syncing) return
+  // Syncs that run on their own speak up only when they changed a save on this Deck or need the user.
+  if (e.auto) {
+    if (e.counts.conflicts > 0) {
+      toaster.toast({
+        title: 'Save conflict',
+        body: `${games(e.counts.conflicts)} changed both on this Deck and on RomM. Nothing was overwritten.`,
+      })
+    } else if (e.counts.downloaded > 0) {
+      toaster.toast({
+        title: 'Saves downloaded',
+        body: `Newer saves from RomM for ${games(e.counts.downloaded)}.`,
+      })
+    }
+    return
+  }
   if (e.problem) {
     toaster.toast({ title: "Couldn't sync saves", body: e.problem.message })
   } else if (e.counts.conflicts > 0) {
@@ -109,7 +124,7 @@ export function saveStateDetail(s: SaveStatus): string | undefined {
     case 'removed_on_server':
       return "RomM's save of this game was deleted. The save on this Deck stays."
     case 'waiting':
-      return 'RomM has a newer save. Close RetroArch and sync again: RetroArch writes the save it holds when a game closes, which would undo the download.'
+      return 'RomM has a newer save. It downloads once RetroArch closes: RetroArch writes the save it holds when a game closes, which would undo the download.'
     case 'failed':
       return s.problem
     default:

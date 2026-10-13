@@ -278,7 +278,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 		romm:            newFakeRomMSaves(),
 		store:           &memSaveStore{records: map[int]domain.SaveRecord{}},
 		launchers:       fakeLaunchers{"snes": snes9x},
-		events:          make(chan SaveSyncEvent, 16),
+		events:          make(chan SaveSyncEvent, 256),
 	}
 	f.settings.mu.Lock()
 	f.settings.in.DeviceID = "deck-1"

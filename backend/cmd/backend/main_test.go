@@ -51,9 +51,13 @@ func TestRelayEndToEnd(t *testing.T) {
 	}
 	var pong struct {
 		ID     int               `json:"id"`
+		Method string            `json:"method"`
 		Result schema.PingResult `json:"result"`
 	}
-	readLine(t, lines, &pong)
+	// Notifications may come before the answer, as main.py sees them too.
+	for readLine(t, lines, &pong); pong.Method != ""; readLine(t, lines, &pong) {
+		pong.Method = ""
+	}
 	if pong.ID != 1 || pong.Result.Version != "1.2.3" {
 		t.Fatalf("unexpected ping response: %+v", pong)
 	}

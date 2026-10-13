@@ -1242,6 +1242,10 @@ export interface ESDERescanEvent {
  */
 export interface SyncSavesParams {
   ids?: number /* int */[];
+  /**
+   * Opened says the QAM just opened: every game syncs, unless a sync ran moments ago.
+   */
+  opened?: boolean;
 }
 export interface SyncSavesResult {
 }
@@ -1337,4 +1341,8 @@ export interface SaveSyncEvent {
    * Problem says why the sync couldn't run.
    */
   problem?: Error;
+  /**
+   * Auto is set on a sync nobody asked for: a save written, a periodic pull, the QAM opening.
+   */
+  auto: boolean;
 }

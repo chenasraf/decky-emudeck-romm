@@ -185,6 +185,15 @@ func run(log *slog.Logger) error {
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)
 	go downloads.SweepUpdates(ctx)
+	// Without a folder watch, saves still sync on the periodic pulls and on demand.
+	var saveWatch app.SaveWatch
+	if w, err := system.WatchFolders(log.With("component", "watch")); err != nil {
+		log.Warn("watch saves", "err", err)
+	} else {
+		defer func() { _ = w.Close() }()
+		saveWatch = w
+	}
+	go saves.Run(ctx, saveWatch)
 	catalog.Refresh(false)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {

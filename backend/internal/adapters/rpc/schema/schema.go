@@ -989,6 +989,8 @@ type ESDERescanEvent struct {
 // sync runs in the background; save_sync events tell when it starts and ends.
 type SyncSavesParams struct {
 	IDs []int `json:"ids,omitempty"`
+	// Opened says the QAM just opened: every game syncs, unless a sync ran moments ago.
+	Opened bool `json:"opened,omitempty"`
 }
 
 type SyncSavesResult struct{}
@@ -1059,4 +1061,6 @@ type SaveSyncEvent struct {
 	Counts SaveCounts `json:"counts"`
 	// Problem says why the sync couldn't run.
 	Problem *Error `json:"problem,omitempty"`
+	// Auto is set on a sync nobody asked for: a save written, a periodic pull, the QAM opening.
+	Auto bool `json:"auto"`
 }

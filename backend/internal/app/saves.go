@@ -79,6 +79,8 @@ type SaveSyncEvent struct {
 	ROMIDs  []int
 	Summary SaveSummary
 	Problem error
+	// Auto is set on a sync nobody asked for: a save written, a periodic pull, the QAM opening.
+	Auto bool
 }
 
 // SaveListener hears syncs start and end.
@@ -103,13 +105,43 @@ type Saves struct {
 	now       func() time.Time
 	base      context.Context
 
+	pullEvery time.Duration
+	settle    time.Duration
+	pollEvery time.Duration
+	openGap   time.Duration
+
 	// passMu is held while a sync runs.
 	passMu sync.Mutex
 	mu     sync.Mutex
-	// syncing are the games a running or waiting sync covers; nil ids means every game.
-	syncing map[int]bool
-	all     bool
+	// pending are the games the next sync covers, every game when pendingAll is set, and
+	// pendingManual says whether the user asked for any of it.
+	pending       map[int]bool
+	pendingAll    bool
+	pendingManual bool
+	// current are the games the running sync covers, every game when currentAll is set.
+	current    map[int]bool
+	currentAll bool
+	// working is set while a goroutine runs the queued syncs.
+	working bool
+	lastEnd time.Time
+	// waits is set while a game's download may be waiting for RetroArch to close.
+	waits bool
+	// wrote is when the plugin last wrote each save, so the watch doesn't take its own writes for
+	// the game's.
+	wrote map[string]time.Time
 }
+
+const (
+	// savePullEvery is how often every game's save is synced, to pick up what other devices did.
+	savePullEvery = 15 * time.Minute
+	// saveSettle is how long a save goes unwritten before it uploads: RetroArch writes one in
+	// several steps, and some cores every few seconds while a game runs.
+	saveSettle = 10 * time.Second
+	// savePoll is how often a download waiting for RetroArch looks whether it closed.
+	savePoll = 5 * time.Second
+	// saveOpenGap is how long after a sync opening the QAM doesn't sync again.
+	saveOpenGap = 2 * time.Minute
+)
 
 // NewSaves returns save sync. A nil store turns it off, reporting problem. Overwritten saves are
 // backed up under backups.
@@ -119,7 +151,8 @@ func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn 
 	return &Saves{
 		catalog: catalog, install: install, conn: conn, dial: dial, owned: owned, store: store, problem: problem,
 		launchers: launchers, running: running, backups: backups, onChange: onChange, log: log, now: time.Now, base: ctx,
-		syncing: map[int]bool{},
+		pullEvery: savePullEvery, settle: saveSettle, pollEvery: savePoll, openGap: saveOpenGap,
+		pending: map[int]bool{}, current: map[int]bool{}, wrote: map[string]time.Time{}, waits: true,
 	}
 }
 
@@ -146,28 +179,210 @@ func (s *Saves) Start(ctx context.Context, ids []int) error {
 			return &domain.Error{Kind: domain.KindInvalidInput, Message: why}
 		}
 	}
+	s.request(ids, true)
+	return nil
+}
+
+// Opened syncs every game's save when the QAM opens, unless a sync ran or runs just now.
+func (s *Saves) Opened() {
+	s.mu.Lock()
+	recent := s.working || s.now().Sub(s.lastEnd) < s.openGap
+	s.mu.Unlock()
+	if !recent {
+		s.request(nil, false)
+	}
+}
+
+// request queues a sync of the games with ids, every game when ids is empty. Syncs asked for while
+// one runs gather into the next.
+func (s *Saves) request(ids []int, manual bool) {
 	s.mu.Lock()
 	if len(ids) == 0 {
-		s.all = true
+		s.pendingAll = true
 	}
 	for _, id := range ids {
-		s.syncing[id] = true
+		s.pending[id] = true
 	}
+	s.pendingManual = s.pendingManual || manual
+	start := !s.working
+	s.working = true
 	s.mu.Unlock()
-	s.onChange(SaveSyncEvent{Syncing: true, ROMIDs: ids})
-	go func() {
+	if start {
+		go s.work()
+	}
+}
+
+// work runs the queued syncs until none is left.
+func (s *Saves) work() {
+	for {
+		s.mu.Lock()
+		if !s.pendingAll && len(s.pending) == 0 {
+			s.working = false
+			s.mu.Unlock()
+			return
+		}
+		var ids []int
+		if !s.pendingAll {
+			for id := range s.pending {
+				ids = append(ids, id)
+			}
+			slices.Sort(ids)
+		}
+		manual := s.pendingManual
+		s.current, s.currentAll = s.pending, s.pendingAll
+		s.pending, s.pendingAll, s.pendingManual = map[int]bool{}, false, false
+		s.mu.Unlock()
+
+		// A sync nobody asked for that can't run, before sign-in say, has nothing to tell anyone.
+		if _, err := s.ready(); err != nil && !manual {
+			s.log.Debug("save sync skipped", "err", err)
+			s.mu.Lock()
+			s.current, s.currentAll = map[int]bool{}, false
+			s.mu.Unlock()
+			continue
+		}
+
+		s.onChange(SaveSyncEvent{Syncing: true, ROMIDs: ids, Auto: !manual})
 		summary, err := s.Sync(s.base, ids)
 		s.mu.Lock()
-		if len(ids) == 0 {
-			s.all = false
-		}
-		for _, id := range ids {
-			delete(s.syncing, id)
+		s.current, s.currentAll, s.lastEnd = map[int]bool{}, false, s.now()
+		if summary.Waiting > 0 {
+			s.waits = true
 		}
 		s.mu.Unlock()
-		s.onChange(SaveSyncEvent{ROMIDs: ids, Summary: summary, Problem: err})
+		if err != nil && !manual {
+			s.log.Info("save sync skipped", "err", err)
+		}
+		s.onChange(SaveSyncEvent{ROMIDs: ids, Summary: summary, Problem: err, Auto: !manual})
+	}
+}
+
+// syncing says whether a queued or running sync covers the game with id.
+func (s *Saves) syncing(id int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingAll || s.currentAll || s.pending[id] || s.current[id]
+}
+
+// SaveWatch reports the files written in the folders it watches.
+type SaveWatch interface {
+	Watch(dirs ...string) error
+	Changes() <-chan string
+}
+
+// Run syncs saves on their own until ctx ends: every game's at start and every pullEvery, a game's
+// once its save settles after RetroArch writes it, and a download that waits for RetroArch once it
+// closes. A nil watch leaves out the syncs on writes.
+func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
+	s.request(nil, false)
+	pull := time.NewTicker(s.pullEvery)
+	defer pull.Stop()
+	poll := time.NewTicker(s.pollEvery)
+	defer poll.Stop()
+	settled := make(chan string, 16)
+	timers := map[string]*time.Timer{}
+	defer func() {
+		for _, t := range timers {
+			t.Stop()
+		}
 	}()
-	return nil
+	var changes <-chan string
+	if watch != nil {
+		changes = watch.Changes()
+	}
+	watched := ""
+	for {
+		if dir, ok := retroArchSaves(s.install.State(false)); watch != nil && ok && dir != watched {
+			if err := watch.Watch(dir); err != nil {
+				s.log.Warn("watch saves", "dir", dir, "err", err)
+			} else {
+				watched = dir
+				s.log.Info("watching saves", "dir", dir)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-pull.C:
+			s.request(nil, false)
+		case p, ok := <-changes:
+			if !ok {
+				changes = nil
+				continue
+			}
+			if t := timers[p]; t != nil {
+				t.Reset(s.settle)
+				continue
+			}
+			timers[p] = time.AfterFunc(s.settle, func() {
+				select {
+				case settled <- p:
+				case <-ctx.Done():
+				}
+			})
+		case p := <-settled:
+			delete(timers, p)
+			s.saveWritten(ctx, p)
+		case <-poll.C:
+			s.retryWaiting(ctx)
+		}
+	}
+}
+
+// saveWritten syncs the game whose save was just written, unless the plugin wrote it.
+func (s *Saves) saveWritten(ctx context.Context, path string) {
+	s.mu.Lock()
+	at, own := s.wrote[path]
+	delete(s.wrote, path)
+	s.mu.Unlock()
+	if own && s.now().Sub(at) < 2*s.settle {
+		return
+	}
+	if s.store == nil {
+		return
+	}
+	ids, err := s.owned.OwnedIDs(ctx)
+	if err != nil {
+		s.log.Warn("save written", "path", path, "err", err)
+		return
+	}
+	for _, id := range ids {
+		if t, why, err := s.target(ctx, id); err == nil && why == "" && t.path == path {
+			s.log.Info("save written", "rom_id", id, "path", path)
+			s.request([]int{id}, false)
+			return
+		}
+	}
+}
+
+// retryWaiting syncs the games whose downloads wait for RetroArch, once it's closed.
+func (s *Saves) retryWaiting(ctx context.Context) {
+	s.mu.Lock()
+	waits := s.waits
+	s.mu.Unlock()
+	if !waits || s.store == nil {
+		return
+	}
+	if emu, ok := s.running(); ok && emu.ID == domain.RetroArchID {
+		return
+	}
+	records, err := s.store.SaveRecords(ctx)
+	if err != nil {
+		return
+	}
+	var ids []int
+	for _, r := range records {
+		if r.State == domain.SaveWaiting {
+			ids = append(ids, r.ROMID)
+		}
+	}
+	s.mu.Lock()
+	s.waits = false
+	s.mu.Unlock()
+	if len(ids) > 0 {
+		s.log.Info("RetroArch closed; syncing waiting saves", "games", len(ids))
+		s.request(ids, false)
+	}
 }
 
 // ready returns the sign-in a sync talks to RomM with, or why it can't run.
@@ -333,16 +548,14 @@ func (s *Saves) Status(ctx context.Context, id int) (SaveStatus, error) {
 	if r, ok := records[id]; ok && r.Path == t.path {
 		out.State, out.Problem, out.CheckedAt = r.State, r.Problem, r.CheckedAt
 	}
-	s.mu.Lock()
-	out.Syncing = s.all || s.syncing[id]
-	s.mu.Unlock()
+	out.Syncing = s.syncing(id)
 	return out, nil
 }
 
 // Summary counts where save sync stands across every game it looked at.
 func (s *Saves) Summary(ctx context.Context) (SaveSummary, time.Time, bool, error) {
 	s.mu.Lock()
-	syncing := s.all || len(s.syncing) > 0
+	syncing := s.working
 	s.mu.Unlock()
 	if s.store == nil {
 		return SaveSummary{}, time.Time{}, syncing, nil
@@ -684,6 +897,9 @@ func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOpe
 			return fmt.Errorf("back up the save: %w", err)
 		}
 	}
+	p.mu.Lock()
+	p.wrote[t.path] = p.now()
+	p.mu.Unlock()
 	if err := writeAtomic(t.path, data); err != nil {
 		return fmt.Errorf("write the save: %w", err)
 	}

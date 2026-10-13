@@ -10,6 +10,10 @@ import (
 
 func saveRoutes(s *Server, saves *app.Saves) {
 	Register(s, "sync_saves", func(ctx context.Context, p schema.SyncSavesParams) (schema.SyncSavesResult, error) {
+		if p.Opened {
+			saves.Opened()
+			return schema.SyncSavesResult{}, nil
+		}
 		if err := saves.Start(ctx, p.IDs); err != nil {
 			return schema.SyncSavesResult{}, wireError(err)
 		}
@@ -40,7 +44,7 @@ func saveRoutes(s *Server, saves *app.Saves) {
 // notifications.
 func SaveEvents(s *Server) app.SaveListener {
 	return func(e app.SaveSyncEvent) {
-		event := schema.SaveSyncEvent{Syncing: e.Syncing, IDs: e.ROMIDs, Counts: toWireCounts(e.Summary)}
+		event := schema.SaveSyncEvent{Syncing: e.Syncing, IDs: e.ROMIDs, Counts: toWireCounts(e.Summary), Auto: e.Auto}
 		if e.Problem != nil {
 			event.Problem = problemOf(e.Problem)
 		}
