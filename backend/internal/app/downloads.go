@@ -86,6 +86,9 @@ type OwnershipStore interface {
 	// record anew clears it.
 	SetUpdateAvailable(ctx context.Context, id int, available bool) error
 	UpdateIDs(ctx context.Context) ([]int, error)
+	// IgnoreUpdate records files as the update of the ROM with id the user ignores, clearing its
+	// update.
+	IgnoreUpdate(ctx context.Context, id int, files []domain.FileSnapshot) error
 }
 
 // DownloadStore keeps the records of Plugin-owned ROMs and Linked games, and the download queue.

@@ -68,7 +68,7 @@ func (d *Downloads) CheckUpdates(ctx context.Context, ids []int) error {
 		if err != nil {
 			return d.conn.observe(*in, err)
 		}
-		available := domain.UpdateAvailable(rec.Snapshot, files)
+		available := rec.HasUpdate(files)
 		if available == slices.Contains(flagged, id) {
 			continue
 		}
@@ -82,6 +82,45 @@ func (d *Downloads) CheckUpdates(ctx context.Context, ids []int) error {
 		}
 		d.announceOwnership(OwnershipChange{ROMID: id, Name: d.gameName(ctx, id), State: state, Kind: OwnershipUpdate})
 	}
+	return nil
+}
+
+// IgnoreUpdate keeps a game on the version it has: the update RomM has now stops being offered, until
+// RomM's files of the game change again.
+func (d *Downloads) IgnoreUpdate(ctx context.Context, id int) error {
+	if d.store == nil {
+		return d.problem
+	}
+	updates, err := d.store.UpdateIDs(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(updates, id) {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "That game has no update to ignore."}
+	}
+	d.mu.Lock()
+	updating := d.find(id) != nil
+	d.mu.Unlock()
+	if updating {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is updating. Cancel the update first."}
+	}
+	in, err := d.conn.activeSignIn()
+	if err != nil {
+		return err
+	}
+	if in == nil {
+		return errNotSignedIn
+	}
+	// What's ignored is the files RomM has now, which may have changed since the update was found.
+	files, err := d.dial(in.Server, in.Token).ROMFiles(ctx, id)
+	if err != nil {
+		return d.conn.observe(*in, err)
+	}
+	if err := d.store.IgnoreUpdate(ctx, id, domain.SnapshotsOf(files)); err != nil {
+		return fmt.Errorf("record ignored update: %w", err)
+	}
+	d.log.Info("update ignored", "rom_id", id)
+	d.announceOwnership(OwnershipChange{ROMID: id, Name: d.gameName(ctx, id), State: domain.StateInstalled, Kind: OwnershipUpdate})
 	return nil
 }
 

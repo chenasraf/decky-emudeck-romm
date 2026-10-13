@@ -102,6 +102,16 @@ func (m *memOwnership) SetUpdateAvailable(_ context.Context, id int, available b
 	return nil
 }
 
+func (m *memOwnership) IgnoreUpdate(_ context.Context, id int, files []domain.FileSnapshot) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rec := m.roms[id]
+	rec.Ignored = append([]domain.FileSnapshot{}, files...)
+	m.roms[id] = rec
+	delete(m.updates, id)
+	return nil
+}
+
 func (m *memOwnership) UpdateIDs(context.Context) ([]int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

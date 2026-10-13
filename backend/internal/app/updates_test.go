@@ -170,3 +170,33 @@ func TestCancelledUpdateKeepsTheOldVersion(t *testing.T) {
 	}
 	f.stagingEmpty(t)
 }
+
+func TestIgnoredUpdateComesBackOnlyWhenRomMChangesAgain(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	f.chronoWithUpdate(t, "Chrono Trigger (USA).sfc", []byte("rev 1"))
+
+	if err := f.downloads.IgnoreUpdate(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if c := f.ownershipChange(t); c.Kind != OwnershipUpdate || c.State != domain.StateInstalled {
+		t.Fatalf("change %+v", c)
+	}
+	if err := f.downloads.CheckUpdates(ctx, []int{1}); err != nil {
+		t.Fatal(err)
+	}
+	if states, _ := f.downloads.States(ctx); states[1] != domain.StateInstalled {
+		t.Fatalf("ignored update came back: %v", states)
+	}
+	if err := f.downloads.IgnoreUpdate(ctx, 1); kindOf(err) != domain.KindInvalidInput {
+		t.Fatalf("ignoring with no update: %v", err)
+	}
+
+	f.serve(1, "Chrono Trigger (USA).sfc", []byte("rev 2, longer"))
+	if err := f.downloads.CheckUpdates(ctx, []int{1}); err != nil {
+		t.Fatal(err)
+	}
+	if states, _ := f.downloads.States(ctx); states[1] != domain.StateUpdate {
+		t.Fatalf("a further change didn't show: %v", states)
+	}
+}

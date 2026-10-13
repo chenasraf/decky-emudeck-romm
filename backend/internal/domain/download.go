@@ -182,6 +182,27 @@ type OwnedROM struct {
 	Files       []PlacedFile
 	Snapshot    []FileSnapshot
 	InstalledAt time.Time
+	// Ignored is the Server's game files when the user chose Ignore this update, nil when they
+	// never did. That update isn't offered again; one changing the files further is.
+	Ignored []FileSnapshot
+}
+
+// SnapshotsOf takes the snapshot of each of files' game files.
+func SnapshotsOf(files []ROMFile) []FileSnapshot {
+	game := GameFiles(files)
+	out := make([]FileSnapshot, 0, len(game))
+	for _, f := range game {
+		out = append(out, SnapshotOf(f))
+	}
+	return out
+}
+
+// HasUpdate says whether the Server's files are an update of rec the user hasn't ignored.
+func (rec OwnedROM) HasUpdate(files []ROMFile) bool {
+	if !UpdateAvailable(rec.Snapshot, files) {
+		return false
+	}
+	return rec.Ignored == nil || UpdateAvailable(rec.Ignored, files)
 }
 
 var sizeUnits = []string{"B", "KB", "MB", "GB", "TB"}

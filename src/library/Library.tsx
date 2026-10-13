@@ -1163,6 +1163,11 @@ export function useGameDetail(id: number): GameDetail {
         break
       case 'update_available':
         actions.push({ label: 'Update', run: get, disabled: busy || downloadOff })
+        actions.push({
+          label: 'Ignore this update',
+          run: () => void act(() => call('ignore_update', { id })),
+          disabled: busy,
+        })
         actions.push(...ownedActions(game))
         break
       case 'installed':

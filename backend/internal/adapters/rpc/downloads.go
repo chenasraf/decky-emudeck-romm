@@ -58,6 +58,13 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.StopManagingResult{}, nil
 	})
 
+	Register(s, "ignore_update", func(ctx context.Context, p schema.IgnoreUpdateParams) (schema.IgnoreUpdateResult, error) {
+		if err := downloads.IgnoreUpdate(ctx, p.ID); err != nil {
+			return schema.IgnoreUpdateResult{}, wireError(err)
+		}
+		return schema.IgnoreUpdateResult{}, nil
+	})
+
 	Register(s, "find_games", func(ctx context.Context, p schema.FindGamesParams) (schema.FindGamesStatus, error) {
 		status, err := downloads.FindGames(ctx, p.PlatformID)
 		if err != nil {

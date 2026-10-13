@@ -93,6 +93,7 @@ type Methods struct {
 	AdoptGame           Method[AdoptGameParams, AdoptGameResult]                     `json:"adopt_game"`
 	LinkGame            Method[LinkGameParams, LinkGameResult]                       `json:"link_game"`
 	StopManaging        Method[StopManagingParams, StopManagingResult]               `json:"stop_managing"`
+	IgnoreUpdate        Method[IgnoreUpdateParams, IgnoreUpdateResult]               `json:"ignore_update"`
 	FindGames           Method[FindGamesParams, FindGamesStatus]                     `json:"find_games"`
 	FindGamesStatus     Method[FindGamesStatusParams, FindGamesStatus]               `json:"find_games_status"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
@@ -669,6 +670,14 @@ type StopManagingParams struct {
 }
 
 type StopManagingResult struct{}
+
+// IgnoreUpdateParams names an update_available game to keep on the version it has. The update RomM
+// has now isn't offered again; one changing the game's files further is.
+type IgnoreUpdateParams struct {
+	ID int `json:"id"`
+}
+
+type IgnoreUpdateResult struct{}
 
 // FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
 // kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or

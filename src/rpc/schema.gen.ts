@@ -111,6 +111,7 @@ export interface Methods {
   adopt_game: Method<AdoptGameParams, AdoptGameResult>;
   link_game: Method<LinkGameParams, LinkGameResult>;
   stop_managing: Method<StopManagingParams, StopManagingResult>;
+  ignore_update: Method<IgnoreUpdateParams, IgnoreUpdateResult>;
   find_games: Method<FindGamesParams, FindGamesStatus>;
   find_games_status: Method<FindGamesStatusParams, FindGamesStatus>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
@@ -826,6 +827,15 @@ export interface StopManagingParams {
   id: number /* int */;
 }
 export interface StopManagingResult {
+}
+/**
+ * IgnoreUpdateParams names an update_available game to keep on the version it has. The update RomM
+ * has now isn't offered again; one changing the game's files further is.
+ */
+export interface IgnoreUpdateParams {
+  id: number /* int */;
+}
+export interface IgnoreUpdateResult {
 }
 /**
  * FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games

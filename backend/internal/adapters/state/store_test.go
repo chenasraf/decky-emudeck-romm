@@ -331,3 +331,37 @@ func TestUpdateFlagAndSweep(t *testing.T) {
 		t.Fatalf("last sweep %v", got)
 	}
 }
+
+func TestIgnoreUpdate(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+	rom := domain.OwnedROM{ROMID: 1, Files: []domain.PlacedFile{{Path: "/e/roms/snes/a.sfc"}},
+		Snapshot: []domain.FileSnapshot{{FileID: 10, HashKind: "sha1", Hash: "old"}}}
+	if err := s.SaveOwned(ctx, rom); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.Owned(ctx, 1); got.Ignored != nil {
+		t.Fatalf("ignored before anything was %+v", got.Ignored)
+	}
+	if err := s.SetUpdateAvailable(ctx, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	ignored := []domain.FileSnapshot{{FileID: 11, HashKind: "sha1", Hash: "new"}}
+	if err := s.IgnoreUpdate(ctx, 1, ignored); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := s.Owned(ctx, 1)
+	if len(got.Ignored) != 1 || got.Ignored[0].Hash != "new" || len(got.Snapshot) != 1 || got.Snapshot[0].Hash != "old" {
+		t.Fatalf("record %+v", got)
+	}
+	if ids, _ := s.UpdateIDs(ctx); len(ids) != 0 {
+		t.Fatalf("updates %v", ids)
+	}
+	// An update replaces the record, which forgets what was ignored.
+	if err := s.SaveOwned(ctx, rom); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.Owned(ctx, 1); got.Ignored != nil {
+		t.Fatalf("ignored after save %+v", got.Ignored)
+	}
+}

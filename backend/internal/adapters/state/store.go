@@ -95,6 +95,18 @@ CREATE TABLE meta (
 	`
 ALTER TABLE download_queue ADD COLUMN is_update INTEGER NOT NULL DEFAULT 0;
 `,
+	`
+CREATE TABLE ignored_updates (
+	rom_id        INTEGER NOT NULL REFERENCES owned_roms (rom_id) ON DELETE CASCADE,
+	file_id       INTEGER NOT NULL,
+	size_bytes    INTEGER NOT NULL,
+	last_modified INTEGER NOT NULL,
+	hash_kind     TEXT NOT NULL,
+	hash          TEXT NOT NULL,
+	PRIMARY KEY (rom_id, file_id)
+);
+ALTER TABLE owned_roms ADD COLUMN ignores_update INTEGER NOT NULL DEFAULT 0;
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -232,8 +244,8 @@ func (s *Store) MoveOwned(ctx context.Context, from int, rom domain.OwnedROM) er
 	if _, err := tx.ExecContext(ctx, "DELETE FROM owned_roms WHERE rom_id IN (?, ?)", from, rom.ROMID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO owned_roms (rom_id, platform_id, installed_at) VALUES (?, ?, ?)",
-		rom.ROMID, rom.PlatformID, rom.InstalledAt.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO owned_roms (rom_id, platform_id, installed_at, ignores_update) VALUES (?, ?, ?, ?)",
+		rom.ROMID, rom.PlatformID, rom.InstalledAt.UnixNano(), rom.Ignored != nil); err != nil {
 		return err
 	}
 	for _, f := range rom.Files {
@@ -242,14 +254,45 @@ func (s *Store) MoveOwned(ctx context.Context, from int, rom domain.OwnedROM) er
 			return err
 		}
 	}
-	for _, f := range rom.Snapshot {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO server_snapshots
-			(rom_id, file_id, size_bytes, last_modified, hash_kind, hash) VALUES (?, ?, ?, ?, ?, ?)`,
-			rom.ROMID, f.FileID, f.SizeBytes, f.LastModified.UnixNano(), f.HashKind, f.Hash); err != nil {
+	if err := insertSnapshots(ctx, tx, "server_snapshots", rom.ROMID, rom.Snapshot); err != nil {
+		return err
+	}
+	if err := insertSnapshots(ctx, tx, "ignored_updates", rom.ROMID, rom.Ignored); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// IgnoreUpdate records files as the update of the ROM with id the user ignores, clearing its
+// update.
+func (s *Store) IgnoreUpdate(ctx context.Context, id int, files []domain.FileSnapshot) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM ignored_updates WHERE rom_id = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE owned_roms SET ignores_update = 1, update_available = 0 WHERE rom_id = ?", id); err != nil {
+		return err
+	}
+	if err := insertSnapshots(ctx, tx, "ignored_updates", id, files); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// insertSnapshots writes files into table, server_snapshots or ignored_updates, for the ROM with id.
+func insertSnapshots(ctx context.Context, tx *sql.Tx, table string, id int, files []domain.FileSnapshot) error {
+	for _, f := range files {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+
+			" (rom_id, file_id, size_bytes, last_modified, hash_kind, hash) VALUES (?, ?, ?, ?, ?, ?)",
+			id, f.FileID, f.SizeBytes, f.LastModified.UnixNano(), f.HashKind, f.Hash); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // SaveLinked records a Linked game, replacing any earlier link of the same ROM.
@@ -329,8 +372,9 @@ func (s *Store) DeleteOwned(ctx context.Context, id int) error {
 func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error) {
 	rom := domain.OwnedROM{ROMID: id}
 	var installed int64
-	err := s.db.QueryRowContext(ctx, "SELECT platform_id, installed_at FROM owned_roms WHERE rom_id = ?", id).
-		Scan(&rom.PlatformID, &installed)
+	var ignores bool
+	err := s.db.QueryRowContext(ctx, "SELECT platform_id, installed_at, ignores_update FROM owned_roms WHERE rom_id = ?", id).
+		Scan(&rom.PlatformID, &installed, &ignores)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rom, false, nil
 	}
@@ -358,22 +402,39 @@ func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error
 		return rom, false, err
 	}
 
-	rows, err = s.db.QueryContext(ctx, `SELECT file_id, size_bytes, last_modified, hash_kind, hash
-		FROM server_snapshots WHERE rom_id = ? ORDER BY file_id`, id)
-	if err != nil {
+	if rom.Snapshot, err = s.snapshots(ctx, "server_snapshots", id); err != nil {
 		return rom, false, err
 	}
+	if ignores {
+		if rom.Ignored, err = s.snapshots(ctx, "ignored_updates", id); err != nil {
+			return rom, false, err
+		}
+		if rom.Ignored == nil {
+			rom.Ignored = []domain.FileSnapshot{}
+		}
+	}
+	return rom, true, nil
+}
+
+// snapshots reads the files table, server_snapshots or ignored_updates, holds for the ROM with id.
+func (s *Store) snapshots(ctx context.Context, table string, id int) ([]domain.FileSnapshot, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT file_id, size_bytes, last_modified, hash_kind, hash FROM "+table+
+		" WHERE rom_id = ? ORDER BY file_id", id)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = rows.Close() }()
+	var out []domain.FileSnapshot
 	for rows.Next() {
 		var f domain.FileSnapshot
 		var mod int64
 		if err := rows.Scan(&f.FileID, &f.SizeBytes, &mod, &f.HashKind, &f.Hash); err != nil {
-			return rom, false, err
+			return nil, err
 		}
 		f.LastModified = time.Unix(0, mod).UTC()
-		rom.Snapshot = append(rom.Snapshot, f)
+		out = append(out, f)
 	}
-	return rom, true, rows.Err()
+	return out, rows.Err()
 }
 
 // SaveQueued writes a download in the queue. A new one goes to the back; one already there keeps
