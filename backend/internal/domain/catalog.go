@@ -89,7 +89,15 @@ func StateOf(states map[int]GameState, id int) GameState {
 	return StateOnRomM
 }
 
-// SearchResult is what a search across every platform found.
+// SearchQuery is what a search looks for.
+type SearchQuery struct {
+	Term string
+	// PlatformID narrows the search to one platform; zero searches every platform.
+	PlatformID int
+	Limit      int
+}
+
+// SearchResult is what a search found.
 type SearchResult struct {
 	ROMs []ROM
 	// PlatformNames names the platform of each ROM, by platform id.

@@ -235,6 +235,20 @@ function FilterChips({
   )
 }
 
+/** Whether a game in state belongs under filter, for narrowing search results like the list. */
+function matchesFilter(state: GameState, filter: GameFilter): boolean {
+  switch (filter) {
+    case 'installed':
+      return state === 'installed'
+    case 'not_installed':
+      return state !== 'installed'
+    case 'updates':
+      return false
+    default:
+      return true
+  }
+}
+
 export function GamesView({
   platform,
   filter,
@@ -254,6 +268,9 @@ export function GamesView({
   const [total, setTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<RpcError | null>(null)
+  const [query, setQuery] = useState('')
+  const search = useSearch(query, platform.id)
+  const hits = search.result?.games.filter((g) => matchesFilter(g.state, filter)) ?? []
 
   const load = useCallback(
     (offset: number) =>
@@ -296,21 +313,45 @@ export function GamesView({
           onFilter(f)
         }}
       />
-      <Problem error={error} />
-      {total !== null && (
-        <PanelSectionRow>
-          <Field label={`${total} games`} />
-        </PanelSectionRow>
-      )}
-      {games.map((g) => (
-        <Row
-          key={g.id}
-          label={g.name}
-          value={stateLabel(g, downloads) ?? formatSize(g.sizeBytes)}
-          onClick={() => onOpen(g)}
+      <PanelSectionRow>
+        <TextField
+          label={`Search ${platform.name}`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
-      ))}
-      {total !== null && games.length < total && (
+      </PanelSectionRow>
+      {search.blank ? (
+        <>
+          <Problem error={error} />
+          {total !== null && (
+            <PanelSectionRow>
+              <Field label={`${total} games`} />
+            </PanelSectionRow>
+          )}
+          {games.map((g) => (
+            <Row
+              key={g.id}
+              label={g.name}
+              value={stateLabel(g, downloads) ?? formatSize(g.sizeBytes)}
+              onClick={() => onOpen(g)}
+            />
+          ))}
+        </>
+      ) : (
+        <>
+          <Problem error={search.error} />
+          <SearchSummary search={search} count={hits.length} />
+          {hits.map((g) => (
+            <Row
+              key={g.id}
+              label={g.name}
+              value={stateLabel(g, downloads) ?? formatSize(g.sizeBytes)}
+              onClick={() => onOpen(g)}
+            />
+          ))}
+        </>
+      )}
+      {search.blank && total !== null && games.length < total && (
         <PanelSectionRow>
           <ButtonItem layout="below" disabled={loading} onClick={more}>
             {loading ? 'Loading…' : `Show more (${total - games.length} left)`}
@@ -324,17 +365,17 @@ export function GamesView({
 /** How long typing must pause before a search runs, so each keystroke doesn't ask the server. */
 const SEARCH_DELAY_MS = 350
 
-export function SearchView({
-  query,
-  onQuery,
-  onBack,
-  onOpen,
-}: {
-  query: string
-  onQuery: (query: string) => void
-  onBack: () => void
-  onOpen: (game: SearchHit) => void
-}) {
+interface Search {
+  /** Set while the query is blank, when there's nothing to show. */
+  blank: boolean
+  /** Set while a search for the current query hasn't answered. */
+  searching: boolean
+  result: SearchGamesResult | null
+  error: RpcError | null
+}
+
+/** Searches the library for query, in one platform or every platform when platformId is unset. */
+function useSearch(query: string, platformId?: number): Search {
   const catalog = useCatalog()
   const downloads = useDownloads()
   // The latest answer, and the query it answers: while it isn't for the current query, a search
@@ -345,14 +386,15 @@ export function SearchView({
     error?: RpcError
   } | null>(null)
 
-  // Searches again when a refresh ends, so new games show up in the results.
+  // Searches again when a refresh ends, so new games show up in the results, and when a download
+  // ends, so states stay current.
   const syncedAt = catalog?.syncedAt
   useEffect(() => {
     if (query.trim() === '') return
     // A slower answer to an earlier query must not replace this one's.
     let current = true
     const timer = setTimeout(() => {
-      call('search_games', { query }).then(
+      call('search_games', { query, platformId }).then(
         (result) => {
           if (current) setAnswer({ query, result })
         },
@@ -365,16 +407,51 @@ export function SearchView({
       current = false
       clearTimeout(timer)
     }
-  }, [query, syncedAt, downloads.ended])
+  }, [query, platformId, syncedAt, downloads.ended])
 
   const blank = query.trim() === ''
   const searching = !blank && answer?.query !== query
-  const result = blank ? null : answer?.result
-  const error = blank || searching ? null : (answer?.error ?? null)
+  return {
+    blank,
+    searching,
+    result: blank ? null : (answer?.result ?? null),
+    error: blank || searching ? null : (answer?.error ?? null),
+  }
+}
 
-  let summary: string | null = null
-  if (searching) summary = 'Searching…'
-  else if (result) summary = result.games.length === 1 ? '1 game' : `${result.games.length} games`
+/** How many games a search found, or that it's still running. */
+function SearchSummary({ search, count }: { search: Search; count: number }) {
+  if (search.blank || (!search.searching && !search.result)) return null
+  let label = 'Searching…'
+  if (!search.searching) label = count === 1 ? '1 game' : `${count} games`
+  return (
+    <PanelSectionRow>
+      <Field
+        label={label}
+        description={
+          !search.searching && search.result?.local
+            ? "RomM didn't answer, so these are name matches from the cached library."
+            : undefined
+        }
+      />
+    </PanelSectionRow>
+  )
+}
+
+export function SearchView({
+  query,
+  onQuery,
+  onBack,
+  onOpen,
+}: {
+  query: string
+  onQuery: (query: string) => void
+  onBack: () => void
+  onOpen: (game: SearchHit) => void
+}) {
+  const downloads = useDownloads()
+  const search = useSearch(query)
+  const result = search.result
 
   return (
     <PanelSection title="Search">
@@ -387,19 +464,8 @@ export function SearchView({
           onChange={(e) => onQuery(e.target.value)}
         />
       </PanelSectionRow>
-      <Problem error={error} />
-      {summary && (
-        <PanelSectionRow>
-          <Field
-            label={summary}
-            description={
-              !searching && result?.local
-                ? "RomM didn't answer, so these are name matches from the cached library."
-                : undefined
-            }
-          />
-        </PanelSectionRow>
-      )}
+      <Problem error={search.error} />
+      <SearchSummary search={search} count={result?.games.length ?? 0} />
       {result?.games.map((g) => {
         const state = stateLabel(g, downloads)
         return (

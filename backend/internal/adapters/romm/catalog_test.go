@@ -87,7 +87,8 @@ func TestSearchROMs(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).SearchROMs(context.Background(), "golden sun", 50)
+	c := New(domain.Server{URL: srv.URL}, "rmm_x", ver)
+	got, err := c.SearchROMs(context.Background(), domain.SearchQuery{Term: "golden sun", Limit: 50})
 	if err != nil || !slices.Equal(got, []int{9, 4}) {
 		t.Fatalf("got %v, %v", got, err)
 	}
@@ -99,8 +100,17 @@ func TestSearchROMs(t *testing.T) {
 		}
 	}
 	// RomM orders by relevance only without an order_by.
-	if _, ok := query["order_by"]; ok {
-		t.Errorf("order_by = %v", query["order_by"])
+	for _, key := range []string{"order_by", "platform_ids"} {
+		if _, ok := query[key]; ok {
+			t.Errorf("%s = %v", key, query[key])
+		}
+	}
+
+	if _, err := c.SearchROMs(context.Background(), domain.SearchQuery{Term: "sun", PlatformID: 3, Limit: 50}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(query["platform_ids"], []string{"3"}) {
+		t.Errorf("platform_ids = %v", query["platform_ids"])
 	}
 }
 

@@ -401,6 +401,10 @@ export interface SearchGamesParams {
    */
   query: string;
   /**
+   * PlatformID narrows the search to one platform; zero searches every platform.
+   */
+  platformId?: number /* int */;
+  /**
    * Limit is capped at 100; zero means 50.
    */
   limit?: number /* int */;

@@ -90,13 +90,16 @@ func (c *Client) ROMs(ctx context.Context, since time.Time, offset, limit int) (
 	return out, nil
 }
 
-// SearchROMs returns the ids of up to limit ROMs matching term, most relevant first. RomM matches
-// term against names and file names, and against CRC32, MD5 and SHA-1 hashes.
-func (c *Client) SearchROMs(ctx context.Context, term string, limit int) ([]int, error) {
+// SearchROMs returns the ids of up to q.Limit ROMs matching q, most relevant first. RomM matches
+// the term against names and file names, and against CRC32, MD5 and SHA-1 hashes.
+func (c *Client) SearchROMs(ctx context.Context, sq domain.SearchQuery) ([]int, error) {
 	q := url.Values{
-		"search_term":       {term},
-		"limit":             {strconv.Itoa(limit)},
+		"search_term":       {sq.Term},
+		"limit":             {strconv.Itoa(sq.Limit)},
 		"with_rom_id_index": {"false"},
+	}
+	if sq.PlatformID > 0 {
+		q.Set("platform_ids", strconv.Itoa(sq.PlatformID))
 	}
 	var body struct {
 		Items []struct {

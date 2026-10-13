@@ -346,6 +346,8 @@ type GameSummary struct {
 type SearchGamesParams struct {
 	// Query is a title, a few words of one, or a ROM's CRC32, MD5 or SHA-1 hash.
 	Query string `json:"query"`
+	// PlatformID narrows the search to one platform; zero searches every platform.
+	PlatformID int `json:"platformId,omitempty"`
 	// Limit is capped at 100; zero means 50.
 	Limit int `json:"limit,omitempty"`
 }

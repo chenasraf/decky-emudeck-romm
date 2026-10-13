@@ -103,17 +103,20 @@ func (s *memStore) ROM(_ context.Context, id int) (domain.ROM, bool, error) {
 	return r, ok, nil
 }
 
-func (s *memStore) Search(_ context.Context, term string, limit int) ([]domain.ROM, error) {
+func (s *memStore) Search(_ context.Context, q domain.SearchQuery) ([]domain.ROM, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []domain.ROM
 	for _, r := range s.roms {
-		if strings.Contains(strings.ToLower(r.Name), strings.ToLower(term)) {
+		if q.PlatformID > 0 && r.PlatformID != q.PlatformID {
+			continue
+		}
+		if strings.Contains(strings.ToLower(r.Name), strings.ToLower(q.Term)) {
 			out = append(out, r)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out[:min(limit, len(out))], nil
+	return out[:min(q.Limit, len(out))], nil
 }
 
 func (s *memStore) ROMsByID(_ context.Context, ids []int) ([]domain.ROM, error) {
@@ -209,7 +212,7 @@ func (l *fakeLibrary) ROMIDs(context.Context) ([]int, error) {
 
 // SearchROMs matches term against names and against "md5:<id>", newest ROM first, as a stand-in
 // for RomM's relevance and hash matching.
-func (l *fakeLibrary) SearchROMs(_ context.Context, term string, limit int) ([]int, error) {
+func (l *fakeLibrary) SearchROMs(_ context.Context, q domain.SearchQuery) ([]int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.err != nil {
@@ -217,12 +220,15 @@ func (l *fakeLibrary) SearchROMs(_ context.Context, term string, limit int) ([]i
 	}
 	var ids []int
 	for id, r := range l.roms {
-		if strings.Contains(r.Name, term) || term == fmt.Sprintf("md5:%d", id) {
+		if q.PlatformID > 0 && r.PlatformID != q.PlatformID {
+			continue
+		}
+		if strings.Contains(r.Name, q.Term) || q.Term == fmt.Sprintf("md5:%d", id) {
 			ids = append(ids, id)
 		}
 	}
 	sort.Sort(sort.Reverse(sort.IntSlice(ids)))
-	return ids[:min(limit, len(ids))], nil
+	return ids[:min(q.Limit, len(ids))], nil
 }
 
 type catalogFixture struct {
@@ -410,8 +416,12 @@ func searchLibrary() *fakeLibrary {
 	for id, name := range map[int]string{1: "Golden Sun", 2: "Metroid Fusion", 3: "Golden Sun: The Lost Age"} {
 		l.roms[id] = domain.ROM{ID: id, PlatformID: 1, Name: name, UpdatedAt: time.Unix(int64(id), 0).UTC()}
 	}
+	l.roms[5] = domain.ROM{ID: 5, PlatformID: 2, Name: "Golden Axe", UpdatedAt: time.Unix(5, 0).UTC()}
 	return l
 }
+
+// anywhere searches every platform for term.
+func anywhere(term string) domain.SearchQuery { return domain.SearchQuery{Term: term, Limit: 50} }
 
 func TestCatalogSearchAsksServer(t *testing.T) {
 	library := searchLibrary()
@@ -419,22 +429,28 @@ func TestCatalogSearchAsksServer(t *testing.T) {
 	f.refresh(t, false)
 	ctx := context.Background()
 
-	got, err := f.catalog.Search(ctx, " Golden Sun ", 50)
+	got, err := f.catalog.Search(ctx, anywhere(" Golden Sun "))
 	if err != nil || got.Local || len(got.ROMs) != 2 || got.ROMs[0].ID != 3 || got.PlatformNames[1] != "Game Boy Advance" {
 		t.Fatalf("by name: %+v, %v", got, err)
 	}
-	if got, _ := f.catalog.Search(ctx, "md5:2", 50); len(got.ROMs) != 1 || got.ROMs[0].Name != "Metroid Fusion" {
+	if got, _ := f.catalog.Search(ctx, anywhere("md5:2")); len(got.ROMs) != 1 || got.ROMs[0].Name != "Metroid Fusion" {
 		t.Fatalf("by hash: %+v", got)
+	}
+	if got, _ := f.catalog.Search(ctx, anywhere("Golden")); len(got.ROMs) != 3 {
+		t.Fatalf("every platform: %+v", got)
+	}
+	if got, _ := f.catalog.Search(ctx, domain.SearchQuery{Term: "Golden", PlatformID: 2, Limit: 50}); len(got.ROMs) != 1 || got.ROMs[0].ID != 5 {
+		t.Fatalf("one platform: %+v", got)
 	}
 
 	// A game on RomM that the Catalog doesn't hold yet can't be opened, so it isn't listed.
 	library.mu.Lock()
 	library.roms[4] = domain.ROM{ID: 4, PlatformID: 1, Name: "Golden Sun 3"}
 	library.mu.Unlock()
-	if got, _ := f.catalog.Search(ctx, "Golden", 50); len(got.ROMs) != 2 {
+	if got, _ := f.catalog.Search(ctx, anywhere("Golden Sun")); len(got.ROMs) != 2 {
 		t.Fatalf("not in catalog: %+v", got)
 	}
-	if got, _ := f.catalog.Search(ctx, "  ", 50); len(got.ROMs) != 0 {
+	if got, _ := f.catalog.Search(ctx, anywhere("  ")); len(got.ROMs) != 0 {
 		t.Fatalf("blank: %+v", got)
 	}
 }
@@ -448,7 +464,7 @@ func TestCatalogSearchFallsBackToCatalog(t *testing.T) {
 	library.mu.Lock()
 	library.err = &domain.Error{Kind: domain.KindUnreachable, Message: "unreachable"}
 	library.mu.Unlock()
-	got, err := f.catalog.Search(ctx, "golden", 50)
+	got, err := f.catalog.Search(ctx, domain.SearchQuery{Term: "golden", PlatformID: 1, Limit: 50})
 	if err != nil || !got.Local || len(got.ROMs) != 2 || got.PlatformNames[1] != "Game Boy Advance" {
 		t.Fatalf("offline: %+v, %v", got, err)
 	}
@@ -456,14 +472,14 @@ func TestCatalogSearchFallsBackToCatalog(t *testing.T) {
 	library.mu.Lock()
 	library.err = &domain.Error{Kind: domain.KindSignedOut, Message: "signed out"}
 	library.mu.Unlock()
-	if got, _ := f.catalog.Search(ctx, "metroid", 50); !got.Local || len(got.ROMs) != 1 {
+	if got, _ := f.catalog.Search(ctx, anywhere("metroid")); !got.Local || len(got.ROMs) != 1 {
 		t.Fatalf("token rejected: %+v", got)
 	}
 	if !f.settings.in.SignedOut {
 		t.Fatal("a 401 during search didn't sign out")
 	}
 	// Signed out, the Catalog answers without asking the Server.
-	if got, _ := f.catalog.Search(ctx, "golden", 50); !got.Local || len(got.ROMs) != 2 {
+	if got, _ := f.catalog.Search(ctx, anywhere("golden")); !got.Local || len(got.ROMs) != 3 {
 		t.Fatalf("signed out: %+v", got)
 	}
 }

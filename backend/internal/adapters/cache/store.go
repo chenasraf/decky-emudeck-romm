@@ -315,21 +315,26 @@ func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter,
 	return page, rows.Err()
 }
 
-// Search returns up to limit ROMs, from every platform, whose name or file name contains each
-// word of term. Names that start with term come first, then the rest by name.
-func (s *Store) Search(ctx context.Context, term string, limit int) ([]domain.ROM, error) {
-	words := strings.Fields(term)
+// Search returns up to q.Limit ROMs, from q's platform or every platform, whose name or file name
+// contains each word of q's term. Names that start with the term come first, then the rest by
+// name.
+func (s *Store) Search(ctx context.Context, q domain.SearchQuery) ([]domain.ROM, error) {
+	words := strings.Fields(q.Term)
 	if len(words) == 0 {
 		return nil, nil
 	}
 	var where []string
 	args := []any{}
+	if q.PlatformID > 0 {
+		where = append(where, "platform_id = ?")
+		args = append(args, q.PlatformID)
+	}
 	for _, w := range words {
 		where = append(where, `(name LIKE ? ESCAPE '\' OR file_name LIKE ? ESCAPE '\')`)
 		pattern := "%" + likeEscaper.Replace(w) + "%"
 		args = append(args, pattern, pattern)
 	}
-	args = append(args, likeEscaper.Replace(strings.Join(words, " "))+"%", limit)
+	args = append(args, likeEscaper.Replace(strings.Join(words, " "))+"%", q.Limit)
 	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms WHERE "+strings.Join(where, " AND ")+
 		` ORDER BY name LIKE ? ESCAPE '\' DESC, name COLLATE NOCASE, id LIMIT ?`, args...)
 	if err != nil {

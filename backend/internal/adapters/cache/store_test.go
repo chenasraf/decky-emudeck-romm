@@ -123,7 +123,7 @@ func TestSearch(t *testing.T) {
 
 	names := func(term string, limit int) []string {
 		t.Helper()
-		roms, err := s.Search(ctx, term, limit)
+		roms, err := s.Search(ctx, domain.SearchQuery{Term: term, Limit: limit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,6 +153,12 @@ func TestSearch(t *testing.T) {
 		if got := names(tc.term, tc.limit); !slices.Equal(got, tc.want) {
 			t.Errorf("search %q: got %q, want %q", tc.term, got, tc.want)
 		}
+	}
+
+	// Narrowed to one platform, Sunset Riders (platform 2) drops out.
+	inGBA, err := s.Search(ctx, domain.SearchQuery{Term: "sun", PlatformID: 1, Limit: 10})
+	if err != nil || len(inGBA) != 2 || inGBA[0].Name != "Golden Sun" {
+		t.Fatalf("one platform: %+v, %v", inGBA, err)
 	}
 
 	got, err := s.ROMsByID(ctx, []int{3, 99, 1})

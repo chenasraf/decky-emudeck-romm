@@ -81,7 +81,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 		if limit <= 0 {
 			limit = defaultSearch
 		}
-		result, err := catalog.Search(ctx, p.Query, min(limit, maxSearch))
+		result, err := catalog.Search(ctx, domain.SearchQuery{Term: p.Query, PlatformID: p.PlatformID, Limit: min(limit, maxSearch)})
 		if err != nil {
 			return schema.SearchGamesResult{}, wireError(err)
 		}
