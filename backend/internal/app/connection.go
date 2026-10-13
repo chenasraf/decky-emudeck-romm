@@ -175,6 +175,23 @@ func (c *Connection) Status(ctx context.Context) (ConnectionStatus, error) {
 	return status, nil
 }
 
+// Watch re-checks the connection every interval until ctx ends, so a lapsed token is noticed and
+// announced even while the QAM is closed and nothing else talks to RomM.
+func (c *Connection) Watch(ctx context.Context, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if _, err := c.Status(ctx); err != nil {
+			c.log.Warn("check connection", "err", err)
+		}
+	}
+}
+
 func signedOutStatus(in domain.SignIn) ConnectionStatus {
 	return ConnectionStatus{State: SignedOut, ServerURL: in.Server.URL, CertFingerprint: in.Server.CertFingerprint}
 }

@@ -417,6 +417,21 @@ func TestRevokedTokenSignsOutOnce(t *testing.T) {
 	events.none(t)
 }
 
+func TestWatchNoticesRevokedToken(t *testing.T) {
+	n := &fakeNet{
+		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
+		revoked:    map[string]bool{"rmm_old": true},
+	}
+	settings := &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_old"}}
+	c, events := newConnectionWithEvents(t, settings, n)
+
+	go c.Watch(t.Context(), 5*time.Millisecond)
+
+	if got := events.next(t); got.State != SignedOut {
+		t.Fatalf("change %+v", got)
+	}
+}
+
 func TestSignInAgainResumesPausedWork(t *testing.T) {
 	n := &fakeNet{
 		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
