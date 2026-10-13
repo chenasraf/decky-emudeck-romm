@@ -210,8 +210,9 @@ export function DialogButton({
 }
 
 /**
- * Gamepad-only props are dropped. An element with onActivate takes keyboard focus and activates on
- * Enter, standing in for the A button.
+ * Keys stand in for the gamepad: an element with onActivate takes keyboard focus and activates on
+ * Enter (A); Escape is B and y is Y for the nearest Focusable that handles them. Other gamepad
+ * props are dropped.
  */
 export function Focusable({
   children,
@@ -219,6 +220,8 @@ export function Focusable({
   className,
   onClick,
   onActivate,
+  onCancelButton,
+  onOptionsButton,
 }: HTMLAttributes<HTMLDivElement> & {
   children?: ReactNode
   'flow-children'?: string
@@ -236,7 +239,17 @@ export function Focusable({
       className={className}
       tabIndex={onActivate ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={onActivate ? (e) => e.key === 'Enter' && onActivate() : undefined}
+      onKeyDown={(e) => {
+        const typing = e.target instanceof HTMLInputElement
+        let handler: (() => void) | undefined
+        if (e.key === 'Enter' && e.target === e.currentTarget) handler = onActivate
+        else if (e.key === 'Escape') handler = onCancelButton
+        else if (e.key === 'y' && !typing) handler = onOptionsButton
+        if (!handler) return
+        e.preventDefault()
+        e.stopPropagation()
+        handler()
+      }}
     >
       {children}
     </div>

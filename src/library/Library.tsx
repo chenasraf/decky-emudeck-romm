@@ -1009,7 +1009,30 @@ export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
   )
 }
 
-export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
+/** Something a game's page offers to do with it. */
+export interface GameAction {
+  label: string
+  run: () => void
+  disabled: boolean
+  /** Set on actions that remove something, which the page sets apart. */
+  destructive?: boolean
+}
+
+export interface GameDetail {
+  game: Game | null
+  /** The game's download, while it's in the queue. */
+  download?: DownloadItem
+  /** The game's state, its download's while it has one. */
+  state?: GameState
+  /** The state as the page says it, with a running download's progress. */
+  stateText: string
+  /** What can be done with the game in its state. */
+  actions: GameAction[]
+  error: RpcError | null
+}
+
+/** A game and what can be done with it, both pages' shared view of it. */
+export function useGameDetail(id: number): GameDetail {
   const downloads = useDownloads()
   const [game, setGame] = useState<Game | null>(null)
   const [error, setError] = useState<RpcError | null>(null)
@@ -1033,6 +1056,45 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
     }
     setBusy(false)
   }
+  const downloadOff = downloads.problem !== null
+  const get = () => void act(() => call('download_game', { id }))
+  const cancel = () => void act(() => call('cancel_download', { id }))
+
+  const actions: GameAction[] = []
+  if (game) {
+    switch (state) {
+      case 'on_romm':
+        actions.push({ label: 'Download', run: get, disabled: busy || downloadOff })
+        break
+      case 'queued':
+      case 'downloading':
+        actions.push({ label: 'Cancel', run: cancel, disabled: busy })
+        break
+      case 'failed':
+        actions.push({ label: 'Retry', run: get, disabled: busy || downloadOff })
+        actions.push({ label: 'Dismiss', run: cancel, disabled: busy })
+        break
+      case 'installed':
+        actions.push({
+          label: 'Delete ROM',
+          run: () => confirmDelete(game.name, { ids: [id] }, setError),
+          disabled: downloadOff,
+          destructive: true,
+        })
+        break
+    }
+  }
+
+  let stateText = state ? (STATE_LABELS[state] ?? state) : ''
+  if (download?.converting) stateText = 'Converting on RomM…'
+  else if (download?.waitingForGame) stateText = 'Waiting for game to close'
+  else if (download?.state === 'downloading') stateText = `Downloading ${percent(download)}%`
+
+  return { game, download, state, stateText, actions, error }
+}
+
+export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
+  const { game, download, state, stateText, actions, error } = useGameDetail(id)
 
   return (
     <PanelSection title={game?.name ?? 'Game'}>
@@ -1048,15 +1110,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
             </PanelSectionRow>
           )}
           <PanelSectionRow>
-            <Field label="State">
-              {download?.converting
-                ? 'Converting on RomM…'
-                : download?.waitingForGame
-                  ? 'Waiting for game to close'
-                  : download?.state === 'downloading'
-                    ? `Downloading ${percent(download)}%`
-                    : (STATE_LABELS[state] ?? state)}
-            </Field>
+            <Field label="State">{stateText}</Field>
           </PanelSectionRow>
           {state === 'installed' && game.installNote && (
             <PanelSectionRow>
@@ -1072,66 +1126,18 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
               />
             </PanelSectionRow>
           )}
-          {state === 'failed' && (
-            <>
-              {download?.problem && (
-                <PanelSectionRow>
-                  <Field label="⚠ Error" description={download.problem.message} />
-                </PanelSectionRow>
-              )}
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  disabled={busy || downloads.problem !== null}
-                  onClick={() => void act(() => call('download_game', { id }))}
-                >
-                  Retry
-                </ButtonItem>
-              </PanelSectionRow>
-              <PanelSectionRow>
-                <ButtonItem
-                  layout="below"
-                  disabled={busy}
-                  onClick={() => void act(() => call('cancel_download', { id }))}
-                >
-                  Dismiss
-                </ButtonItem>
-              </PanelSectionRow>
-            </>
-          )}
-          {state === 'on_romm' && (
+          {state === 'failed' && download?.problem && (
             <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                disabled={busy || downloads.problem !== null}
-                onClick={() => void act(() => call('download_game', { id }))}
-              >
-                Download
-              </ButtonItem>
+              <Field label="⚠ Error" description={download.problem.message} />
             </PanelSectionRow>
           )}
-          {(state === 'queued' || state === 'downloading') && (
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                disabled={busy}
-                onClick={() => void act(() => call('cancel_download', { id }))}
-              >
-                Cancel
+          {actions.map((a) => (
+            <PanelSectionRow key={a.label}>
+              <ButtonItem layout="below" disabled={a.disabled} onClick={a.run}>
+                {a.label}
               </ButtonItem>
             </PanelSectionRow>
-          )}
-          {state === 'installed' && (
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                disabled={downloads.problem !== null}
-                onClick={() => confirmDelete(game.name, { ids: [id] }, setError)}
-              >
-                Delete ROM
-              </ButtonItem>
-            </PanelSectionRow>
-          )}
+          ))}
           {game.installedPaths?.map((p) => (
             <PanelSectionRow key={p}>
               <Field label="Installed at">

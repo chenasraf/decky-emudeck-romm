@@ -1,5 +1,5 @@
 import { DialogButton, Field, Focusable, Navigation, TextField } from '@decky/ui'
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { call } from '../backend'
 import { refreshLibrary, useCatalog } from '../catalog'
@@ -13,7 +13,8 @@ import type {
   Error as RpcError,
 } from '../rpc/schema.gen'
 import { asRpcError, ErrorBox, muted, routeScroll } from '../setup/common'
-import { downloadLabel, GameView, OfflineBanner, useSearch } from './Library'
+import { GameHero } from './GameHero'
+import { downloadLabel, OfflineBanner, useSearch } from './Library'
 import { PlatformGrid } from './PlatformGrid'
 import { ActionTile, GameTile, grid, Tile, tileCss } from './tiles'
 
@@ -55,7 +56,6 @@ const shelfRow: CSSProperties = {
   scrollbarWidth: 'none',
   padding: '10px 32px 14px',
 }
-const column: CSSProperties = { maxWidth: 720, padding: '0 16px' }
 
 function Shelf({
   title,
@@ -235,21 +235,42 @@ export function LibraryPage() {
   const [query, setQuery] = useState('')
   // Bumped by each Y press, so the search field mounts again and takes focus.
   const [searchFocus, setSearchFocus] = useState(0)
+  // The element that had focus when each open level was opened, and the one Back hands focus to
+  // once the level under it shows again.
+  const opener = useRef<Element[]>([])
+  const refocus = useRef<Element | null>(null)
 
   useEffect(() => {
     void refreshLibrary()
   }, [])
 
+  useEffect(() => {
+    const el = refocus.current
+    refocus.current = null
+    if (!(el instanceof HTMLElement) || !el.isConnected) return
+    el.focus()
+    el.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }, [place])
+
+  const open = (next: Place) => {
+    if (document.activeElement) opener.current.push(document.activeElement)
+    setPlace(next)
+  }
+  const close = (next: Place) => {
+    refocus.current = opener.current.pop() ?? null
+    setPlace(next)
+  }
   const openSearch = () => {
+    opener.current = []
     setPlace({ name: 'home' })
     setSearching(true)
     setSearchFocus((n) => n + 1)
   }
   const back = () => {
     if (place.name === 'platform' && place.game !== undefined) {
-      setPlace({ ...place, game: undefined })
+      close({ ...place, game: undefined })
     } else if (place.name !== 'home') {
-      setPlace({ name: 'home' })
+      close({ name: 'home' })
     } else if (searching) {
       setSearching(false)
       setQuery('')
@@ -281,14 +302,14 @@ export function LibraryPage() {
       <>
         <div style={{ display: searching && query.trim() !== '' ? 'none' : undefined }}>
           <Shelves
-            onGame={(id) => setPlace({ name: 'game', id })}
+            onGame={(id) => open({ name: 'game', id })}
             onPlatform={(platform) =>
-              setPlace({ name: 'platform', platform, filter: 'all', sort: 'name' })
+              open({ name: 'platform', platform, filter: 'all', sort: 'name' })
             }
           />
         </div>
         {searching && query.trim() !== '' && (
-          <SearchResults query={query} onGame={(id) => setPlace({ name: 'game', id })} />
+          <SearchResults query={query} onGame={(id) => open({ name: 'game', id })} />
         )}
       </>
     )
@@ -339,21 +360,13 @@ export function LibraryPage() {
               sort={place.sort}
               onFilter={(filter) => setPlace((p) => ({ ...p, filter }))}
               onSort={(sort) => setPlace((p) => ({ ...p, sort }))}
-              onGame={(game) => setPlace({ ...place, game: game.id })}
+              onGame={(game) => open({ ...place, game: game.id })}
             />
           </div>
-          {place.game !== undefined && (
-            <div style={column}>
-              <GameView id={place.game} onBack={back} />
-            </div>
-          )}
+          {place.game !== undefined && <GameHero id={place.game} />}
         </>
       )}
-      {place.name === 'game' && (
-        <div style={column}>
-          <GameView id={place.id} onBack={back} />
-        </div>
-      )}
+      {place.name === 'game' && <GameHero id={place.id} />}
     </Focusable>
   )
 }
