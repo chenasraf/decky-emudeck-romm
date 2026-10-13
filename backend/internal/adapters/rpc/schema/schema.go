@@ -437,6 +437,9 @@ type Game struct {
 	State     GameState `json:"state"`
 	// InstalledPaths are the files the plugin placed, set when installed.
 	InstalledPaths []string `json:"installedPaths,omitempty"`
+	// InstallNote says what's left before the game plays: it was placed in a format its emulator
+	// can't use as it is, because RomM couldn't convert it. Set when installed.
+	InstallNote string `json:"installNote,omitempty"`
 }
 
 // DownloadGameParams names the game to download. A failed download is retried, resuming what it
@@ -484,6 +487,8 @@ type DownloadItem struct {
 	TotalBytes    int64     `json:"totalBytes"`
 	// Problem says why the download failed.
 	Problem *Error `json:"problem,omitempty"`
+	// Converting is set while RomM converts the game to a format its emulator plays.
+	Converting bool `json:"converting,omitempty"`
 }
 
 // DownloadEvent is a change to a download. One that leaves the queue is installed, or on_romm when
@@ -497,6 +502,7 @@ type DownloadEvent struct {
 	ReceivedBytes int64     `json:"receivedBytes"`
 	TotalBytes    int64     `json:"totalBytes"`
 	Problem       *Error    `json:"problem,omitempty"`
+	Converting    bool      `json:"converting,omitempty"`
 }
 
 // DeleteGamesParams names the games to delete: IDs, or with PlatformID every game the plugin

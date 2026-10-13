@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
@@ -108,13 +110,18 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			return schema.Game{}, wireError(err)
 		}
 		var paths []string
+		var note string
 		if state == domain.StateInstalled {
 			owned, _, err := downloads.Owned(ctx, p.ID)
 			if err != nil {
 				return schema.Game{}, wireError(err)
 			}
+			system, _ := domain.SystemForSlug(platform.Slug)
 			for _, f := range owned.Files {
 				paths = append(paths, f.Path)
+				if note == "" {
+					note = system.InstallNote(filepath.Base(f.Path), runtime.GOARCH)
+				}
 			}
 		}
 		return schema.Game{
@@ -129,6 +136,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			MultiFile:      rom.MultiFile,
 			State:          schema.GameState(state),
 			InstalledPaths: paths,
+			InstallNote:    note,
 		}, nil
 	})
 }

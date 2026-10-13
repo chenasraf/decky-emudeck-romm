@@ -83,9 +83,19 @@ type System struct {
 	RomSubdir string
 	// Archives is what the plugin does with games that arrive as archives; empty means
 	// ArchivesOptional.
-	Archives  ArchivePolicy // MultiFile is how the plugin lays out a game of several files; empty when it can't.
+	Archives ArchivePolicy
+	// MultiFile is how the plugin lays out a game of several files; empty when it can't.
 	MultiFile LayoutKind
+	// Conversions are the stored formats its emulator can't use as placed.
+	Conversions []Conversion
 }
+
+var (
+	ciaToCCI  = Conversion{From: "cia", To: "cci", Note: "Needs installing in %s: a .cia file doesn't play as it is."}
+	nszToNSP  = Conversion{From: "nsz", To: "nsp", Note: "Needs installing in %s: ES-DE doesn't list .nsz files."}
+	xczToXCI  = Conversion{From: "xcz", To: "xci", Note: "Needs installing in %s: ES-DE doesn't list .xcz files."}
+	isoToXISO = Conversion{From: "iso", To: "xiso", Note: "May not boot in %s, which needs an XISO image. RomM couldn't convert this ISO."}
+)
 
 // DefaultEmulator is the ID of the emulator EmuDeck sets up for s on a CPU of arch, as Go names
 // it (runtime.GOARCH).
@@ -166,11 +176,11 @@ var Systems = []System{
 	{Folder: "n64", Slugs: []string{"n64"}, Emulator: ra},
 	{Folder: "n64dd", Slugs: []string{"64dd"}, Emulator: ra},
 	{Folder: "nds", Slugs: []string{"nds", "nintendo-dsi"}, Emulator: "melonds"},
-	{Folder: "n3ds", Slugs: []string{"3ds", "new-nintendo-3ds"}, Emulator: "azahar", Archives: ArchivesExtract},
+	{Folder: "n3ds", Slugs: []string{"3ds", "new-nintendo-3ds"}, Emulator: "azahar", Archives: ArchivesExtract, Conversions: []Conversion{ciaToCCI}},
 	{Folder: "gc", Slugs: []string{"ngc"}, Emulator: "dolphin", Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "wii", Slugs: []string{"wii"}, Emulator: "dolphin", Archives: ArchivesExtract},
 	{Folder: "wiiu", Slugs: []string{"wiiu"}, Emulator: "cemu", RomSubdir: "roms", Archives: ArchivesExtract, MultiFile: LayoutFolder},
-	{Folder: "switch", Slugs: []string{"switch"}, Emulator: "ryujinx", Archives: ArchivesExtract},
+	{Folder: "switch", Slugs: []string{"switch"}, Emulator: "ryujinx", Archives: ArchivesExtract, Conversions: []Conversion{nszToNSP, xczToXCI}},
 	{Folder: "genesis", Slugs: []string{"genesis"}, Emulator: ra},
 	{Folder: "mastersystem", Slugs: []string{"sms"}, Emulator: ra},
 	{Folder: "gamegear", Slugs: []string{"gamegear"}, Emulator: ra},
@@ -196,7 +206,7 @@ var Systems = []System{
 	{Folder: "ps4", Slugs: []string{"ps4"}, Emulator: "shadps4", Archives: ArchivesExtract},
 	{Folder: "psp", Slugs: []string{"psp"}, Emulator: "ppsspp", Archives: ArchivesExtract},
 	{Folder: "psvita", Slugs: []string{"psvita"}, Emulator: "vita3k", Archives: ArchivesExtract},
-	{Folder: "xbox", Slugs: []string{"xbox"}, Emulator: "xemu", Archives: ArchivesExtract},
+	{Folder: "xbox", Slugs: []string{"xbox"}, Emulator: "xemu", Archives: ArchivesExtract, Conversions: []Conversion{isoToXISO}},
 	{Folder: "xbox360", Slugs: []string{"xbox360"}, Emulator: "xenia", RomSubdir: "roms", Archives: ArchivesExtract},
 	{Folder: "wonderswan", Slugs: []string{"wonderswan"}, Emulator: ra},
 	{Folder: "wonderswancolor", Slugs: []string{"wonderswan-color"}, Emulator: ra},

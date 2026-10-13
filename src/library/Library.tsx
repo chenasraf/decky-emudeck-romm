@@ -83,10 +83,11 @@ function Problem({ error }: { error: RpcError | null }) {
   )
 }
 
-/** A download's short state: Queued, its progress, or Failed. */
+/** A download's short state: Queued, Converting, its progress, or Failed. */
 function downloadLabel(d: DownloadItem): string {
   if (d.state === 'queued') return 'Queued'
   if (d.state === 'failed') return 'Failed'
+  if (d.converting) return 'Converting'
   return `${percent(d)}%`
 }
 
@@ -603,15 +604,14 @@ function DownloadDetail({ d }: { d: DownloadItem }) {
       </PanelSectionRow>
     )
   }
+  let text = `${d.platformName} · ${formatSize(d.receivedBytes)} of ${formatSize(d.totalBytes)}`
+  if (d.state === 'queued') text = `${d.platformName} · waiting`
+  if (d.converting) text = `${d.platformName} · converting on RomM`
   return (
     <PanelSectionRow>
       <ProgressBarWithInfo
-        nProgress={d.state === 'queued' ? 0 : percent(d)}
-        sOperationText={
-          d.state === 'queued'
-            ? `${d.platformName} · waiting`
-            : `${d.platformName} · ${formatSize(d.receivedBytes)} of ${formatSize(d.totalBytes)}`
-        }
+        nProgress={d.state === 'queued' || d.converting ? 0 : percent(d)}
+        sOperationText={text}
       />
     </PanelSectionRow>
   )
@@ -701,12 +701,19 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
         <>
           <PanelSectionRow>
             <Field label="State">
-              {download?.state === 'downloading'
-                ? `Downloading ${percent(download)}%`
-                : (STATE_LABELS[state] ?? state)}
+              {download?.converting
+                ? 'Converting on RomM…'
+                : download?.state === 'downloading'
+                  ? `Downloading ${percent(download)}%`
+                  : (STATE_LABELS[state] ?? state)}
             </Field>
           </PanelSectionRow>
-          {download?.state === 'downloading' && (
+          {state === 'installed' && game.installNote && (
+            <PanelSectionRow>
+              <Field label="⚠ Not ready to play" description={game.installNote} />
+            </PanelSectionRow>
+          )}
+          {download?.state === 'downloading' && !download.converting && (
             <PanelSectionRow>
               <ProgressBarWithInfo
                 nProgress={percent(download)}

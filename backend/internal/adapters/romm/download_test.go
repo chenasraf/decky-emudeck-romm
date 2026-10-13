@@ -216,3 +216,76 @@ func TestDownloadCancelled(t *testing.T) {
 		t.Fatalf("want canceled, got %v", err)
 	}
 }
+
+func TestConvert(t *testing.T) {
+	cci := bytes.Repeat([]byte("cci!"), 500)
+	var asks int
+	mode := "converting"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/roms/7/content/Zelda.cia" || r.URL.Query().Get("file_ids") != "70" {
+			t.Errorf("asked %s", r.URL)
+		}
+		switch mode {
+		case "refused":
+			w.WriteHeader(http.StatusNotAcceptable)
+			return
+		case "old":
+			// A server without conversion ignores format and serves the file as stored.
+			w.Header().Set("Content-Disposition", `attachment; filename="Zelda.cia"`)
+			http.ServeContent(w, r, "Zelda.cia", time.Time{}, bytes.NewReader([]byte("stored cia")))
+			return
+		}
+		if r.URL.Query().Get("format") != "cci" {
+			t.Errorf("format %q", r.URL.Query().Get("format"))
+		}
+		asks++
+		if asks == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		w.Header().Set("Content-Disposition", `attachment; filename*=UTF-8''Zelda%20%28USA%29.cci`)
+		http.ServeContent(w, r, "x.cci", time.Time{}, bytes.NewReader(cci))
+	}))
+	defer srv.Close()
+	c := New(domain.Server{URL: srv.URL}, "rmm_x", ver)
+	ctx := context.Background()
+
+	// The first ask starts the conversion; the second, after Retry-After, finds it ready.
+	served, err := c.Convert(ctx, 7, 70, "Zelda.cia", "cci")
+	if err != nil || served.Name != "Zelda (USA).cci" || served.Size != int64(len(cci)) || asks != 2 {
+		t.Fatalf("served %+v after %d asks, %v", served, asks, err)
+	}
+	var out bytes.Buffer
+	var start int64 = -1
+	err = c.DownloadConverted(ctx, 7, 70, "Zelda.cia", "cci", 100, func(s int64) (io.Writer, error) {
+		start = s
+		return &out, nil
+	})
+	if err != nil || start != 100 || !bytes.Equal(out.Bytes(), cci[100:]) {
+		t.Fatalf("resumed from %d, %d bytes, %v", start, out.Len(), err)
+	}
+
+	mode = "refused"
+	if _, err := c.Convert(ctx, 7, 70, "Zelda.cia", "cci"); !errors.Is(err, domain.ErrNoConversion) {
+		t.Fatalf("refused: %v", err)
+	}
+	mode = "old"
+	if served, err := c.Convert(ctx, 7, 70, "Zelda.cia", "cci"); err != nil || served.Name != "Zelda.cia" || served.Size != 10 {
+		t.Fatalf("old server: %+v, %v", served, err)
+	}
+}
+
+func TestDispositionName(t *testing.T) {
+	for header, want := range map[string]string{
+		`attachment; filename="Game.cci"`:            "Game.cci",
+		`attachment; filename*=UTF-8''G%C3%A4me.cci`: "Gäme.cci",
+		`attachment; filename="../../etc/passwd"`:    "passwd",
+		`attachment; filename="..\..\x.cci"`:         "x.cci",
+		``:                                           "fallback.cia",
+	} {
+		if got := dispositionName(header, "fallback.cia"); got != want {
+			t.Errorf("%q: got %q, want %q", header, got, want)
+		}
+	}
+}

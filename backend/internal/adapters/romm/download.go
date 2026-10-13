@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -83,11 +84,95 @@ func pathInGame(fsPath, fsName, filePath, fileName, fullPath string) string {
 // server answers, it calls open with the offset its bytes start at: from when the server resumes,
 // or zero when it sends the whole file. It writes the bytes to the writer open returns.
 func (c *Client) DownloadFile(ctx context.Context, id int, name string, from int64, open func(start int64) (io.Writer, error)) error {
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
 	// The path's last segment only names the download; RomM serves the file by id. Escaping it
 	// fully keeps names with #, ? or % from cutting the URL short.
-	path := fmt.Sprintf("/api/roms/%d/files/content/%s", id, url.PathEscape(name))
+	return c.fetchContent(ctx, fmt.Sprintf("/api/roms/%d/files/content/%s", id, url.PathEscape(name)), from, open)
+}
+
+// convertedPath is the URL of a ROM's file served in format: the ROM-level content endpoint, the
+// one RomM converts on, narrowed to the one file.
+func convertedPath(romID, fileID int, name, format string) string {
+	q := url.Values{"file_ids": {strconv.Itoa(fileID)}, "format": {format}}
+	return fmt.Sprintf("/api/roms/%d/content/%s?%s", romID, url.PathEscape(name), q.Encode())
+}
+
+// convertPoll caps how long Convert waits between asks while the server converts, whatever its
+// Retry-After says.
+const convertPoll = 30 * time.Second
+
+// Convert asks the server for a ROM's file in format and returns the file it will serve, waiting
+// while it converts. A server that predates conversion serves the file as stored, so the name it
+// returns may keep the stored format. It fails with domain.ErrNoConversion when the server won't
+// convert the file.
+func (c *Client) Convert(ctx context.Context, romID, fileID int, name, format string) (domain.ServedFile, error) {
+	for {
+		served, wait, err := c.askConverted(ctx, romID, fileID, name, format)
+		if err != nil || wait == 0 {
+			return served, err
+		}
+		select {
+		case <-ctx.Done():
+			return served, ctx.Err()
+		case <-time.After(min(wait, convertPoll)):
+		}
+	}
+}
+
+// askConverted asks for the first byte of the converted file, which starts a conversion that
+// isn't cached and tells the file's name and size without downloading it. wait is how long to
+// wait before asking again while it converts.
+func (c *Client) askConverted(ctx context.Context, romID, fileID int, name, format string) (domain.ServedFile, time.Duration, error) {
+	path := convertedPath(romID, fileID, name, format)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return domain.ServedFile{}, 0, err
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Range", "bytes=0-0")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return domain.ServedFile{}, 0, unreachable(err)
+	}
+	// Only the headers matter; a server that ignores Range would send the whole file.
+	_ = resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusAccepted:
+		wait := 5 * time.Second
+		if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && secs > 0 {
+			wait = time.Duration(secs) * time.Second
+		}
+		c.log.Debug("converting", "rom_id", romID, "format", format, "retry_after", wait)
+		return domain.ServedFile{}, wait, nil
+	case resp.StatusCode == http.StatusNotAcceptable:
+		return domain.ServedFile{}, 0, domain.ErrNoConversion
+	case resp.StatusCode == http.StatusNotFound:
+		return domain.ServedFile{}, 0, &domain.Error{Kind: domain.KindNotFound, Message: "That game is no longer on RomM. Refresh the library."}
+	case resp.StatusCode >= http.StatusInternalServerError:
+		return domain.ServedFile{}, 0, unreachable(fmt.Errorf("server answered %d", resp.StatusCode))
+	case resp.StatusCode != http.StatusPartialContent:
+		if err := statusError("download the game", resp.StatusCode, nil); err != nil {
+			return domain.ServedFile{}, 0, err
+		}
+	}
+	served := domain.ServedFile{Name: dispositionName(resp.Header.Get("Content-Disposition"), name), Size: resp.ContentLength}
+	if resp.StatusCode == http.StatusPartialContent {
+		served.Size = contentRangeSize(resp.Header.Get("Content-Range"))
+	}
+	return served, 0, nil
+}
+
+// DownloadConverted fetches a ROM's file in format, as Convert found it ready, from byte offset
+// from onward; see DownloadFile. A server that dropped the converted copy since is converting it
+// again, which counts as a dropped download so the caller retries.
+func (c *Client) DownloadConverted(ctx context.Context, romID, fileID int, name, format string, from int64, open func(start int64) (io.Writer, error)) error {
+	return c.fetchContent(ctx, convertedPath(romID, fileID, name, format), from, open)
+}
+
+func (c *Client) fetchContent(ctx context.Context, path string, from int64, open func(start int64) (io.Writer, error)) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
 	if err != nil {
 		return err
@@ -118,7 +203,9 @@ func (c *Client) DownloadFile(ctx context.Context, id int, name string, from int
 	case resp.StatusCode == http.StatusRequestedRangeNotSatisfiable && from > 0:
 		// The file on the server is shorter than what was kept, so the kept bytes aren't of it.
 		_ = resp.Body.Close()
-		return c.DownloadFile(ctx, id, name, 0, open)
+		return c.fetchContent(ctx, path, 0, open)
+	case resp.StatusCode == http.StatusAccepted:
+		return unreachable(errors.New("the server is converting the file again"))
 	case resp.StatusCode >= http.StatusInternalServerError:
 		// A proxy in front of a restarting server answers 502 to 504; the download is worth retrying.
 		return unreachable(fmt.Errorf("server answered %d", resp.StatusCode))
@@ -146,6 +233,33 @@ func (c *Client) DownloadFile(ctx context.Context, id int, name string, from int
 		return unreachable(fmt.Errorf("got %d of %d bytes", n, resp.ContentLength))
 	}
 	return nil
+}
+
+// dispositionName is the file name a Content-Disposition gives, or fallback when it gives none.
+// Only the last path element counts: the name is used for a file on disk.
+func dispositionName(header, fallback string) string {
+	_, params, err := mime.ParseMediaType(header)
+	if err != nil || params["filename"] == "" {
+		return fallback
+	}
+	name := path.Base(strings.ReplaceAll(params["filename"], `\`, "/"))
+	if name == "." || name == "/" || name == ".." {
+		return fallback
+	}
+	return name
+}
+
+// contentRangeSize is the total size a "bytes first-last/size" Content-Range gives, or -1.
+func contentRangeSize(header string) int64 {
+	_, total, ok := strings.Cut(header, "/")
+	if !ok {
+		return -1
+	}
+	n, err := strconv.ParseInt(total, 10, 64)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 // contentRangeStart returns the first byte offset of a "bytes first-last/size" Content-Range, or

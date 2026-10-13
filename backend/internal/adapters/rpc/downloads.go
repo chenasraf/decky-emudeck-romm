@@ -97,6 +97,7 @@ func toWireDownload(d app.Download) schema.DownloadItem {
 		State:         schema.GameState(d.State),
 		ReceivedBytes: d.Received,
 		TotalBytes:    d.Total,
+		Converting:    d.Converting,
 	}
 	if d.Problem != nil {
 		item.Problem = problemOf(d.Problem)

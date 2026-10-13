@@ -132,7 +132,12 @@ type fakeContent struct {
 	// started receives a file id each time its download begins, and froms the offset it asked for.
 	started chan int
 	froms   []int64
-	err     error
+	// converts are the conversions the server makes, by file id; formats and convertedFroms record
+	// what it was asked.
+	converts       map[int]conversion
+	formats        []string
+	convertedFroms []int64
+	err            error
 }
 
 func (c *fakeContent) ROMFiles(_ context.Context, id int) ([]domain.ROMFile, error) {
@@ -188,6 +193,43 @@ func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, from i
 	return err
 }
 
+// conversion is what the fake server does when asked to convert a file: serve data as name, or
+// refuse.
+type conversion struct {
+	name   string
+	data   []byte
+	refuse bool
+}
+
+// Convert answers from c.converts; a file with none is served as stored, the way a server that
+// predates conversion answers.
+func (c *fakeContent) Convert(_ context.Context, _, fileID int, name, format string) (domain.ServedFile, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.formats = append(c.formats, format)
+	conv, ok := c.converts[fileID]
+	switch {
+	case !ok:
+		return domain.ServedFile{Name: name, Size: int64(len(c.content[fileID]))}, nil
+	case conv.refuse:
+		return domain.ServedFile{}, domain.ErrNoConversion
+	}
+	return domain.ServedFile{Name: conv.name, Size: int64(len(conv.data))}, nil
+}
+
+func (c *fakeContent) DownloadConverted(_ context.Context, _, fileID int, _, _ string, from int64, open func(int64) (io.Writer, error)) error {
+	c.mu.Lock()
+	data := c.converts[fileID].data
+	c.convertedFroms = append(c.convertedFroms, from)
+	c.mu.Unlock()
+	w, err := open(from)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data[min(from, int64(len(data))):])
+	return err
+}
+
 type downloadFixture struct {
 	downloads *Downloads
 	owned     *memOwnership
@@ -222,11 +264,12 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 					{ID: 11, Name: "Manual.pdf", SizeBytes: 5, Category: "manual"}},
 				2: {{ID: 20, Name: "Super Metroid (USA).sfc", SizeBytes: int64(len(metroid)), Category: "game", MD5: "server-md5"}},
 			},
-			content: map[int][]byte{10: chrono, 20: metroid},
-			gates:   map[int]chan struct{}{},
-			drops:   map[int]int{},
-			full:    map[int]bool{},
-			started: make(chan int, 64),
+			content:  map[int][]byte{10: chrono, 20: metroid},
+			gates:    map[int]chan struct{}{},
+			drops:    map[int]int{},
+			full:     map[int]bool{},
+			converts: map[int]conversion{},
+			started:  make(chan int, 64),
 		},
 		settings: &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
 		updates:  make(chan Download, 256),
@@ -239,7 +282,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	if err := catalog.Apply(context.Background(), domain.CatalogSync{
 		Platforms: []domain.Platform{{ID: 1, Slug: "snes", Name: "Super Nintendo"}, {ID: 2, Slug: "unknown-console", Name: "Mystery"},
 			{ID: 3, Slug: "psx", Name: "PlayStation"}, {ID: 4, Slug: "arcade", Name: "Arcade"},
-			{ID: 5, Slug: "dc", Name: "Dreamcast"}, {ID: 6, Slug: "dos", Name: "DOS"}, {ID: 7, Slug: "ps3", Name: "PlayStation 3"}},
+			{ID: 5, Slug: "dc", Name: "Dreamcast"}, {ID: 6, Slug: "dos", Name: "DOS"}, {ID: 7, Slug: "ps3", Name: "PlayStation 3"},
+			{ID: 8, Slug: "3ds", Name: "Nintendo 3DS"}},
 		ROMs: []domain.ROM{
 			{ID: 1, PlatformID: 1, Name: "Chrono Trigger", SizeBytes: int64(len(chrono))},
 			{ID: 2, PlatformID: 1, Name: "Super Metroid", SizeBytes: int64(len(metroid))},
@@ -252,6 +296,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			{ID: 9, PlatformID: 5, Name: "Shenmue", FileName: "Shenmue (USA)", MultiFile: true},
 			{ID: 10, PlatformID: 6, Name: "Doom", FileName: "Doom", MultiFile: true},
 			{ID: 11, PlatformID: 7, Name: "Demon's Souls", FileName: "Demon's Souls", MultiFile: true},
+			{ID: 12, PlatformID: 8, Name: "Zelda", FileName: "Zelda.cia"},
 		},
 		Full: true,
 	}); err != nil {
@@ -264,7 +309,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")},
 			{Folder: "dreamcast", ROMPath: filepath.Join(root, "roms", "dreamcast")},
 			{Folder: "dos", ROMPath: filepath.Join(root, "roms", "dos")},
-			{Folder: "ps3", ROMPath: filepath.Join(root, "roms", "ps3")}},
+			{Folder: "ps3", ROMPath: filepath.Join(root, "roms", "ps3")},
+			{Folder: "n3ds", ROMPath: filepath.Join(root, "roms", "n3ds")}},
 	}}, log)
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) DownloadServer { return f.server }

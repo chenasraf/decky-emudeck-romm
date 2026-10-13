@@ -524,6 +524,11 @@ export interface Game {
    * InstalledPaths are the files the plugin placed, set when installed.
    */
   installedPaths?: string[];
+  /**
+   * InstallNote says what's left before the game plays: it was placed in a format its emulator
+   * can't use as it is, because RomM couldn't convert it. Set when installed.
+   */
+  installNote?: string;
 }
 /**
  * DownloadGameParams names the game to download. A failed download is retried, resuming what it
@@ -583,6 +588,10 @@ export interface DownloadItem {
    * Problem says why the download failed.
    */
   problem?: Error;
+  /**
+   * Converting is set while RomM converts the game to a format its emulator plays.
+   */
+  converting?: boolean;
 }
 /**
  * DownloadEvent is a change to a download. One that leaves the queue is installed, or on_romm when
@@ -597,6 +606,7 @@ export interface DownloadEvent {
   receivedBytes: number /* int64 */;
   totalBytes: number /* int64 */;
   problem?: Error;
+  converting?: boolean;
 }
 /**
  * DeleteGamesParams names the games to delete: IDs, or with PlatformID every game the plugin
