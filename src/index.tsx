@@ -20,7 +20,7 @@ import {
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
-import { GamesView, GameView, LibrarySection, PlatformsView } from './library/Library'
+import { GamesView, GameView, LibrarySection, PlatformsView, SearchView } from './library/Library'
 import type { GameFilter, PlatformSummary } from './rpc/schema.gen'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
@@ -211,9 +211,29 @@ type View =
   | { name: 'home' }
   | { name: 'platforms' }
   | { name: 'games'; platform: PlatformSummary; filter: GameFilter; game?: number }
+  | { name: 'search'; query: string; game?: number }
 
 function Content() {
   const [view, setView] = useState<View>({ name: 'home' })
+
+  if (view.name === 'search') {
+    return (
+      <>
+        {/* Kept mounted while a game is open, so Back returns to the same results. */}
+        <div style={{ display: view.game === undefined ? undefined : 'none' }}>
+          <SearchView
+            query={view.query}
+            onQuery={(query) => setView({ ...view, query })}
+            onBack={() => setView({ name: 'home' })}
+            onOpen={(game) => setView({ ...view, game: game.id })}
+          />
+        </div>
+        {view.game !== undefined && (
+          <GameView id={view.game} onBack={() => setView({ ...view, game: undefined })} />
+        )}
+      </>
+    )
+  }
 
   if (view.name === 'platforms') {
     return (
@@ -245,7 +265,10 @@ function Content() {
   return (
     <>
       <ServerSection />
-      <LibrarySection onBrowse={() => setView({ name: 'platforms' })} />
+      <LibrarySection
+        onBrowse={() => setView({ name: 'platforms' })}
+        onSearch={() => setView({ name: 'search', query: '' })}
+      />
       <InstallSection />
       <BackendSection />
     </>

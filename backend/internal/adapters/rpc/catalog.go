@@ -12,6 +12,8 @@ import (
 const (
 	defaultGamesPage = 50
 	maxGamesPage     = 200
+	defaultSearch    = 50
+	maxSearch        = 100
 )
 
 func catalogRoutes(s *Server, catalog *app.Catalog) {
@@ -69,6 +71,30 @@ func catalogRoutes(s *Server, catalog *app.Catalog) {
 				SizeBytes: r.SizeBytes,
 				Regions:   nonNil(r.Regions),
 				State:     schema.GameOnRomM,
+			})
+		}
+		return out, nil
+	})
+
+	Register(s, "search_games", func(ctx context.Context, p schema.SearchGamesParams) (schema.SearchGamesResult, error) {
+		limit := p.Limit
+		if limit <= 0 {
+			limit = defaultSearch
+		}
+		result, err := catalog.Search(ctx, p.Query, min(limit, maxSearch))
+		if err != nil {
+			return schema.SearchGamesResult{}, wireError(err)
+		}
+		out := schema.SearchGamesResult{Games: []schema.SearchHit{}, Local: result.Local}
+		for _, r := range result.ROMs {
+			out.Games = append(out.Games, schema.SearchHit{
+				ID:           r.ID,
+				Name:         r.Name,
+				PlatformID:   r.PlatformID,
+				PlatformName: result.PlatformNames[r.PlatformID],
+				SizeBytes:    r.SizeBytes,
+				Regions:      nonNil(r.Regions),
+				State:        schema.GameOnRomM,
 			})
 		}
 		return out, nil

@@ -67,6 +67,7 @@ type Methods struct {
 	ListPlatforms       Method[ListPlatformsParams, ListPlatformsResult]             `json:"list_platforms"`
 	ListGames           Method[ListGamesParams, ListGamesResult]                     `json:"list_games"`
 	GetGame             Method[GetGameParams, Game]                                  `json:"get_game"`
+	SearchGames         Method[SearchGamesParams, SearchGamesResult]                 `json:"search_games"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -323,6 +324,30 @@ type GameSummary struct {
 	SizeBytes int64     `json:"sizeBytes"`
 	Regions   []string  `json:"regions"`
 	State     GameState `json:"state"`
+}
+
+type SearchGamesParams struct {
+	// Query is a title, a few words of one, or a ROM's CRC32, MD5 or SHA-1 hash.
+	Query string `json:"query"`
+	// Limit is capped at 100; zero means 50.
+	Limit int `json:"limit,omitempty"`
+}
+
+type SearchGamesResult struct {
+	Games []SearchHit `json:"games"`
+	// Local is set when the library's local copy answered because the server couldn't: games
+	// match by name only, not by hash.
+	Local bool `json:"local"`
+}
+
+type SearchHit struct {
+	ID           int       `json:"id"`
+	Name         string    `json:"name"`
+	PlatformID   int       `json:"platformId"`
+	PlatformName string    `json:"platformName"`
+	SizeBytes    int64     `json:"sizeBytes"`
+	Regions      []string  `json:"regions"`
+	State        GameState `json:"state"`
 }
 
 type GetGameParams struct {

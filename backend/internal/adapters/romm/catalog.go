@@ -90,6 +90,32 @@ func (c *Client) ROMs(ctx context.Context, since time.Time, offset, limit int) (
 	return out, nil
 }
 
+// SearchROMs returns the ids of up to limit ROMs matching term, most relevant first. RomM matches
+// term against names and file names, and against CRC32, MD5 and SHA-1 hashes.
+func (c *Client) SearchROMs(ctx context.Context, term string, limit int) ([]int, error) {
+	q := url.Values{
+		"search_term":       {term},
+		"limit":             {strconv.Itoa(limit)},
+		"with_rom_id_index": {"false"},
+	}
+	var body struct {
+		Items []struct {
+			ID int `json:"id"`
+		} `json:"items"`
+	}
+	// Each item carries its full metadata, so a page of results outgrows maxBody; without
+	// order_by RomM orders them by relevance.
+	status, err := c.exchange(ctx, c.http, bulkMaxBody, http.MethodGet, "/api/roms?"+romQuery+"&"+q.Encode(), nil, &body)
+	if err := statusError("search ROMs", status, err); err != nil {
+		return nil, err
+	}
+	ids := make([]int, 0, len(body.Items))
+	for _, r := range body.Items {
+		ids = append(ids, r.ID)
+	}
+	return ids, nil
+}
+
 // ROMIDs returns the id of every ROM on the server, which a delta sync compares against to find
 // deleted ones.
 func (c *Client) ROMIDs(ctx context.Context) ([]int, error) {

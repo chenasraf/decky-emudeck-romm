@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +19,9 @@ const (
 	// catalogPageSize is how many ROMs each request asks for: about 7 MB of JSON, a few seconds
 	// on a home server.
 	catalogPageSize = 500
+	// searchTimeout bounds asking the Server, so an unreachable one falls back to the Catalog
+	// while the user still waits on the results.
+	searchTimeout = 5 * time.Second
 )
 
 // retryDelays is how long the Catalog waits before retrying a refresh that couldn't reach the
@@ -28,6 +33,8 @@ type CatalogServer interface {
 	Platforms(ctx context.Context) ([]domain.Platform, error)
 	ROMs(ctx context.Context, since time.Time, offset, limit int) ([]domain.ROM, error)
 	ROMIDs(ctx context.Context) ([]int, error)
+	// SearchROMs returns the ids of the ROMs matching term by name or hash, most relevant first.
+	SearchROMs(ctx context.Context, term string, limit int) ([]int, error)
 }
 
 // CatalogDialer returns a CatalogServer for server, authenticated with token.
@@ -41,6 +48,10 @@ type CatalogStore interface {
 	Platform(ctx context.Context, id int) (domain.Platform, bool, error)
 	ROMs(ctx context.Context, platformID, offset, limit int) (domain.ROMPage, error)
 	ROM(ctx context.Context, id int) (domain.ROM, bool, error)
+	// Search matches term's words against names, across every platform.
+	Search(ctx context.Context, term string, limit int) ([]domain.ROM, error)
+	// ROMsByID returns the ROMs with ids in their order, skipping any the Catalog doesn't hold.
+	ROMsByID(ctx context.Context, ids []int) ([]domain.ROM, error)
 	Counts(ctx context.Context) (platforms, roms int, err error)
 }
 
@@ -247,6 +258,62 @@ func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFi
 		page, err := c.store.ROMs(ctx, platformID, offset, limit)
 		return platform, page, err
 	}
+}
+
+// Search finds up to limit games across every platform. The Server answers when it can, ranking by
+// relevance and matching hashes too; otherwise the Catalog matches by name. Either way only games
+// the Catalog holds come back, since every other surface reads them from it.
+func (c *Catalog) Search(ctx context.Context, term string, limit int) (domain.SearchResult, error) {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return domain.SearchResult{}, nil
+	}
+	result, err := c.searchServer(ctx, term, limit)
+	if err != nil {
+		if ctx.Err() != nil {
+			return domain.SearchResult{}, ctx.Err()
+		}
+		if kindOf(err) != domain.KindUnreachable && !errors.Is(err, errNoSearchServer) {
+			c.log.Warn("server search failed", "err", err)
+		}
+		roms, err := c.store.Search(ctx, term, limit)
+		if err != nil {
+			return domain.SearchResult{}, err
+		}
+		result = domain.SearchResult{ROMs: roms, Local: true}
+	}
+	result.PlatformNames = map[int]string{}
+	for _, r := range result.ROMs {
+		if _, ok := result.PlatformNames[r.PlatformID]; ok {
+			continue
+		}
+		platform, _, err := c.store.Platform(ctx, r.PlatformID)
+		if err != nil {
+			return domain.SearchResult{}, err
+		}
+		result.PlatformNames[r.PlatformID] = platform.Name
+	}
+	return result, nil
+}
+
+var errNoSearchServer = errors.New("no server to search")
+
+func (c *Catalog) searchServer(ctx context.Context, term string, limit int) (domain.SearchResult, error) {
+	in, err := c.conn.activeSignIn()
+	if err != nil {
+		return domain.SearchResult{}, err
+	}
+	if in == nil {
+		return domain.SearchResult{}, errNoSearchServer
+	}
+	serverCtx, cancel := context.WithTimeout(ctx, searchTimeout)
+	defer cancel()
+	ids, err := c.dial(in.Server, in.Token).SearchROMs(serverCtx, term, limit)
+	if err != nil {
+		return domain.SearchResult{}, c.conn.observe(*in, err)
+	}
+	roms, err := c.store.ROMsByID(ctx, ids)
+	return domain.SearchResult{ROMs: roms}, err
 }
 
 // Game returns a game and its platform.

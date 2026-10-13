@@ -5,6 +5,7 @@ import {
   Focusable,
   PanelSection,
   PanelSectionRow,
+  TextField,
 } from '@decky/ui'
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useState } from 'react'
 
@@ -17,6 +18,8 @@ import type {
   GameSummary,
   PlatformSummary,
   Error as RpcError,
+  SearchGamesResult,
+  SearchHit,
 } from '../rpc/schema.gen'
 import { asRpcError } from '../setup/common'
 
@@ -78,7 +81,13 @@ function OfflineBanner() {
 }
 
 /** The library's line on the QAM home: what it holds, and the way into browsing it. */
-export function LibrarySection({ onBrowse }: { onBrowse: () => void }) {
+export function LibrarySection({
+  onBrowse,
+  onSearch,
+}: {
+  onBrowse: () => void
+  onSearch: () => void
+}) {
   const catalog = useCatalog()
   const connection = useConnection()
   if (!catalog || !connection || connection.state === 'not_set_up') return null
@@ -104,7 +113,12 @@ export function LibrarySection({ onBrowse }: { onBrowse: () => void }) {
           {catalog.platforms} platforms
         </Field>
       </PanelSectionRow>
-      {catalog.games > 0 && <Row label="Browse library" onClick={onBrowse} />}
+      {catalog.games > 0 && (
+        <>
+          <Row label="Search" onClick={onSearch} />
+          <Row label="Browse library" onClick={onBrowse} />
+        </>
+      )}
       <PanelSectionRow>
         <ButtonItem
           layout="below"
@@ -274,6 +288,91 @@ export function GamesView({
           </ButtonItem>
         </PanelSectionRow>
       )}
+    </PanelSection>
+  )
+}
+
+/** How long typing must pause before a search runs, so each keystroke doesn't ask the server. */
+const SEARCH_DELAY_MS = 350
+
+export function SearchView({
+  query,
+  onQuery,
+  onBack,
+  onOpen,
+}: {
+  query: string
+  onQuery: (query: string) => void
+  onBack: () => void
+  onOpen: (game: SearchHit) => void
+}) {
+  const catalog = useCatalog()
+  // The latest answer, and the query it answers: while it isn't for the current query, a search
+  // is pending.
+  const [answer, setAnswer] = useState<{
+    query: string
+    result?: SearchGamesResult
+    error?: RpcError
+  } | null>(null)
+
+  // Searches again when a refresh ends, so new games show up in the results.
+  const syncedAt = catalog?.syncedAt
+  useEffect(() => {
+    if (query.trim() === '') return
+    // A slower answer to an earlier query must not replace this one's.
+    let current = true
+    const timer = setTimeout(() => {
+      call('search_games', { query }).then(
+        (result) => {
+          if (current) setAnswer({ query, result })
+        },
+        (err: unknown) => {
+          if (current) setAnswer({ query, error: asRpcError(err) })
+        },
+      )
+    }, SEARCH_DELAY_MS)
+    return () => {
+      current = false
+      clearTimeout(timer)
+    }
+  }, [query, syncedAt])
+
+  const blank = query.trim() === ''
+  const searching = !blank && answer?.query !== query
+  const result = blank ? null : answer?.result
+  const error = blank || searching ? null : (answer?.error ?? null)
+
+  let summary: string | null = null
+  if (searching) summary = 'Searching…'
+  else if (result) summary = result.games.length === 1 ? '1 game' : `${result.games.length} games`
+
+  return (
+    <PanelSection title="Search">
+      <Back onBack={onBack} />
+      <OfflineBanner />
+      <PanelSectionRow>
+        <TextField
+          label="Title or ROM hash"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+        />
+      </PanelSectionRow>
+      <Problem error={error} />
+      {summary && (
+        <PanelSectionRow>
+          <Field
+            label={summary}
+            description={
+              !searching && result?.local
+                ? "RomM didn't answer, so these are name matches from the cached library."
+                : undefined
+            }
+          />
+        </PanelSectionRow>
+      )}
+      {result?.games.map((g) => (
+        <Row key={g.id} label={g.name} value={g.platformName} onClick={() => onOpen(g)} />
+      ))}
     </PanelSection>
   )
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -86,6 +87,62 @@ func TestFullThenDeltaSync(t *testing.T) {
 	}
 	if c, a, _ := s.SyncState(ctx); !c.Equal(time.Unix(1004, 0)) || !a.Equal(at.Add(time.Minute)) {
 		t.Fatalf("sync state %v %v", c, a)
+	}
+}
+
+func TestSearch(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
+	odd := rom(5, 2, "100% Pure_Fun")
+	odd.FileName = "pure.nes"
+	if err := s.Apply(ctx, domain.CatalogSync{
+		Platforms: platforms,
+		ROMs: []domain.ROM{
+			rom(1, 1, "Golden Sun: The Lost Age"), rom(2, 1, "Metroid Fusion"), rom(3, 1, "Golden Sun"),
+			rom(4, 2, "Sunset Riders"), odd,
+		},
+		Full: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	names := func(term string, limit int) []string {
+		t.Helper()
+		roms, err := s.Search(ctx, term, limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range roms {
+			out = append(out, r.Name)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		term  string
+		limit int
+		want  []string
+	}{
+		// Across platforms; names that start with the term first.
+		{"sun", 10, []string{"Sunset Riders", "Golden Sun", "Golden Sun: The Lost Age"}},
+		{"golden SUN", 10, []string{"Golden Sun", "Golden Sun: The Lost Age"}},
+		// Every word must match, in any order.
+		{"lost golden", 10, []string{"Golden Sun: The Lost Age"}},
+		{"fusion.gba", 10, []string{"Metroid Fusion"}},
+		{"sun", 1, []string{"Sunset Riders"}},
+		// LIKE's wildcards are plain text.
+		{"100%", 10, []string{"100% Pure_Fun"}},
+		{"100_", 10, nil},
+		{"   ", 10, nil},
+	} {
+		if got := names(tc.term, tc.limit); !slices.Equal(got, tc.want) {
+			t.Errorf("search %q: got %q, want %q", tc.term, got, tc.want)
+		}
+	}
+
+	got, err := s.ROMsByID(ctx, []int{3, 99, 1})
+	if err != nil || len(got) != 2 || got[0].ID != 3 || got[1].ID != 1 {
+		t.Fatalf("by id: %+v, %v", got, err)
 	}
 }
 

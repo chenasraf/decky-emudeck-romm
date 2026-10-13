@@ -72,3 +72,13 @@ type ROMPage struct {
 	// Total is how many games match, across every page.
 	Total int
 }
+
+// SearchResult is what a search across every platform found.
+type SearchResult struct {
+	ROMs []ROM
+	// PlatformNames names the platform of each ROM, by platform id.
+	PlatformNames map[int]string
+	// Local is set when the Catalog answered because the Server couldn't: matches are by name
+	// only, not by hash.
+	Local bool
+}

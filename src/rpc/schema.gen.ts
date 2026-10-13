@@ -75,6 +75,7 @@ export interface Methods {
   list_platforms: Method<ListPlatformsParams, ListPlatformsResult>;
   list_games: Method<ListGamesParams, ListGamesResult>;
   get_game: Method<GetGameParams, Game>;
+  search_games: Method<SearchGamesParams, SearchGamesResult>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -361,6 +362,33 @@ export const GameOnRomM: GameState = "on_romm";
 export interface GameSummary {
   id: number /* int */;
   name: string;
+  sizeBytes: number /* int64 */;
+  regions: string[];
+  state: GameState;
+}
+export interface SearchGamesParams {
+  /**
+   * Query is a title, a few words of one, or a ROM's CRC32, MD5 or SHA-1 hash.
+   */
+  query: string;
+  /**
+   * Limit is capped at 100; zero means 50.
+   */
+  limit?: number /* int */;
+}
+export interface SearchGamesResult {
+  games: SearchHit[];
+  /**
+   * Local is set when the library's local copy answered because the server couldn't: games
+   * match by name only, not by hash.
+   */
+  local: boolean;
+}
+export interface SearchHit {
+  id: number /* int */;
+  name: string;
+  platformId: number /* int */;
+  platformName: string;
   sizeBytes: number /* int64 */;
   regions: string[];
   state: GameState;

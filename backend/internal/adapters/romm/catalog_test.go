@@ -79,6 +79,31 @@ func TestROMIDs(t *testing.T) {
 	}
 }
 
+func TestSearchROMs(t *testing.T) {
+	var query map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": 9}, {"id": 4}}, "total": 2})
+	}))
+	defer srv.Close()
+
+	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).SearchROMs(context.Background(), "golden sun", 50)
+	if err != nil || !slices.Equal(got, []int{9, 4}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	for key, want := range map[string]string{
+		"search_term": "golden sun", "limit": "50", "with_char_index": "false", "with_rom_id_index": "false",
+	} {
+		if !slices.Equal(query[key], []string{want}) {
+			t.Errorf("%s = %v, want %s", key, query[key], want)
+		}
+	}
+	// RomM orders by relevance only without an order_by.
+	if _, ok := query["order_by"]; ok {
+		t.Errorf("order_by = %v", query["order_by"])
+	}
+}
+
 func TestCatalogSignedOut(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

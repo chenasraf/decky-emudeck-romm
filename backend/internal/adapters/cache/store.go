@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -297,6 +298,76 @@ func (s *Store) ROMs(ctx context.Context, platformID, offset, limit int) (domain
 		page.ROMs = append(page.ROMs, r)
 	}
 	return page, rows.Err()
+}
+
+// Search returns up to limit ROMs, from every platform, whose name or file name contains each
+// word of term. Names that start with term come first, then the rest by name.
+func (s *Store) Search(ctx context.Context, term string, limit int) ([]domain.ROM, error) {
+	words := strings.Fields(term)
+	if len(words) == 0 {
+		return nil, nil
+	}
+	var where []string
+	args := []any{}
+	for _, w := range words {
+		where = append(where, `(name LIKE ? ESCAPE '\' OR file_name LIKE ? ESCAPE '\')`)
+		pattern := "%" + likeEscaper.Replace(w) + "%"
+		args = append(args, pattern, pattern)
+	}
+	args = append(args, likeEscaper.Replace(strings.Join(words, " "))+"%", limit)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms WHERE "+strings.Join(where, " AND ")+
+		` ORDER BY name LIKE ? ESCAPE '\' DESC, name COLLATE NOCASE, id LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	return scanROMs(rows)
+}
+
+// likeEscaper escapes LIKE's wildcards, so a search for "100%" matches the text "100%".
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// ROMsByID returns the ROMs with ids, in the order of ids, skipping any the Catalog doesn't hold.
+func (s *Store) ROMsByID(ctx context.Context, ids []int) ([]domain.ROM, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms WHERE id IN ("+placeholders+")", args...)
+	if err != nil {
+		return nil, err
+	}
+	found, err := scanROMs(rows)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int]domain.ROM, len(found))
+	for _, r := range found {
+		byID[r.ID] = r
+	}
+	out := make([]domain.ROM, 0, len(found))
+	for _, id := range ids {
+		if r, ok := byID[id]; ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func scanROMs(rows *sql.Rows) ([]domain.ROM, error) {
+	defer func() { _ = rows.Close() }()
+	var out []domain.ROM
+	for rows.Next() {
+		r, err := scanROM(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // ROM returns the ROM with id.
