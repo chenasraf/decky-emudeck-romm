@@ -121,6 +121,39 @@ export function ToggleField({
   )
 }
 
+export function DropdownItem({
+  label,
+  description,
+  rgOptions,
+  selectedOption,
+  disabled,
+  onChange,
+}: {
+  label?: ReactNode
+  description?: ReactNode
+  rgOptions: { data: unknown; label: ReactNode }[]
+  selectedOption: unknown
+  disabled?: boolean
+  onChange?: (option: { data: unknown; label: ReactNode }) => void
+}) {
+  const index = rgOptions.findIndex((o) => o.data === selectedOption)
+  return (
+    <Field label={label} description={description}>
+      <select
+        value={index}
+        disabled={disabled}
+        onChange={(e) => onChange?.(rgOptions[Number(e.target.value)])}
+      >
+        {rgOptions.map((o, i) => (
+          <option key={i} value={i}>
+            {typeof o.label === 'string' ? o.label : String(o.data)}
+          </option>
+        ))}
+      </select>
+    </Field>
+  )
+}
+
 const button: CSSProperties = {
   width: '100%',
   margin: '6px 0',

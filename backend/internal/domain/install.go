@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // InstallKind is how EmuDeck installs an emulator, which decides where the probe looks for it.
 type InstallKind string
@@ -88,7 +91,33 @@ type System struct {
 	MultiFile LayoutKind
 	// Conversions are the stored formats its emulator can't use as placed.
 	Conversions []Conversion
+	// AltFolders are EmuDeck's other ROM folders for the same hardware, with another frontend
+	// variant, emulator or region, which Install to can pick instead of Folder.
+	AltFolders []string
 }
+
+// Folders are the ROM folders a system's games can go in: Folder first, then AltFolders.
+func (s System) Folders() []string { return append([]string{s.Folder}, s.AltFolders...) }
+
+// srmFolders are the ROM folders EmuDeck's Steam ROM Manager parsers read; games anywhere else
+// never get a Steam shortcut. From EmuDeck's configs/steam-rom-manager parsers.
+var srmFolders = map[string]bool{}
+
+func init() {
+	for f := range strings.FieldsSeq(`3do amiga amiga1200 amiga600 amigacd32 amstradcpc arcade atari2600
+		atarijaguar atarijaguarcd atarilynx atomiswave c16 c64 cdimono1 doom dos dreamcast easyrpg famicom
+		fbneo gamecom gamegear gb gba gbc gc genesis genesiswide intellivision mame mastersystem megacd
+		megadrive model2 model3 n3ds n64 n64dd naomi naomi2 nds neogeocd neogeocdjp nes ngp ngpc pc98
+		pcengine pcenginecd pcfx pico8 primehacks ps2 ps3 ps4 psp psx saturn saturnjp scummvm sega32x segacd
+		sgb snes sneshd snesna switch tg-cd tg16 tic80 vic20 virtualboy vsmile wii wiiu wonderswan
+		wonderswancolor x68000 xbox xbox360 zxspectrum`) {
+		srmFolders[f] = true
+	}
+}
+
+// SRMSkips says whether Steam ROM Manager, as EmuDeck sets it up, never adds the games in a ROM
+// folder to Steam.
+func SRMSkips(folder string) bool { return !srmFolders[folder] }
 
 var (
 	ciaToCCI  = Conversion{From: "cia", To: "cci", Note: "Needs installing in %s: a .cia file doesn't play as it is."}
@@ -115,17 +144,17 @@ var Systems = []System{
 	{Folder: "3do", Slugs: []string{"3do"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "amstradcpc", Slugs: []string{"acpc"}, Emulator: ra, MultiFile: LayoutPlaylist},
 	{Folder: "gx4000", Slugs: []string{"amstrad-gx4000"}, Emulator: ra},
-	{Folder: "amiga", Slugs: []string{"amiga"}, Emulator: ra, MultiFile: LayoutPlaylist},
+	{Folder: "amiga", Slugs: []string{"amiga"}, Emulator: ra, MultiFile: LayoutPlaylist, AltFolders: []string{"amiga600", "amiga1200"}},
 	{Folder: "amigacd32", Slugs: []string{"amiga-cd32"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "cdtv", Slugs: []string{"commodore-cdtv"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "android", Slugs: []string{"android"}, Archives: ArchivesExtract},
 	{Folder: "apple2", Slugs: []string{"appleii"}, Emulator: ra},
 	{Folder: "apple2gs", Slugs: []string{"apple-iigs"}, Emulator: ra},
 	{Folder: "macintosh", Slugs: []string{"mac"}, Emulator: ra},
-	{Folder: "arcade", Slugs: []string{"arcade"}, Emulator: ra, Archives: ArchivesKeep},
-	{Folder: "cps1", Slugs: []string{"cps1"}, Emulator: ra, Archives: ArchivesKeep},
-	{Folder: "cps2", Slugs: []string{"cps2"}, Emulator: ra, Archives: ArchivesKeep},
-	{Folder: "cps3", Slugs: []string{"cps3"}, Emulator: ra, Archives: ArchivesKeep},
+	{Folder: "arcade", Slugs: []string{"arcade"}, Emulator: ra, Archives: ArchivesKeep, AltFolders: []string{"mame", "mame-advmame", "mame-mame4all", "fbneo", "fba", "cps", "daphne", "mess"}},
+	{Folder: "cps1", Slugs: []string{"cps1"}, Emulator: ra, Archives: ArchivesKeep, AltFolders: []string{"cps"}},
+	{Folder: "cps2", Slugs: []string{"cps2"}, Emulator: ra, Archives: ArchivesKeep, AltFolders: []string{"cps"}},
+	{Folder: "cps3", Slugs: []string{"cps3"}, Emulator: ra, Archives: ArchivesKeep, AltFolders: []string{"cps"}},
 	{Folder: "neogeo", Slugs: []string{"neogeoaes", "neogeomvs"}, Emulator: ra, Archives: ArchivesKeep},
 	{Folder: "model2", Slugs: []string{"model2"}, Emulator: "model2", RomSubdir: "roms", Archives: ArchivesKeep},
 	{Folder: "model3", Slugs: []string{"model3"}, Emulator: "supermodel", Archives: ArchivesKeep},
@@ -149,28 +178,28 @@ var Systems = []System{
 	{Folder: "channelf", Slugs: []string{"fairchild-channel-f"}, Emulator: ra},
 	{Folder: "coco", Slugs: []string{"trs-80-color-computer"}, Emulator: ra},
 	{Folder: "trs-80", Slugs: []string{"trs-80"}, Emulator: ra},
-	{Folder: "dragon32", Slugs: []string{"dragon-32-slash-64"}, Emulator: ra},
-	{Folder: "dos", Slugs: []string{"dos"}, Emulator: ra, Archives: ArchivesKeep, MultiFile: LayoutZip},
+	{Folder: "dragon32", Slugs: []string{"dragon-32-slash-64"}, Emulator: ra, AltFolders: []string{"tanodragon"}},
+	{Folder: "dos", Slugs: []string{"dos"}, Emulator: ra, Archives: ArchivesKeep, MultiFile: LayoutZip, AltFolders: []string{"pc"}},
 	{Folder: "pc88", Slugs: []string{"pc-8800-series"}, Emulator: ra},
 	{Folder: "pc98", Slugs: []string{"pc-9800-series"}, Emulator: ra, MultiFile: LayoutPlaylist},
 	{Folder: "fmtowns", Slugs: []string{"fm-towns"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "x68000", Slugs: []string{"sharp-x68000"}, Emulator: ra, MultiFile: LayoutPlaylist},
 	{Folder: "x1", Slugs: []string{"x1"}, Emulator: ra},
-	{Folder: "msx", Slugs: []string{"msx"}, Emulator: ra, MultiFile: LayoutPlaylist},
+	{Folder: "msx", Slugs: []string{"msx"}, Emulator: ra, MultiFile: LayoutPlaylist, AltFolders: []string{"msx1"}},
 	{Folder: "msx2", Slugs: []string{"msx2", "msx2plus"}, Emulator: ra, MultiFile: LayoutPlaylist},
 	{Folder: "msxturbor", Slugs: []string{"msx-turbo"}, Emulator: ra},
 	{Folder: "dreamcast", Slugs: []string{"dc"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "famicom", Slugs: []string{"famicom"}, Emulator: ra},
 	{Folder: "fds", Slugs: []string{"fds"}, Emulator: ra},
 	{Folder: "nes", Slugs: []string{"nes"}, Emulator: ra},
-	{Folder: "snes", Slugs: []string{"snes"}, Emulator: ra},
+	{Folder: "snes", Slugs: []string{"snes"}, Emulator: ra, AltFolders: []string{"snesna", "sneshd"}},
 	{Folder: "sfc", Slugs: []string{"sfam"}, Emulator: ra},
 	{Folder: "satellaview", Slugs: []string{"satellaview"}, Emulator: ra},
 	{Folder: "sufami", Slugs: []string{"sufami-turbo"}, Emulator: ra},
-	{Folder: "gb", Slugs: []string{"gb"}, Emulator: ra},
+	{Folder: "gb", Slugs: []string{"gb"}, Emulator: ra, AltFolders: []string{"sgb"}},
 	{Folder: "gbc", Slugs: []string{"gbc"}, Emulator: ra},
 	{Folder: "gba", Slugs: []string{"gba"}, Emulator: ra},
-	{Folder: "gameandwatch", Slugs: []string{"g-and-w"}, Emulator: ra},
+	{Folder: "gameandwatch", Slugs: []string{"g-and-w"}, Emulator: ra, AltFolders: []string{"lcdgames"}},
 	{Folder: "pokemini", Slugs: []string{"pokemon-mini"}, Emulator: ra},
 	{Folder: "virtualboy", Slugs: []string{"virtualboy"}, Emulator: ra},
 	{Folder: "n64", Slugs: []string{"n64"}, Emulator: ra},
@@ -178,25 +207,25 @@ var Systems = []System{
 	{Folder: "nds", Slugs: []string{"nds", "nintendo-dsi"}, Emulator: "melonds"},
 	{Folder: "n3ds", Slugs: []string{"3ds", "new-nintendo-3ds"}, Emulator: "azahar", Archives: ArchivesExtract, Conversions: []Conversion{ciaToCCI}},
 	{Folder: "gc", Slugs: []string{"ngc"}, Emulator: "dolphin", Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
-	{Folder: "wii", Slugs: []string{"wii"}, Emulator: "dolphin", Archives: ArchivesExtract},
+	{Folder: "wii", Slugs: []string{"wii"}, Emulator: "dolphin", Archives: ArchivesExtract, AltFolders: []string{"primehacks"}},
 	{Folder: "wiiu", Slugs: []string{"wiiu"}, Emulator: "cemu", RomSubdir: "roms", Archives: ArchivesExtract, MultiFile: LayoutFolder},
 	{Folder: "switch", Slugs: []string{"switch"}, Emulator: "ryujinx", Archives: ArchivesExtract, Conversions: []Conversion{nszToNSP, xczToXCI}},
-	{Folder: "genesis", Slugs: []string{"genesis"}, Emulator: ra},
+	{Folder: "genesis", Slugs: []string{"genesis"}, Emulator: ra, AltFolders: []string{"megadrive", "megadrivejp", "genesiswide"}},
 	{Folder: "mastersystem", Slugs: []string{"sms"}, Emulator: ra},
 	{Folder: "gamegear", Slugs: []string{"gamegear"}, Emulator: ra},
 	{Folder: "sg-1000", Slugs: []string{"sg1000"}, Emulator: ra},
-	{Folder: "sega32x", Slugs: []string{"sega32"}, Emulator: ra},
-	{Folder: "segacd", Slugs: []string{"segacd"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
-	{Folder: "saturn", Slugs: []string{"saturn"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
-	{Folder: "neogeocd", Slugs: []string{"neo-geo-cd"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
+	{Folder: "sega32x", Slugs: []string{"sega32"}, Emulator: ra, AltFolders: []string{"sega32xna", "sega32xjp"}},
+	{Folder: "segacd", Slugs: []string{"segacd"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist, AltFolders: []string{"megacd", "megacdjp"}},
+	{Folder: "saturn", Slugs: []string{"saturn"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist, AltFolders: []string{"saturnjp"}},
+	{Folder: "neogeocd", Slugs: []string{"neo-geo-cd"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist, AltFolders: []string{"neogeocdjp"}},
 	{Folder: "ngp", Slugs: []string{"neo-geo-pocket"}, Emulator: ra},
 	{Folder: "ngpc", Slugs: []string{"neo-geo-pocket-color"}, Emulator: ra},
 	{Folder: "odyssey2", Slugs: []string{"odyssey-2"}, Emulator: ra},
 	{Folder: "videopac", Slugs: []string{"videopac-g7400"}, Emulator: ra},
 	{Folder: "intellivision", Slugs: []string{"intellivision"}, Emulator: ra},
 	{Folder: "vectrex", Slugs: []string{"vectrex"}, Emulator: ra},
-	{Folder: "tg16", Slugs: []string{"tg16"}, Emulator: ra},
-	{Folder: "tg-cd", Slugs: []string{"turbografx-cd"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
+	{Folder: "tg16", Slugs: []string{"tg16"}, Emulator: ra, AltFolders: []string{"pcengine"}},
+	{Folder: "tg-cd", Slugs: []string{"turbografx-cd"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist, AltFolders: []string{"pcenginecd"}},
 	{Folder: "supergrafx", Slugs: []string{"supergrafx"}, Emulator: ra},
 	{Folder: "pcfx", Slugs: []string{"pc-fx"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
 	{Folder: "cdimono1", Slugs: []string{"philips-cd-i"}, Emulator: ra, Archives: ArchivesExtract, MultiFile: LayoutPlaylist},
@@ -220,7 +249,7 @@ var Systems = []System{
 	{Folder: "oric", Slugs: []string{"oric"}, Emulator: ra},
 	{Folder: "samcoupe", Slugs: []string{"sam-coupe"}, Emulator: ra},
 	{Folder: "spectravideo", Slugs: []string{"spectravideo"}, Emulator: ra},
-	{Folder: "moto", Slugs: []string{"thomson-mo5", "thomson-to"}, Emulator: ra},
+	{Folder: "moto", Slugs: []string{"thomson-mo5", "thomson-to"}, Emulator: ra, AltFolders: []string{"to8"}},
 	{Folder: "ti99", Slugs: []string{"ti-99"}, Emulator: ra},
 	{Folder: "zxspectrum", Slugs: []string{"zxs"}, Emulator: ra, MultiFile: LayoutPlaylist},
 	{Folder: "zx81", Slugs: []string{"zx81"}, Emulator: ra},

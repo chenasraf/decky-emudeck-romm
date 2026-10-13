@@ -60,6 +60,27 @@ func TestKeepArchives(t *testing.T) {
 	}
 }
 
+func TestInstallTo(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if got := s.InstallTo("arcade"); got != "" {
+		t.Fatalf("unset install to %q", got)
+	}
+	if err := s.SetInstallTo("arcade", "fbneo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := New(dir).InstallTo("arcade"); got != "fbneo" {
+		t.Fatalf("install to %q", got)
+	}
+	// The system's own folder is the same as unset.
+	if err := s.SetInstallTo("arcade", "arcade"); err != nil {
+		t.Fatal(err)
+	}
+	if got := New(dir).InstallTo("arcade"); got != "" {
+		t.Fatalf("after reset %q", got)
+	}
+}
+
 func TestAutoBIOS(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)

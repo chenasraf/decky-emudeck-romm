@@ -56,6 +56,13 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.DownloadAllResult{Queued: queued, Failed: failed}, nil
 	})
 
+	Register(s, "set_install_to", func(ctx context.Context, p schema.SetInstallToParams) (schema.SetInstallToResult, error) {
+		if err := downloads.SetInstallTo(ctx, p.PlatformID, p.Folder); err != nil {
+			return schema.SetInstallToResult{}, wireError(err)
+		}
+		return schema.SetInstallToResult{}, nil
+	})
+
 	Register(s, "set_keep_archives", func(ctx context.Context, p schema.SetKeepArchivesParams) (schema.SetKeepArchivesResult, error) {
 		if err := downloads.SetKeepArchives(ctx, p.PlatformID, p.Keep); err != nil {
 			return schema.SetKeepArchivesResult{}, wireError(err)

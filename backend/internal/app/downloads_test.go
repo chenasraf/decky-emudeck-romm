@@ -29,10 +29,27 @@ func (p fixedProber) Probe() domain.InstallState {
 	return s
 }
 
-// memPrefs keeps Keep archives toggles in memory; unset is on.
+// memPrefs keeps Keep archives toggles, unset is on, and Install to folders in memory.
 type memPrefs struct {
-	mu   sync.Mutex
-	keep map[string]bool
+	mu        sync.Mutex
+	keep      map[string]bool
+	installTo map[string]string
+}
+
+func (m *memPrefs) InstallTo(system string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.installTo[system]
+}
+
+func (m *memPrefs) SetInstallTo(system, folder string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.installTo == nil {
+		m.installTo = map[string]string{}
+	}
+	m.installTo[system] = folder
+	return nil
 }
 
 func (m *memPrefs) KeepArchives(folder string) bool {

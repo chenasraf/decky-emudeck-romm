@@ -46,10 +46,14 @@ const spacePoll = 30 * time.Second
 // FreeSpace returns how many bytes may still be written to the drive holding path.
 type FreeSpace func(path string) (int64, error)
 
-// ArchivePrefs keeps the Keep archives toggle of each EmuDeck system folder.
-type ArchivePrefs interface {
+// DownloadPrefs keeps the Keep archives toggle and the Install to folder of each EmuDeck system,
+// by its folder.
+type DownloadPrefs interface {
 	KeepArchives(folder string) bool
 	SetKeepArchives(folder string, keep bool) error
+	// InstallTo is empty for the system's own folder.
+	InstallTo(system string) string
+	SetInstallTo(system, folder string) error
 }
 
 // DownloadServer is the part of the RomM API downloading needs.
@@ -125,7 +129,7 @@ type Downloads struct {
 	store     DownloadStore
 	problem   error
 	free      FreeSpace
-	prefs     ArchivePrefs
+	prefs     DownloadPrefs
 	limit     int
 	onChange  DownloadListener
 	onDelete  DeleteListener
@@ -163,7 +167,7 @@ type job struct {
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
 // turns downloading and deleting off, reporting problem.
 func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial DownloadDialer,
-	store DownloadStore, problem error, free FreeSpace, prefs ArchivePrefs, limit int, listen DownloadListeners, log *slog.Logger,
+	store DownloadStore, problem error, free FreeSpace, prefs DownloadPrefs, limit int, listen DownloadListeners, log *slog.Logger,
 ) *Downloads {
 	return &Downloads{
 		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs,
@@ -1200,15 +1204,31 @@ func (d *Downloads) targetDir(rom domain.ROM, platform domain.Platform) (domain.
 	if rom.MultiFile && system.MultiFile == "" {
 		return system, "", &domain.Error{Kind: domain.KindCantDownload, Message: "This game is several files, and the plugin has no way to lay those out in EmuDeck's " + system.Folder + " folder."}
 	}
-	dir := romPath(state, system)
+	dir := folderPath(state, system, d.installFolder(system))
 	if dir == "" {
 		return system, "", fmt.Errorf("no install state for %s", system.Folder)
 	}
 	return system, dir, nil
 }
 
-// romPath is the ROM folder of system, empty when the install state has none.
-func romPath(state domain.InstallState, system domain.System) string {
+// installFolder is the ROM folder Install to picks for a system's new downloads: its own folder
+// unless it's set to one of its alt folders.
+func (d *Downloads) installFolder(system domain.System) string {
+	if f := d.prefs.InstallTo(system.Folder); slices.Contains(system.AltFolders, f) {
+		return f
+	}
+	return system.Folder
+}
+
+// folderPath is the path of folder, system's own or one of its alt folders, empty when the install
+// state has no ROMs folder for it.
+func folderPath(state domain.InstallState, system domain.System, folder string) string {
+	if folder != system.Folder {
+		if state.EmuDeck.ROMsPath == "" {
+			return ""
+		}
+		return filepath.Join(state.EmuDeck.ROMsPath, folder)
+	}
 	i := slices.IndexFunc(state.Systems, func(s domain.SystemState) bool { return s.Folder == system.Folder })
 	if i < 0 {
 		return ""
@@ -1216,13 +1236,78 @@ func romPath(state domain.InstallState, system domain.System) string {
 	return state.Systems[i].ROMPath
 }
 
-// platformDir is the ROM folder of a platform's games, empty when it has none.
+// platformDir is the ROM folder a platform's new downloads go in, empty when it has none.
 func (d *Downloads) platformDir(ctx context.Context, platformID int) string {
 	system, ok := d.platformSystem(ctx, platformID)
 	if !ok {
 		return ""
 	}
-	return romPath(d.install.State(false), system)
+	return folderPath(d.install.State(false), system, d.installFolder(system))
+}
+
+// dirHolding is the ROM folder of a platform's that path is in: the one Install to picked when the
+// game was placed, which may not be the one it picks now. Empty when path is in none of them.
+func (d *Downloads) dirHolding(ctx context.Context, platformID int, path string) string {
+	system, ok := d.platformSystem(ctx, platformID)
+	if !ok {
+		return ""
+	}
+	state := d.install.State(false)
+	for _, f := range system.Folders() {
+		if dir := folderPath(state, system, f); dir != "" && strings.HasPrefix(path, dir+string(filepath.Separator)) {
+			return dir
+		}
+	}
+	return ""
+}
+
+// InstallFolder is a ROM folder a platform's games can go in.
+type InstallFolder struct {
+	Folder string
+	Path   string
+	// Primary is set on the system's own folder.
+	Primary bool
+	// SRMSkips is set when Steam ROM Manager, as EmuDeck sets it up, never adds the folder's games to
+	// Steam.
+	SRMSkips bool
+}
+
+// InstallTo returns the ROM folder a platform's new downloads go in, and the folders Install to
+// can pick from: the system's own first, then its alt folders. Both are empty for a platform
+// EmuDeck has no folder for.
+func (d *Downloads) InstallTo(ctx context.Context, platformID int) (string, []InstallFolder) {
+	system, ok := d.platformSystem(ctx, platformID)
+	if !ok {
+		return "", nil
+	}
+	state := d.install.State(false)
+	var out []InstallFolder
+	for _, f := range system.Folders() {
+		out = append(out, InstallFolder{
+			Folder:   f,
+			Path:     folderPath(state, system, f),
+			Primary:  f == system.Folder,
+			SRMSkips: domain.SRMSkips(f),
+		})
+	}
+	return d.installFolder(system), out
+}
+
+// SetInstallTo picks the ROM folder a platform's new downloads go in. Games already placed stay
+// where they are.
+func (d *Downloads) SetInstallTo(ctx context.Context, platformID int, folder string) error {
+	system, ok := d.platformSystem(ctx, platformID)
+	if !ok {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "EmuDeck has no folder for that platform."}
+	}
+	if !slices.Contains(system.Folders(), folder) {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: folder + " isn't one of EmuDeck's folders for " + system.Folder + "."}
+	}
+	if err := d.prefs.SetInstallTo(system.Folder, folder); err != nil {
+		return err
+	}
+	d.log.Info("install to set", "system", system.Folder, "folder", folder)
+	return nil
 }
 
 // platformSystem is the System a platform's games go in.

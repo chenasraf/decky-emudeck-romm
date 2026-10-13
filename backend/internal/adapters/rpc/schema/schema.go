@@ -88,6 +88,7 @@ type Methods struct {
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
 	DownloadAll         Method[DownloadAllParams, DownloadAllResult]                 `json:"download_all"`
 	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
+	SetInstallTo        Method[SetInstallToParams, SetInstallToResult]               `json:"set_install_to"`
 	PlatformBIOS        Method[PlatformBIOSParams, PlatformBIOS]                     `json:"platform_bios"`
 	DownloadBIOS        Method[DownloadBIOSParams, DownloadBIOSResult]               `json:"download_bios"`
 	GetPreferences      Method[GetPreferencesParams, Preferences]                    `json:"get_preferences"`
@@ -391,7 +392,31 @@ type ListGamesResult struct {
 	Archives ArchivePolicy `json:"archives,omitempty"`
 	// KeepArchives is the platform's Keep archives toggle, which applies when Archives is optional.
 	KeepArchives bool `json:"keepArchives"`
+	// InstallTo is the ROM folder the platform's new downloads go in, and InstallFolders the ones
+	// it can pick from: the system's own first. Both are empty for a collection and for a platform
+	// EmuDeck has no folder for.
+	InstallTo      string          `json:"installTo,omitempty"`
+	InstallFolders []InstallFolder `json:"installFolders,omitempty"`
 }
+
+type InstallFolder struct {
+	Folder string `json:"folder"`
+	Path   string `json:"path"`
+	// Primary is set on the system's own folder.
+	Primary bool `json:"primary"`
+	// SRMSkips is set when Steam ROM Manager, as EmuDeck sets it up, never adds the folder's games
+	// to Steam.
+	SRMSkips bool `json:"srmSkips"`
+}
+
+// SetInstallToParams picks the ROM folder a platform's new downloads go in. Games already placed
+// stay where they are.
+type SetInstallToParams struct {
+	PlatformID int    `json:"platformId"`
+	Folder     string `json:"folder"`
+}
+
+type SetInstallToResult struct{}
 
 type ArchivePolicy string
 

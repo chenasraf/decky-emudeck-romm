@@ -3,6 +3,7 @@ import {
   ButtonItem,
   ConfirmModal,
   DialogButton,
+  DropdownItem,
   Field,
   Focusable,
   PanelSection,
@@ -431,6 +432,52 @@ function BiosSection({ platformId, nudge }: { platformId: number; nudge?: boolea
   )
 }
 
+/**
+ * The Install to picker of a platform EmuDeck has other ROM folders for: the system's own folder,
+ * or an alt folder for another emulator, frontend variant or region.
+ */
+function InstallToPicker({
+  platformId,
+  result,
+  onError,
+}: {
+  platformId: number
+  result: ListGamesResult | null
+  onError: (e: RpcError) => void
+}) {
+  // Holds the choice from the moment it's made, before list_games says so again.
+  const [picked, setPicked] = useState<string | null>(null)
+  const folders = result?.installFolders ?? []
+  if (folders.length < 2) return null
+  const current = picked ?? result?.installTo ?? folders[0].folder
+  const chosen = folders.find((f) => f.folder === current)
+  return (
+    <PanelSectionRow>
+      <DropdownItem
+        label="Install to"
+        description={
+          chosen?.srmSkips
+            ? `${chosen.path}. Steam ROM Manager doesn't add games from this folder to Steam. Applies to new downloads.`
+            : `${chosen?.path ?? ''}. Applies to new downloads; games already installed stay where they are.`
+        }
+        rgOptions={folders.map((f) => ({
+          data: f.folder,
+          label: `${f.folder}${f.primary ? ' (default)' : ''}${f.srmSkips ? ' · not in Steam ROM Manager' : ''}`,
+        }))}
+        selectedOption={current}
+        onChange={(o) => {
+          const folder = o.data as string
+          setPicked(folder)
+          call('set_install_to', { platformId, folder }).catch((err: unknown) => {
+            setPicked(null)
+            onError(asRpcError(err))
+          })
+        }}
+      />
+    </PanelSectionRow>
+  )
+}
+
 /** Whether a game in state belongs under filter, for narrowing search results like the list. */
 function matchesFilter(state: GameState, filter: GameFilter): boolean {
   switch (filter) {
@@ -545,6 +592,7 @@ export function GamesView({
       />
       {platform && (
         <>
+          <InstallToPicker platformId={platform.id} result={listing} onError={setError} />
           <KeepArchivesToggle platformId={platform.id} result={listing} onError={setError} />
           <BiosSection platformId={platform.id} />
           <PanelSectionRow>

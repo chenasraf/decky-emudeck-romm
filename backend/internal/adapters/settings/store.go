@@ -37,9 +37,44 @@ type fileSettings struct {
 	// KeepArchives is the Keep archives toggle of each EmuDeck system folder that has one set;
 	// unset means on.
 	KeepArchives map[string]bool `json:"keepArchives,omitempty"`
+	// InstallTo is the ROM folder each EmuDeck system's new downloads go in, for those set to one
+	// of its alt folders; unset means the system's own folder.
+	InstallTo map[string]string `json:"installTo,omitempty"`
 	// AutoBIOS downloads a platform's missing BIOS files with its first game download; unset means
 	// on.
 	AutoBIOS *bool `json:"autoBios,omitempty"`
+}
+
+// InstallTo returns the ROM folder an EmuDeck system's new downloads go in, empty when it's the
+// system's own folder.
+func (s *Store) InstallTo(system string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return ""
+	}
+	return f.InstallTo[system]
+}
+
+// SetInstallTo sets the ROM folder an EmuDeck system's new downloads go in; empty or the system's
+// own folder goes back to it.
+func (s *Store) SetInstallTo(system, folder string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	if folder == "" || folder == system {
+		delete(f.InstallTo, system)
+	} else {
+		if f.InstallTo == nil {
+			f.InstallTo = map[string]string{}
+		}
+		f.InstallTo[system] = folder
+	}
+	return s.save(f)
 }
 
 // AutoBIOS says whether queueing a game also downloads its platform's missing BIOS files.

@@ -106,6 +106,7 @@ export interface Methods {
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
   download_all: Method<DownloadAllParams, DownloadAllResult>;
   set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
+  set_install_to: Method<SetInstallToParams, SetInstallToResult>;
   platform_bios: Method<PlatformBIOSParams, PlatformBIOS>;
   download_bios: Method<DownloadBIOSParams, DownloadBIOSResult>;
   get_preferences: Method<GetPreferencesParams, Preferences>;
@@ -472,6 +473,36 @@ export interface ListGamesResult {
    * KeepArchives is the platform's Keep archives toggle, which applies when Archives is optional.
    */
   keepArchives: boolean;
+  /**
+   * InstallTo is the ROM folder the platform's new downloads go in, and InstallFolders the ones
+   * it can pick from: the system's own first. Both are empty for a collection and for a platform
+   * EmuDeck has no folder for.
+   */
+  installTo?: string;
+  installFolders?: InstallFolder[];
+}
+export interface InstallFolder {
+  folder: string;
+  path: string;
+  /**
+   * Primary is set on the system's own folder.
+   */
+  primary: boolean;
+  /**
+   * SRMSkips is set when Steam ROM Manager, as EmuDeck sets it up, never adds the folder's games
+   * to Steam.
+   */
+  srmSkips: boolean;
+}
+/**
+ * SetInstallToParams picks the ROM folder a platform's new downloads go in. Games already placed
+ * stay where they are.
+ */
+export interface SetInstallToParams {
+  platformId: number /* int */;
+  folder: string;
+}
+export interface SetInstallToResult {
 }
 export type ArchivePolicy = string;
 /**

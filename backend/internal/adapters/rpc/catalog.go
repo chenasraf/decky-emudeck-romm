@@ -74,6 +74,13 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			out.Name, page = platform.Name, platPage
 			policy, keep := downloads.Archives(ctx, p.PlatformID)
 			out.Archives, out.KeepArchives = schema.ArchivePolicy(policy), keep
+			current, folders := downloads.InstallTo(ctx, p.PlatformID)
+			out.InstallTo = current
+			for _, f := range folders {
+				out.InstallFolders = append(out.InstallFolders, schema.InstallFolder{
+					Folder: f.Folder, Path: f.Path, Primary: f.Primary, SRMSkips: f.SRMSkips,
+				})
+			}
 		}
 		out.Total = page.Total
 		names := map[int]string{}
