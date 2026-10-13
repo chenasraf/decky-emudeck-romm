@@ -80,6 +80,8 @@ type OwnershipStore interface {
 	Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error)
 	OwnedIDs(ctx context.Context) ([]int, error)
 	DeleteOwned(ctx context.Context, id int) error
+	// MoveOwned replaces the record of the ROM with id from by rom, at once.
+	MoveOwned(ctx context.Context, from int, rom domain.OwnedROM) error
 }
 
 // DownloadStore keeps the records of Plugin-owned ROMs and Linked games, and the download queue.
@@ -303,6 +305,9 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	rom, platform, err := d.lookup(ctx, id)
 	if err != nil {
 		return Download{}, err
+	}
+	if rom.Removed {
+		return Download{}, errRemoved
 	}
 	system, dir, err := d.targetDir(rom, platform)
 	if err != nil {
@@ -1458,6 +1463,8 @@ func (j *job) record() domain.QueuedDownload {
 }
 
 var errHeld = &domain.Error{Kind: domain.KindNoSpace, Message: "The Emulation drive is full. Downloads wait until there's room for the next one."}
+
+var errRemoved = &domain.Error{Kind: domain.KindNotFound, Message: "That game is no longer on RomM, so it can't be downloaded."}
 
 var errNotSignedIn = &domain.Error{Kind: domain.KindSignedOut, Message: "Sign in to RomM to download games."}
 

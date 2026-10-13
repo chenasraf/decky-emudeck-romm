@@ -27,6 +27,8 @@ type LinkStore interface {
 	Linked(ctx context.Context, id int) (domain.LinkedGame, bool, error)
 	LinkedGames(ctx context.Context) ([]domain.LinkedGame, error)
 	DeleteLinked(ctx context.Context, id int) error
+	// MoveLinked replaces the link of the ROM with id from by g, at once.
+	MoveLinked(ctx context.Context, from int, g domain.LinkedGame) error
 }
 
 // OwnershipKind is what changed a game's ownership.

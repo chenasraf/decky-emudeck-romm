@@ -105,6 +105,52 @@ func TestFullThenDeltaSync(t *testing.T) {
 	}
 }
 
+func TestRetainedROMsStayMarkedRemoved(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
+	nes := rom(5, 2, "Contra")
+	if err := s.Apply(ctx, domain.CatalogSync{
+		Platforms: platforms, ROMs: []domain.ROM{rom(1, 1, "zelda"), rom(2, 1, "metroid"), nes}, Full: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The server drops metroid, Contra and the NES; this Deck holds records of both games.
+	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms[:1], KeepIDs: []int{1}, Retain: []int{2, 5}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{2, 5} {
+		if r, ok, err := s.ROM(ctx, id); err != nil || !ok || !r.Removed {
+			t.Fatalf("retained %d: %+v %v %v", id, r, ok, err)
+		}
+	}
+	if r, _, _ := s.ROM(ctx, 1); r.Removed {
+		t.Fatal("kept ROM marked removed")
+	}
+	if p, ok, _ := s.Platform(ctx, 2); !ok || p.Name != "NES" {
+		t.Fatalf("platform of a removed game %+v", p)
+	}
+
+	// A full sync keeps them too, and a game back on the server is no longer removed.
+	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms, ROMs: []domain.ROM{rom(1, 1, "zelda"), nes}, Full: true, Retain: []int{2}}); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok, _ := s.ROM(ctx, 2); !ok || !r.Removed {
+		t.Fatalf("after full sync %+v", r)
+	}
+	if r, _, _ := s.ROM(ctx, 5); r.Removed {
+		t.Fatal("ROM back on the server still removed")
+	}
+
+	// Once nothing holds a record of it, it goes.
+	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms, KeepIDs: []int{1, 5}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.ROM(ctx, 2); ok {
+		t.Fatal("unrecorded removed ROM kept")
+	}
+}
+
 func TestCollections(t *testing.T) {
 	ctx := context.Background()
 	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))

@@ -207,33 +207,11 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 		return nil, err
 	}
 
-	byHash := map[string][]serverFile{}
-	sizes := map[int64]bool{}
-	games := map[int][]domain.ROMFile{}
-	for offset := 0; ; offset += findPage {
-		page, err := server.PlatformFiles(ctx, platform.ID, offset, findPage)
-		if err != nil {
-			return nil, d.conn.observe(*in, err)
-		}
-		for _, r := range page {
-			game := domain.GameFiles(r.Files)
-			if len(game) == 0 || skip(r.ROMID) {
-				continue
-			}
-			games[r.ROMID] = game
-			for _, f := range game {
-				if !f.Hashed() {
-					continue
-				}
-				key := hashKey(f)
-				byHash[key] = append(byHash[key], serverFile{romID: r.ROMID, file: f})
-				sizes[f.SizeBytes] = true
-			}
-		}
-		if len(page) < findPage {
-			break
-		}
+	games, err := platformGames(ctx, server, platform.ID, skip)
+	if err != nil {
+		return nil, d.conn.observe(*in, err)
 	}
+	byHash, sizes := indexGames(games)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -296,6 +274,45 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 	}
 	d.findProgress(ctx, platform.ID, hashed, total)
 	return out, nil
+}
+
+// platformGames returns the game files of each of a platform's ROMs on the Server, by ROM id,
+// leaving out the ROMs skip says to and those with no game files.
+func platformGames(ctx context.Context, server DownloadServer, platformID int, skip func(id int) bool) (map[int][]domain.ROMFile, error) {
+	games := map[int][]domain.ROMFile{}
+	for offset := 0; ; offset += findPage {
+		page, err := server.PlatformFiles(ctx, platformID, offset, findPage)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range page {
+			game := domain.GameFiles(r.Files)
+			if len(game) == 0 || skip(r.ROMID) {
+				continue
+			}
+			games[r.ROMID] = game
+		}
+		if len(page) < findPage {
+			return games, nil
+		}
+	}
+}
+
+// indexGames indexes games' hashed files by hashKey, and returns the sizes they come in.
+func indexGames(games map[int][]domain.ROMFile) (map[string][]serverFile, map[int64]bool) {
+	byHash := map[string][]serverFile{}
+	sizes := map[int64]bool{}
+	for id, game := range games {
+		for _, f := range game {
+			if !f.Hashed() {
+				continue
+			}
+			key := hashKey(f)
+			byHash[key] = append(byHash[key], serverFile{romID: id, file: f})
+			sizes[f.SizeBytes] = true
+		}
+	}
+	return byHash, sizes
 }
 
 // takenByRecords marks the files of every Plugin-owned and Linked game as taken.

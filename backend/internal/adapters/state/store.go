@@ -203,14 +203,20 @@ func (s *Store) Close() error { return s.db.Close() }
 
 // SaveOwned writes the record of a ROM the plugin placed, replacing any earlier one.
 func (s *Store) SaveOwned(ctx context.Context, rom domain.OwnedROM) error {
+	return s.MoveOwned(ctx, rom.ROMID, rom)
+}
+
+// MoveOwned replaces the record of the ROM with id from by rom in one transaction, so its files are
+// never without a record.
+func (s *Store) MoveOwned(ctx context.Context, from int, rom domain.OwnedROM) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Deleting the old row cascades to its files and snapshot.
-	if _, err := tx.ExecContext(ctx, "DELETE FROM owned_roms WHERE rom_id = ?", rom.ROMID); err != nil {
+	// Deleting the old rows cascades to their files and snapshots.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM owned_roms WHERE rom_id IN (?, ?)", from, rom.ROMID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO owned_roms (rom_id, platform_id, installed_at) VALUES (?, ?, ?)",
@@ -238,6 +244,23 @@ func (s *Store) SaveLinked(ctx context.Context, g domain.LinkedGame) error {
 	_, err := s.db.ExecContext(ctx, "INSERT OR REPLACE INTO linked_games (rom_id, platform_id, path, linked_at) VALUES (?, ?, ?, ?)",
 		g.ROMID, g.PlatformID, g.Path, g.LinkedAt.UnixNano())
 	return err
+}
+
+// MoveLinked replaces the link of the ROM with id from by g in one transaction.
+func (s *Store) MoveLinked(ctx context.Context, from int, g domain.LinkedGame) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM linked_games WHERE rom_id = ?", from); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT OR REPLACE INTO linked_games (rom_id, platform_id, path, linked_at) VALUES (?, ?, ?, ?)",
+		g.ROMID, g.PlatformID, g.Path, g.LinkedAt.UnixNano()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Linked returns the link of the ROM with id.

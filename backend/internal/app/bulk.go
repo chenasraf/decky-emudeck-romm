@@ -83,7 +83,7 @@ func (d *Downloads) PlanAll(ctx context.Context, b Batch) (BatchPlan, error) {
 	dirs := map[string]bool{}
 	platforms := map[int]domain.Platform{}
 	for _, rom := range roms {
-		if domain.StateOf(states, rom.ID) != domain.StateOnRomM {
+		if rom.Removed || domain.StateOf(states, rom.ID) != domain.StateOnRomM {
 			continue
 		}
 		platform, ok := platforms[rom.PlatformID]

@@ -70,6 +70,10 @@ type GameStates interface {
 	// CheckOwned stops recording files the plugin placed that the user has since removed or
 	// changed. Each refresh runs it.
 	CheckOwned(ctx context.Context) error
+	// Rematch moves the records of games re-imported on the Server to their new ids, present
+	// being the ids the Server has and changed the platforms the sync brought new or changed games
+	// of. It returns the ids of the recorded games the Server no longer has.
+	Rematch(ctx context.Context, present, changed map[int]bool) ([]int, error)
 }
 
 // CatalogListener hears the Catalog's status each time a refresh starts, makes progress or ends.
@@ -252,12 +256,23 @@ func (c *Catalog) sync(ctx context.Context) error {
 			update.Cursor = r.UpdatedAt
 		}
 	}
+	present, changed := map[int]bool{}, map[int]bool{}
+	for _, r := range roms {
+		present[r.ID], changed[r.PlatformID] = true, true
+	}
 	if !full {
 		ids, err := server.ROMIDs(ctx)
 		if err != nil {
 			return c.conn.observe(*in, err)
 		}
 		update.KeepIDs = ids
+		for _, id := range ids {
+			present[id] = true
+		}
+	}
+	// Games this Deck holds a record of stay, marked Removed from RomM, unless they were re-imported.
+	if update.Retain, err = c.states.Rematch(ctx, present, changed); err != nil {
+		return fmt.Errorf("match removed games: %w", err)
 	}
 	if err := c.store.Apply(ctx, update); err != nil {
 		return fmt.Errorf("save catalog: %w", err)

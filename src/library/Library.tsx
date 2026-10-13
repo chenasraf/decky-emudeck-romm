@@ -121,11 +121,12 @@ export function downloadLabel(d: DownloadItem): string {
  * Deck, and null while it's only on RomM.
  */
 export function stateLabel(
-  game: { id: number; state: GameState },
+  game: { id: number; state: GameState; removed?: boolean },
   downloads: Downloads,
 ): string | null {
   const d = downloads.items.find((i) => i.id === game.id)
   if (d) return downloadLabel(d)
+  if (game.removed) return 'Removed from RomM'
   if (game.state === 'failed') return 'Failed'
   if (game.state === 'installed') return 'Installed'
   if (game.state === 'deleting') return 'Deleting…'
@@ -1043,6 +1044,8 @@ export interface GameDetail {
   actions: GameAction[]
   /** What the page says about the game's file when it's On Deck (not managed). */
   notice?: string
+  /** What the page says when RomM no longer has the game. */
+  removed?: string
   error: RpcError | null
 }
 
@@ -1095,7 +1098,8 @@ export function useGameDetail(id: number): GameDetail {
 
   const download = downloads.items.find((d) => d.id === id)
   const state = download?.state ?? game?.state
-  const check = useOnDeckCheck(id, state, downloads.ended)
+  // RomM has nothing left to compare a removed game's file with.
+  const check = useOnDeckCheck(id, game?.removed ? undefined : state, downloads.ended)
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true)
@@ -1112,7 +1116,16 @@ export function useGameDetail(id: number): GameDetail {
   const cancel = () => void act(() => call('cancel_download', { id }))
 
   const actions: GameAction[] = []
-  if (game) {
+  if (game?.removed) {
+    if (state === 'installed') {
+      actions.push({
+        label: 'Delete ROM',
+        run: () => confirmDelete(game.name, { ids: [id] }, setError),
+        disabled: downloadOff,
+        destructive: true,
+      })
+    }
+  } else if (game) {
     switch (state) {
       case 'on_romm':
         actions.push({ label: 'Download', run: get, disabled: busy || downloadOff })
@@ -1152,8 +1165,20 @@ export function useGameDetail(id: number): GameDetail {
     }
   }
 
+  let removed: string | undefined
+  if (game?.removed) {
+    if (state === 'installed') {
+      removed =
+        'RomM no longer has this game. The copy the plugin downloaded stays on this Deck until you delete it, and its saves no longer sync.'
+    } else if (game.linkedPath) {
+      removed = `RomM no longer has this game. The file at ${game.linkedPath} stays yours, and its saves no longer sync.`
+    } else {
+      removed = 'RomM no longer has this game.'
+    }
+  }
+
   let notice: string | undefined
-  if (state === 'on_deck') {
+  if (state === 'on_deck' && !game?.removed) {
     const path = game?.linkedPath ?? check?.result?.path
     const where = path ? ` at ${path}` : ''
     if (game?.linkedPath) {
@@ -1173,12 +1198,13 @@ export function useGameDetail(id: number): GameDetail {
   if (download?.converting) stateText = 'Converting on RomM…'
   else if (download?.waitingForGame) stateText = 'Waiting for game to close'
   else if (download?.state === 'downloading') stateText = `Downloading ${percent(download)}%`
+  else if (game?.removed) stateText = `${stateText} · Removed from RomM`
 
-  return { game, download, state, stateText, actions, notice, error }
+  return { game, download, state, stateText, actions, notice, removed, error }
 }
 
 export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
-  const { game, download, state, stateText, actions, notice, error } = useGameDetail(id)
+  const { game, download, state, stateText, actions, notice, removed, error } = useGameDetail(id)
 
   return (
     <PanelSection title={game?.name ?? 'Game'}>
@@ -1196,6 +1222,11 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
           <PanelSectionRow>
             <Field label="State">{stateText}</Field>
           </PanelSectionRow>
+          {removed && (
+            <PanelSectionRow>
+              <Field label="⚠ Removed from RomM" description={removed} />
+            </PanelSectionRow>
+          )}
           {notice && (
             <PanelSectionRow>
               <Field label="Not downloaded by the plugin" description={notice} />

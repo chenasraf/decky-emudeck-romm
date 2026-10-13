@@ -171,6 +171,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 				HasCover:     r.CoverSmall != "",
 				Regions:      nonNil(r.Regions),
 				State:        schema.GameState(domain.StateOf(result.States, r.ID)),
+				Removed:      r.Removed,
 			})
 		}
 		return out, nil
@@ -214,6 +215,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			FileName:       rom.FileName,
 			SizeBytes:      rom.SizeBytes,
 			HasCover:       rom.CoverLarge != "",
+			Removed:        rom.Removed,
 			Regions:        nonNil(rom.Regions),
 			Revision:       rom.Revision,
 			MultiFile:      rom.MultiFile,
@@ -258,6 +260,7 @@ func toWireGame(r domain.ROM, states map[int]domain.GameState) schema.GameSummar
 		HasCover:  r.CoverSmall != "",
 		Regions:   nonNil(r.Regions),
 		State:     schema.GameState(domain.StateOf(states, r.ID)),
+		Removed:   r.Removed,
 	}
 }
 

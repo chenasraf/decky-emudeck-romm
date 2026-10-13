@@ -494,6 +494,8 @@ type GameSummary struct {
 	PlatformName string `json:"platformName,omitempty"`
 	// HasCover is set when get_cover has a small cover to ask for.
 	HasCover bool `json:"hasCover"`
+	// Removed is set when RomM no longer has the game, which stays while it's on this Deck.
+	Removed bool `json:"removed,omitempty"`
 }
 
 type LibraryShelvesParams struct {
@@ -544,6 +546,8 @@ type SearchHit struct {
 	State        GameState `json:"state"`
 	// HasCover is set when get_cover has a small cover to ask for.
 	HasCover bool `json:"hasCover"`
+	// Removed is set when RomM no longer has the game, which stays while it's on this Deck.
+	Removed bool `json:"removed,omitempty"`
 }
 
 type GetGameParams struct {
@@ -584,6 +588,8 @@ type Game struct {
 	State     GameState `json:"state"`
 	// HasCover is set when get_cover has a large cover to ask for.
 	HasCover bool `json:"hasCover"`
+	// Removed is set when RomM no longer has the game, which stays while it's on this Deck.
+	Removed bool `json:"removed,omitempty"`
 	// InstalledPaths are the files the plugin placed, set when installed.
 	InstalledPaths []string `json:"installedPaths,omitempty"`
 	// InstallNote says what's left before the game plays: it was placed in a format its emulator

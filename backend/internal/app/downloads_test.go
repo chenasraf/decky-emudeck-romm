@@ -170,6 +170,22 @@ func (m *memOwnership) DeleteOwned(_ context.Context, id int) error {
 	return nil
 }
 
+func (m *memOwnership) MoveOwned(_ context.Context, from int, rom domain.OwnedROM) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.roms, from)
+	m.roms[rom.ROMID] = rom
+	return nil
+}
+
+func (m *memOwnership) MoveLinked(_ context.Context, from int, g domain.LinkedGame) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.links, from)
+	m.links[g.ROMID] = g
+	return nil
+}
+
 func (m *memOwnership) OwnedIDs(context.Context) ([]int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

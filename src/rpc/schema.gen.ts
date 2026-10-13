@@ -601,6 +601,10 @@ export interface GameSummary {
    * HasCover is set when get_cover has a small cover to ask for.
    */
   hasCover: boolean;
+  /**
+   * Removed is set when RomM no longer has the game, which stays while it's on this Deck.
+   */
+  removed?: boolean;
 }
 export interface LibraryShelvesParams {
   /**
@@ -665,6 +669,10 @@ export interface SearchHit {
    * HasCover is set when get_cover has a small cover to ask for.
    */
   hasCover: boolean;
+  /**
+   * Removed is set when RomM no longer has the game, which stays while it's on this Deck.
+   */
+  removed?: boolean;
 }
 export interface GetGameParams {
   id: number /* int */;
@@ -707,6 +715,10 @@ export interface Game {
    * HasCover is set when get_cover has a large cover to ask for.
    */
   hasCover: boolean;
+  /**
+   * Removed is set when RomM no longer has the game, which stays while it's on this Deck.
+   */
+  removed?: boolean;
   /**
    * InstalledPaths are the files the plugin placed, set when installed.
    */

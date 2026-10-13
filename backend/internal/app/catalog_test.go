@@ -39,6 +39,13 @@ func (s *memStore) Apply(_ context.Context, sync domain.CatalogSync) error {
 	s.syncs = append(s.syncs, sync)
 	s.platforms = sync.Platforms
 	s.collections = sync.Collections
+	kept := map[int]domain.ROM{}
+	for _, id := range sync.Retain {
+		if r, ok := s.roms[id]; ok {
+			r.Removed = true
+			kept[id] = r
+		}
+	}
 	if sync.Full || s.roms == nil {
 		s.roms = map[int]domain.ROM{}
 	}
@@ -52,6 +59,7 @@ func (s *memStore) Apply(_ context.Context, sync domain.CatalogSync) error {
 			}
 		}
 	}
+	maps.Copy(s.roms, kept)
 	s.cursor, s.syncedAt = sync.Cursor, sync.At
 	return nil
 }
@@ -198,6 +206,18 @@ func (f fixedStates) States(context.Context) (map[int]domain.GameState, error) {
 }
 
 func (f fixedStates) CheckOwned(context.Context) error { return nil }
+
+// Rematch matches nothing again: each game with a state the Server no longer has is removed.
+func (f fixedStates) Rematch(_ context.Context, present, _ map[int]bool) ([]int, error) {
+	var out []int
+	for id := range f {
+		if !present[id] {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
 
 func (s *memStore) Counts(context.Context) (int, int, error) {
 	s.mu.Lock()
@@ -370,6 +390,30 @@ func TestCatalogFullThenDelta(t *testing.T) {
 	}
 	if _, _, _, err := f.catalog.Game(context.Background(), 5); kindOf(err) != domain.KindNotFound {
 		t.Fatalf("deleted ROM: %v", err)
+	}
+}
+
+func TestCatalogKeepsRemovedGamesOnThisDeck(t *testing.T) {
+	library := newLibrary(10)
+	f := newCatalogFixture(t, library)
+	f.states[5] = domain.StateInstalled
+	f.refresh(t, false)
+
+	library.mu.Lock()
+	delete(library.roms, 5)
+	delete(library.roms, 6)
+	library.mu.Unlock()
+	f.now = f.now.Add(time.Minute)
+	f.refresh(t, true)
+
+	if delta := f.store.syncs[1]; !slices.Equal(delta.Retain, []int{5}) {
+		t.Fatalf("retained %v", delta.Retain)
+	}
+	if r, _, state, err := f.catalog.Game(context.Background(), 5); err != nil || !r.Removed || state != domain.StateInstalled {
+		t.Fatalf("removed game on this Deck: %+v %s %v", r, state, err)
+	}
+	if _, _, _, err := f.catalog.Game(context.Background(), 6); kindOf(err) != domain.KindNotFound {
+		t.Fatalf("removed game not on this Deck: %v", err)
 	}
 }
 

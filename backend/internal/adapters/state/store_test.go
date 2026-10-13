@@ -66,10 +66,19 @@ func TestOwnedRoundTrip(t *testing.T) {
 		t.Fatalf("missing: %v %v", ok, err)
 	}
 
-	if err := s.DeleteOwned(ctx, 7); err != nil {
+	// Moving to another id keeps the same files, whose paths are unique, under the new one.
+	rom.ROMID = 9
+	if err := s.MoveOwned(ctx, 7, rom); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := s.Owned(ctx, 7); ok {
+	if ids, _ := s.OwnedIDs(ctx); len(ids) != 1 || ids[0] != 9 {
+		t.Fatalf("ids after move %v", ids)
+	}
+
+	if err := s.DeleteOwned(ctx, 9); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Owned(ctx, 9); ok {
 		t.Fatal("record still there")
 	}
 	// Its files and snapshot go with it.
@@ -170,10 +179,17 @@ func TestLinkedRoundTrip(t *testing.T) {
 	if all, err := s.LinkedGames(ctx); err != nil || len(all) != 1 || all[0] != g {
 		t.Fatalf("all %+v, %v", all, err)
 	}
-	if err := s.DeleteLinked(ctx, 7); err != nil {
+	g.ROMID = 8
+	if err := s.MoveLinked(ctx, 7, g); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := s.Linked(ctx, 7); ok {
+	if all, _ := s.LinkedGames(ctx); len(all) != 1 || all[0] != g {
+		t.Fatalf("after move %+v", all)
+	}
+	if err := s.DeleteLinked(ctx, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Linked(ctx, 8); ok {
 		t.Fatal("link kept after delete")
 	}
 }

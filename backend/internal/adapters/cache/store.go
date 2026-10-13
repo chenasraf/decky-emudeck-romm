@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 
 // schemaVersion is stored as SQLite's user_version. A file with any other version is rebuilt, so
 // changing the schema below means bumping it.
-const schemaVersion = 3
+const schemaVersion = 4
 
 const schema = `
 CREATE TABLE platforms (
@@ -42,7 +43,8 @@ CREATE TABLE roms (
 	created_at  INTEGER NOT NULL,
 	updated_at  INTEGER NOT NULL,
 	cover_small TEXT NOT NULL,
-	cover_large TEXT NOT NULL
+	cover_large TEXT NOT NULL,
+	removed     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX roms_by_platform ON roms (platform_id, name COLLATE NOCASE, id);
 CREATE INDEX roms_by_created ON roms (created_at DESC, id DESC);
@@ -178,22 +180,16 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM platforms"); err != nil {
-		return err
-	}
-	for _, p := range sync.Platforms {
-		if _, err := tx.ExecContext(ctx, "INSERT INTO platforms (id, slug, name, rom_count) VALUES (?, ?, ?, ?)",
-			p.ID, p.Slug, p.Name, p.ROMCount); err != nil {
-			return err
-		}
-	}
-
 	if err := replaceCollections(ctx, tx, sync.Collections); err != nil {
 		return err
 	}
 
+	retain, err := json.Marshal(nonNilIDs(sync.Retain))
+	if err != nil {
+		return err
+	}
 	if sync.Full {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM roms"); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM roms WHERE id NOT IN (SELECT value FROM json_each(?))", string(retain)); err != nil {
 			return err
 		}
 	}
@@ -216,7 +212,21 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 	}
 
 	if sync.KeepIDs != nil {
-		if err := deleteMissing(ctx, tx, sync.KeepIDs); err != nil {
+		if err := deleteMissing(ctx, tx, append(slices.Clone(sync.KeepIDs), sync.Retain...)); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE roms SET removed = 1 WHERE id IN (SELECT value FROM json_each(?))", string(retain)); err != nil {
+		return err
+	}
+
+	// A removed game's platform stays while the game does, though the Server may have dropped it too.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM platforms WHERE id NOT IN (SELECT platform_id FROM roms WHERE removed = 1)"); err != nil {
+		return err
+	}
+	for _, p := range sync.Platforms {
+		if _, err := tx.ExecContext(ctx, "INSERT OR REPLACE INTO platforms (id, slug, name, rom_count) VALUES (?, ?, ?, ?)",
+			p.ID, p.Slug, p.Name, p.ROMCount); err != nil {
 			return err
 		}
 	}
@@ -378,7 +388,7 @@ func (s *Store) Counts(ctx context.Context) (platforms, roms int, err error) {
 	return platforms, roms, err
 }
 
-const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, created_at, updated_at, cover_small, cover_large"
+const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, created_at, updated_at, cover_small, cover_large, removed"
 
 // romOrder is each sort's ORDER BY, each ending in id so pages never overlap. ROMs the Server gave
 // no added time hold 0, so they come after the rest, highest id first.
@@ -556,7 +566,7 @@ func scanROM(row scanner) (domain.ROM, error) {
 	var regions string
 	var created, updated int64
 	if err := row.Scan(&r.ID, &r.PlatformID, &r.Name, &r.FileName, &r.Extension, &r.SizeBytes, &regions,
-		&r.Revision, &r.MultiFile, &created, &updated, &r.CoverSmall, &r.CoverLarge); err != nil {
+		&r.Revision, &r.MultiFile, &created, &updated, &r.CoverSmall, &r.CoverLarge, &r.Removed); err != nil {
 		return r, err
 	}
 	if err := json.Unmarshal([]byte(regions), &r.Regions); err != nil {

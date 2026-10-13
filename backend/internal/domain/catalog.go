@@ -31,6 +31,9 @@ type ROM struct {
 	// has none.
 	CoverSmall string
 	CoverLarge string
+	// Removed is set when the Server no longer has the ROM. The Catalog keeps it while this Deck
+	// holds a record of it, so its files can still be found and deleted.
+	Removed bool
 }
 
 // CoverSize picks one of a ROM's cover images: small for lists, large for its own page.
@@ -126,6 +129,9 @@ type CatalogSync struct {
 	Full bool
 	// KeepIDs, when not nil, are every ROM id the Server has; any other is deleted.
 	KeepIDs []int
+	// Retain are ROM ids the Server no longer has that the Catalog keeps, marked Removed, because
+	// this Deck holds a record of them.
+	Retain []int
 	// Cursor is the newest updated_at the Catalog has seen, which the next sync asks for changes
 	// since.
 	Cursor time.Time
