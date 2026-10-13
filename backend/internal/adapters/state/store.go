@@ -1,0 +1,267 @@
+// Package state keeps state.db, the SQLite file of everything the plugin knows that the Server
+// can't give back: which files it owns and what the Server had when it placed them. Unlike
+// cache.db it is never rebuilt, so schema changes are migrations that only move forward, and the
+// file is backed up before each one.
+package state
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
+
+	_ "modernc.org/sqlite" // registers the "sqlite" driver
+)
+
+// migrations[i] takes the schema from version i to i+1. Released ones never change; a schema
+// change is a new entry at the end.
+var migrations = []string{
+	`
+CREATE TABLE owned_roms (
+	rom_id       INTEGER PRIMARY KEY,
+	platform_id  INTEGER NOT NULL,
+	installed_at INTEGER NOT NULL
+);
+CREATE TABLE owned_files (
+	rom_id     INTEGER NOT NULL REFERENCES owned_roms (rom_id) ON DELETE CASCADE,
+	path       TEXT NOT NULL UNIQUE,
+	size_bytes INTEGER NOT NULL,
+	mod_time   INTEGER NOT NULL,
+	sha1       TEXT NOT NULL
+);
+CREATE INDEX owned_files_by_rom ON owned_files (rom_id);
+CREATE TABLE server_snapshots (
+	rom_id        INTEGER NOT NULL REFERENCES owned_roms (rom_id) ON DELETE CASCADE,
+	file_id       INTEGER NOT NULL,
+	size_bytes    INTEGER NOT NULL,
+	last_modified INTEGER NOT NULL,
+	hash_kind     TEXT NOT NULL,
+	hash          TEXT NOT NULL,
+	PRIMARY KEY (rom_id, file_id)
+);
+`,
+}
+
+// keepBackups is how many state.db.bak-<version> files are kept.
+const keepBackups = 3
+
+type Store struct {
+	db *sql.DB
+}
+
+// Open opens state.db at path and migrates it to the schema this binary knows, backing it up
+// first. It refuses, with domain.KindNewerData, a file from a newer version of the plugin.
+func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := migrate(ctx, db, path, log); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &Store{db: db}, nil
+}
+
+// SchemaVersion is the state.db schema this binary writes.
+func SchemaVersion() int { return len(migrations) }
+
+func migrate(ctx context.Context, db *sql.DB, path string, log *slog.Logger) error {
+	var version int
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return fmt.Errorf("read state.db version: %w", err)
+	}
+	if version > len(migrations) {
+		return &domain.Error{
+			Kind:    domain.KindNewerData,
+			Message: "Your plugin data is from a newer version of the plugin. Update the plugin to download games.",
+			Err:     fmt.Errorf("state.db schema %d, this version knows %d", version, len(migrations)),
+		}
+	}
+	if version == len(migrations) {
+		return nil
+	}
+	if version > 0 {
+		if err := backup(ctx, db, path, version); err != nil {
+			return fmt.Errorf("back up state.db: %w", err)
+		}
+	}
+	for v := version; v < len(migrations); v++ {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, migrations[v]); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("migrate state.db to %d: %w", v+1, err)
+		}
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", v+1)); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	log.Info("migrated state.db", "from", version, "to", len(migrations))
+	return nil
+}
+
+// backup copies the database to path.bak-<version> and deletes all but the newest keepBackups.
+// VACUUM INTO makes a consistent copy even with writes still in the WAL.
+func backup(ctx context.Context, db *sql.DB, path string, version int) error {
+	dest := fmt.Sprintf("%s.bak-%d", path, version)
+	if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", dest); err != nil {
+		return err
+	}
+	backups, err := Backups(path)
+	if err != nil {
+		return err
+	}
+	for _, old := range backups[min(keepBackups, len(backups)):] {
+		if err := os.Remove(old.Path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Backup is a copy of state.db taken before a migration.
+type Backup struct {
+	Path    string
+	Version int
+}
+
+// Backups lists the backups of the state.db at path, newest schema first.
+func Backups(path string) ([]Backup, error) {
+	matches, err := filepath.Glob(path + ".bak-*")
+	if err != nil {
+		return nil, err
+	}
+	var out []Backup
+	for _, m := range matches {
+		v, err := strconv.Atoi(strings.TrimPrefix(m, path+".bak-"))
+		if err != nil {
+			continue
+		}
+		out = append(out, Backup{Path: m, Version: v})
+	}
+	slices.SortFunc(out, func(a, b Backup) int { return b.Version - a.Version })
+	return out, nil
+}
+
+func (s *Store) Close() error { return s.db.Close() }
+
+// SaveOwned writes the record of a ROM the plugin placed, replacing any earlier one.
+func (s *Store) SaveOwned(ctx context.Context, rom domain.OwnedROM) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Deleting the old row cascades to its files and snapshot.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM owned_roms WHERE rom_id = ?", rom.ROMID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO owned_roms (rom_id, platform_id, installed_at) VALUES (?, ?, ?)",
+		rom.ROMID, rom.PlatformID, rom.InstalledAt.UnixNano()); err != nil {
+		return err
+	}
+	for _, f := range rom.Files {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO owned_files (rom_id, path, size_bytes, mod_time, sha1) VALUES (?, ?, ?, ?, ?)",
+			rom.ROMID, f.Path, f.SizeBytes, f.ModTime.UnixNano(), f.SHA1); err != nil {
+			return err
+		}
+	}
+	for _, f := range rom.Snapshot {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO server_snapshots
+			(rom_id, file_id, size_bytes, last_modified, hash_kind, hash) VALUES (?, ?, ?, ?, ?, ?)`,
+			rom.ROMID, f.FileID, f.SizeBytes, f.LastModified.UnixNano(), f.HashKind, f.Hash); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// Owned returns the record of the ROM with id.
+func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error) {
+	rom := domain.OwnedROM{ROMID: id}
+	var installed int64
+	err := s.db.QueryRowContext(ctx, "SELECT platform_id, installed_at FROM owned_roms WHERE rom_id = ?", id).
+		Scan(&rom.PlatformID, &installed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rom, false, nil
+	}
+	if err != nil {
+		return rom, false, err
+	}
+	rom.InstalledAt = time.Unix(0, installed).UTC()
+
+	rows, err := s.db.QueryContext(ctx, "SELECT path, size_bytes, mod_time, sha1 FROM owned_files WHERE rom_id = ? ORDER BY path", id)
+	if err != nil {
+		return rom, false, err
+	}
+	for rows.Next() {
+		var f domain.PlacedFile
+		var mod int64
+		if err := rows.Scan(&f.Path, &f.SizeBytes, &mod, &f.SHA1); err != nil {
+			_ = rows.Close()
+			return rom, false, err
+		}
+		f.ModTime = time.Unix(0, mod).UTC()
+		rom.Files = append(rom.Files, f)
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return rom, false, err
+	}
+
+	rows, err = s.db.QueryContext(ctx, `SELECT file_id, size_bytes, last_modified, hash_kind, hash
+		FROM server_snapshots WHERE rom_id = ? ORDER BY file_id`, id)
+	if err != nil {
+		return rom, false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var f domain.FileSnapshot
+		var mod int64
+		if err := rows.Scan(&f.FileID, &f.SizeBytes, &mod, &f.HashKind, &f.Hash); err != nil {
+			return rom, false, err
+		}
+		f.LastModified = time.Unix(0, mod).UTC()
+		rom.Snapshot = append(rom.Snapshot, f)
+	}
+	return rom, true, rows.Err()
+}
+
+// OwnedIDs returns the id of every Plugin-owned ROM.
+func (s *Store) OwnedIDs(ctx context.Context) ([]int, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT rom_id FROM owned_roms ORDER BY rom_id")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

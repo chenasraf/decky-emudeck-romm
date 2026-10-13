@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -74,14 +75,18 @@ func (s *memStore) Platform(_ context.Context, id int) (domain.Platform, bool, e
 	return domain.Platform{}, false, nil
 }
 
-func (s *memStore) ROMs(_ context.Context, platformID, offset, limit int) (domain.ROMPage, error) {
+func (s *memStore) ROMs(_ context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var all []domain.ROM
 	for _, r := range s.roms {
-		if r.PlatformID == platformID {
-			all = append(all, r)
+		if r.PlatformID != platformID {
+			continue
 		}
+		if only != nil && slices.Contains(only.IDs, r.ID) == only.Exclude {
+			continue
+		}
+		all = append(all, r)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
 	page := domain.ROMPage{Total: len(all)}
@@ -121,6 +126,25 @@ func (s *memStore) ROMsByID(_ context.Context, ids []int) ([]domain.ROM, error) 
 		}
 	}
 	return out, nil
+}
+
+func (s *memStore) CountByPlatform(_ context.Context, ids []int) (map[int]int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[int]int{}
+	for _, id := range ids {
+		if r, ok := s.roms[id]; ok {
+			out[r.PlatformID]++
+		}
+	}
+	return out, nil
+}
+
+// fixedStates is GameStates with states set by the test.
+type fixedStates map[int]domain.GameState
+
+func (f fixedStates) States(context.Context) (map[int]domain.GameState, error) {
+	return maps.Clone(f), nil
 }
 
 func (s *memStore) Counts(context.Context) (int, int, error) {
@@ -204,6 +228,7 @@ func (l *fakeLibrary) SearchROMs(_ context.Context, term string, limit int) ([]i
 type catalogFixture struct {
 	catalog  *Catalog
 	store    *memStore
+	states   fixedStates
 	library  *fakeLibrary
 	settings *fakeSettings
 	statuses chan CatalogStatus
@@ -214,6 +239,7 @@ func newCatalogFixture(t *testing.T, library *fakeLibrary) *catalogFixture {
 	t.Helper()
 	f := &catalogFixture{
 		store:    &memStore{},
+		states:   fixedStates{},
 		library:  library,
 		settings: &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
 		statuses: make(chan CatalogStatus, 64),
@@ -222,7 +248,7 @@ func newCatalogFixture(t *testing.T, library *fakeLibrary) *catalogFixture {
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) CatalogServer { return library }
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	f.catalog = NewCatalog(t.Context(), f.store, conn, dial, func(s CatalogStatus) { f.statuses <- s }, log)
+	f.catalog = NewCatalog(t.Context(), f.store, f.states, conn, dial, func(s CatalogStatus) { f.statuses <- s }, log)
 	f.catalog.now = func() time.Time { return f.now }
 	return f
 }
@@ -275,10 +301,10 @@ func TestCatalogFullThenDelta(t *testing.T) {
 	if !library.since[1].Equal(time.Unix(1201, 0)) {
 		t.Fatalf("delta asked for changes since %v", library.since[1])
 	}
-	if r, _, _ := f.catalog.Game(context.Background(), 7); r.Name != "renamed" {
+	if r, _, _, _ := f.catalog.Game(context.Background(), 7); r.Name != "renamed" {
 		t.Fatalf("renamed ROM %+v", r)
 	}
-	if _, _, err := f.catalog.Game(context.Background(), 5); kindOf(err) != domain.KindNotFound {
+	if _, _, _, err := f.catalog.Game(context.Background(), 5); kindOf(err) != domain.KindNotFound {
 		t.Fatalf("deleted ROM: %v", err)
 	}
 }
@@ -356,6 +382,23 @@ func TestCatalogFilters(t *testing.T) {
 	}
 	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, 0, 2); page.Total != 0 {
 		t.Fatalf("installed: %+v", page)
+	}
+
+	f.states[2] = domain.StateInstalled
+	f.states[3] = domain.StateDownloading
+	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, 0, 10); page.Total != 1 || page.ROMs[0].ID != 2 {
+		t.Fatalf("installed: %+v", page)
+	}
+	// A game still downloading isn't installed yet.
+	_, page, _ := f.catalog.Games(ctx, 1, domain.FilterNotInstalled, 0, 10)
+	if page.Total != 2 || domain.StateOf(page.States, 3) != domain.StateDownloading || domain.StateOf(page.States, 1) != domain.StateOnRomM {
+		t.Fatalf("not installed: %+v", page)
+	}
+	if ps, _ := f.catalog.Platforms(ctx); ps[0].Installed != 1 {
+		t.Fatalf("platforms: %+v", ps)
+	}
+	if _, _, state, _ := f.catalog.Game(ctx, 2); state != domain.StateInstalled {
+		t.Fatalf("game state %s", state)
 	}
 	if _, _, err := f.catalog.Games(ctx, 99, domain.FilterAll, 0, 2); kindOf(err) != domain.KindNotFound {
 		t.Fatalf("unknown platform: %v", err)

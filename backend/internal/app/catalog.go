@@ -46,13 +46,22 @@ type CatalogStore interface {
 	Apply(ctx context.Context, sync domain.CatalogSync) error
 	Platforms(ctx context.Context) ([]domain.PlatformSummary, error)
 	Platform(ctx context.Context, id int) (domain.Platform, bool, error)
-	ROMs(ctx context.Context, platformID, offset, limit int) (domain.ROMPage, error)
+	// ROMs returns a page of a platform's ROMs, narrowed by only when it isn't nil.
+	ROMs(ctx context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error)
 	ROM(ctx context.Context, id int) (domain.ROM, bool, error)
+	// CountByPlatform returns how many of the ROMs with ids each platform holds.
+	CountByPlatform(ctx context.Context, ids []int) (map[int]int, error)
 	// Search matches term's words against names, across every platform.
 	Search(ctx context.Context, term string, limit int) ([]domain.ROM, error)
 	// ROMsByID returns the ROMs with ids in their order, skipping any the Catalog doesn't hold.
 	ROMsByID(ctx context.Context, ids []int) ([]domain.ROM, error)
 	Counts(ctx context.Context) (platforms, roms int, err error)
+}
+
+// GameStates says where each game stands on this Deck.
+type GameStates interface {
+	// States returns the state of every game that isn't just On RomM.
+	States(ctx context.Context) (map[int]domain.GameState, error)
 }
 
 // CatalogListener hears the Catalog's status each time a refresh starts, makes progress or ends.
@@ -72,6 +81,7 @@ type CatalogStatus struct {
 
 type Catalog struct {
 	store    CatalogStore
+	states   GameStates
 	conn     *Connection
 	dial     CatalogDialer
 	onChange CatalogListener
@@ -88,8 +98,8 @@ type Catalog struct {
 	retry      *time.Timer
 }
 
-func NewCatalog(ctx context.Context, store CatalogStore, conn *Connection, dial CatalogDialer, onChange CatalogListener, log *slog.Logger) *Catalog {
-	return &Catalog{store: store, conn: conn, dial: dial, onChange: onChange, log: log, now: time.Now, base: ctx}
+func NewCatalog(ctx context.Context, store CatalogStore, states GameStates, conn *Connection, dial CatalogDialer, onChange CatalogListener, log *slog.Logger) *Catalog {
+	return &Catalog{store: store, states: states, conn: conn, dial: dial, onChange: onChange, log: log, now: time.Now, base: ctx}
 }
 
 // Status reports what the Catalog holds and whether a refresh is running.
@@ -238,7 +248,22 @@ func (c *Catalog) sync(ctx context.Context) error {
 
 // Platforms lists the platforms the Catalog holds games for.
 func (c *Catalog) Platforms(ctx context.Context) ([]domain.PlatformSummary, error) {
-	return c.store.Platforms(ctx)
+	platforms, err := c.store.Platforms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	states, err := c.states.States(ctx)
+	if err != nil {
+		return nil, err
+	}
+	installed, err := c.store.CountByPlatform(ctx, installedIDs(states))
+	if err != nil {
+		return nil, err
+	}
+	for i := range platforms {
+		platforms[i].Installed = installed[platforms[i].ID]
+	}
+	return platforms, nil
 }
 
 // Games returns a page of a platform's games that match filter.
@@ -250,14 +275,33 @@ func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFi
 	if !ok {
 		return platform, domain.ROMPage{}, errNotInCatalog
 	}
-	switch filter {
-	case domain.FilterInstalled, domain.FilterUpdates:
-		// Nothing is on this Deck until the plugin downloads it.
-		return platform, domain.ROMPage{}, nil
-	default:
-		page, err := c.store.ROMs(ctx, platformID, offset, limit)
-		return platform, page, err
+	states, err := c.states.States(ctx)
+	if err != nil {
+		return platform, domain.ROMPage{}, err
 	}
+	var only *domain.IDFilter
+	switch filter {
+	case domain.FilterUpdates:
+		// Nothing is ever flagged for an update.
+		return platform, domain.ROMPage{}, nil
+	case domain.FilterInstalled:
+		only = &domain.IDFilter{IDs: installedIDs(states)}
+	case domain.FilterNotInstalled:
+		only = &domain.IDFilter{IDs: installedIDs(states), Exclude: true}
+	}
+	page, err := c.store.ROMs(ctx, platformID, only, offset, limit)
+	page.States = states
+	return platform, page, err
+}
+
+func installedIDs(states map[int]domain.GameState) []int {
+	var ids []int
+	for id, s := range states {
+		if s == domain.StateInstalled {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // Search finds up to limit games across every platform. The Server answers when it can, ranking by
@@ -293,7 +337,8 @@ func (c *Catalog) Search(ctx context.Context, term string, limit int) (domain.Se
 		}
 		result.PlatformNames[r.PlatformID] = platform.Name
 	}
-	return result, nil
+	result.States, err = c.states.States(ctx)
+	return result, err
 }
 
 var errNoSearchServer = errors.New("no server to search")
@@ -316,17 +361,21 @@ func (c *Catalog) searchServer(ctx context.Context, term string, limit int) (dom
 	return domain.SearchResult{ROMs: roms}, err
 }
 
-// Game returns a game and its platform.
-func (c *Catalog) Game(ctx context.Context, id int) (domain.ROM, domain.Platform, error) {
+// Game returns a game, its platform and its state.
+func (c *Catalog) Game(ctx context.Context, id int) (domain.ROM, domain.Platform, domain.GameState, error) {
 	rom, ok, err := c.store.ROM(ctx, id)
 	if err != nil {
-		return rom, domain.Platform{}, err
+		return rom, domain.Platform{}, "", err
 	}
 	if !ok {
-		return rom, domain.Platform{}, errNotInCatalog
+		return rom, domain.Platform{}, "", errNotInCatalog
 	}
 	platform, _, err := c.store.Platform(ctx, rom.PlatformID)
-	return rom, platform, err
+	if err != nil {
+		return rom, platform, "", err
+	}
+	states, err := c.states.States(ctx)
+	return rom, platform, domain.StateOf(states, id), err
 }
 
 var errNotInCatalog = &domain.Error{Kind: domain.KindNotFound, Message: "That's no longer in the library. Refresh the library and try again."}

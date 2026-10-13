@@ -56,12 +56,27 @@ func TestFullThenDeltaSync(t *testing.T) {
 	if err != nil || len(ps) != 1 || ps[0].Games != 3 || ps[0].Name != "Game Boy Advance" {
 		t.Fatalf("platforms %+v, %v", ps, err)
 	}
-	page, err := s.ROMs(ctx, 1, 0, 2)
+	page, err := s.ROMs(ctx, 1, nil, 0, 2)
 	if err != nil || page.Total != 3 || len(page.ROMs) != 2 || page.ROMs[0].Name != "Advance Wars" || page.ROMs[1].Name != "metroid" {
 		t.Fatalf("first page %+v, %v", page, err)
 	}
-	if page, _ := s.ROMs(ctx, 1, 2, 2); len(page.ROMs) != 1 || page.ROMs[0].Name != "zelda" {
+	if page, _ := s.ROMs(ctx, 1, nil, 2, 2); len(page.ROMs) != 1 || page.ROMs[0].Name != "zelda" {
 		t.Fatalf("second page %+v", page)
+	}
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{IDs: []int{3, 99}}, 0, 10); page.Total != 1 || page.ROMs[0].Name != "metroid" {
+		t.Fatalf("only ids %+v", page)
+	}
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{IDs: []int{3}, Exclude: true}, 0, 10); page.Total != 2 {
+		t.Fatalf("excluding ids %+v", page)
+	}
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{Exclude: true}, 0, 10); page.Total != 3 {
+		t.Fatalf("excluding no ids %+v", page)
+	}
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{}, 0, 10); page.Total != 0 {
+		t.Fatalf("only no ids %+v", page)
+	}
+	if counts, err := s.CountByPlatform(ctx, []int{1, 3, 99}); err != nil || counts[1] != 2 || len(counts) != 1 {
+		t.Fatalf("count by platform %v, %v", counts, err)
 	}
 
 	// A delta renames one ROM, adds one, and the id list drops metroid.

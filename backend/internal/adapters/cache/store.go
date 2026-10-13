@@ -278,14 +278,29 @@ func (s *Store) Counts(ctx context.Context) (platforms, roms int, err error) {
 
 const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, updated_at, cover_small, cover_large"
 
-// ROMs returns a page of a platform's ROMs, by name.
-func (s *Store) ROMs(ctx context.Context, platformID, offset, limit int) (domain.ROMPage, error) {
+// ROMs returns a page of a platform's ROMs, by name, narrowed by only when it isn't nil.
+func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error) {
 	var page domain.ROMPage
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM roms WHERE platform_id = ?", platformID).Scan(&page.Total); err != nil {
+	where := "platform_id = ?"
+	args := []any{platformID}
+	if only != nil {
+		ids, err := json.Marshal(nonNilIDs(only.IDs))
+		if err != nil {
+			return page, err
+		}
+		// json_each takes the ids as one parameter, however many there are.
+		op := "IN"
+		if only.Exclude {
+			op = "NOT IN"
+		}
+		where += " AND id " + op + " (SELECT value FROM json_each(?))"
+		args = append(args, string(ids))
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM roms WHERE "+where, args...).Scan(&page.Total); err != nil {
 		return page, err
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+` FROM roms WHERE platform_id = ?
-		ORDER BY name COLLATE NOCASE, id LIMIT ? OFFSET ?`, platformID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms WHERE "+where+
+		" ORDER BY name COLLATE NOCASE, id LIMIT ? OFFSET ?", append(args, limit, offset)...)
 	if err != nil {
 		return page, err
 	}
@@ -321,6 +336,38 @@ func (s *Store) Search(ctx context.Context, term string, limit int) ([]domain.RO
 		return nil, err
 	}
 	return scanROMs(rows)
+}
+
+// CountByPlatform returns how many of the ROMs with ids each platform holds.
+func (s *Store) CountByPlatform(ctx context.Context, ids []int) (map[int]int, error) {
+	data, err := json.Marshal(nonNilIDs(ids))
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT platform_id, COUNT(*) FROM roms
+		WHERE id IN (SELECT value FROM json_each(?)) GROUP BY platform_id`, string(data))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[int]int{}
+	for rows.Next() {
+		var platform, n int
+		if err := rows.Scan(&platform, &n); err != nil {
+			return nil, err
+		}
+		out[platform] = n
+	}
+	return out, rows.Err()
+}
+
+// nonNilIDs keeps an empty id list from marshalling to null: json_each reads a JSON null as one
+// NULL row, and NOT IN a set holding NULL matches nothing.
+func nonNilIDs(ids []int) []int {
+	if ids == nil {
+		return []int{}
+	}
+	return ids
 }
 
 // likeEscaper escapes LIKE's wildcards, so a search for "100%" matches the text "100%".

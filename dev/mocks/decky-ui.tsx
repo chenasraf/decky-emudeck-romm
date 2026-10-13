@@ -62,6 +62,32 @@ export function Field({
   )
 }
 
+export function ProgressBarWithInfo({
+  nProgress,
+  sOperationText,
+}: {
+  nProgress?: number
+  sOperationText?: ReactNode
+}) {
+  return (
+    <div style={{ padding: '8px 0' }}>
+      <div style={{ height: 6, background: '#23262e', borderRadius: 3 }}>
+        <div
+          style={{
+            width: `${nProgress ?? 0}%`,
+            height: '100%',
+            background: '#1a9fff',
+            borderRadius: 3,
+          }}
+        />
+      </div>
+      {sOperationText && (
+        <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{sOperationText}</div>
+      )}
+    </div>
+  )
+}
+
 const button: CSSProperties = {
   width: '100%',
   margin: '6px 0',

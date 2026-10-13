@@ -14,12 +14,14 @@ type Services struct {
 	Connection *app.Connection
 	Install    *app.Install
 	Catalog    *app.Catalog
+	Downloads  *app.Downloads
 }
 
 // Routes registers a handler for every method in schema.Methods.
 func Routes(s *Server, version string, svc Services) {
 	conn, install := svc.Connection, svc.Install
-	catalogRoutes(s, svc.Catalog)
+	catalogRoutes(s, svc.Catalog, svc.Downloads)
+	downloadRoutes(s, svc.Downloads)
 
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil

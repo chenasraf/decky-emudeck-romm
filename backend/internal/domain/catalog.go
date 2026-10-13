@@ -66,11 +66,27 @@ type CatalogSync struct {
 	At     time.Time
 }
 
+// IDFilter narrows a game list to the ROMs with IDs, or with Exclude to every other one.
+type IDFilter struct {
+	IDs     []int
+	Exclude bool
+}
+
 // ROMPage is one page of a game list.
 type ROMPage struct {
 	ROMs []ROM
 	// Total is how many games match, across every page.
 	Total int
+	// States holds the state of each ROM that isn't StateOnRomM.
+	States map[int]GameState
+}
+
+// StateOf returns the state of the ROM with id among states, which leaves out StateOnRomM.
+func StateOf(states map[int]GameState, id int) GameState {
+	if s, ok := states[id]; ok {
+		return s
+	}
+	return StateOnRomM
 }
 
 // SearchResult is what a search across every platform found.
@@ -78,6 +94,8 @@ type SearchResult struct {
 	ROMs []ROM
 	// PlatformNames names the platform of each ROM, by platform id.
 	PlatformNames map[int]string
+	// States holds the state of each ROM that isn't StateOnRomM.
+	States map[int]GameState
 	// Local is set when the Catalog answered because the Server couldn't: matches are by name
 	// only, not by hash.
 	Local bool

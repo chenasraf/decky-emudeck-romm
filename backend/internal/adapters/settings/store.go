@@ -32,6 +32,24 @@ func New(dir string) *Store {
 
 type fileSettings struct {
 	Server *fileServer `json:"server,omitempty"`
+	// DownloadConcurrency is how many games download at once, 1 to 4; unset means 2.
+	DownloadConcurrency int `json:"downloadConcurrency,omitempty"`
+}
+
+const (
+	defaultConcurrency = 2
+	maxConcurrency     = 4
+)
+
+// DownloadConcurrency returns how many games may download at once.
+func (s *Store) DownloadConcurrency() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil || f.DownloadConcurrency <= 0 {
+		return defaultConcurrency
+	}
+	return min(f.DownloadConcurrency, maxConcurrency)
 }
 
 type fileServer struct {

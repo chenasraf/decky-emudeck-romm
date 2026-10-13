@@ -20,6 +20,13 @@ const (
 	KindMissingPermission  Kind = "missing_permission"
 	KindSignedOut          Kind = "signed_out"
 	KindNotFound           Kind = "not_found"
+	// KindNewerData means state.db is from a newer version of the plugin than the one running.
+	KindNewerData Kind = "newer_data"
+	// KindCantDownload means the game can't be placed: no EmuDeck, no folder for its platform, or
+	// a layout the plugin doesn't place.
+	KindCantDownload Kind = "cant_download"
+	// KindTargetExists means a file the plugin didn't download sits where the game would go.
+	KindTargetExists Kind = "target_exists"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

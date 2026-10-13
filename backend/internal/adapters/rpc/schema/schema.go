@@ -41,6 +41,13 @@ const (
 	ErrorMissingPermission  ErrorKind = "missing_permission"
 	ErrorSignedOut          ErrorKind = "signed_out"
 	ErrorNotFound           ErrorKind = "not_found"
+	// ErrorNewerData means the plugin's data is from a newer version of the plugin.
+	ErrorNewerData ErrorKind = "newer_data"
+	// ErrorCantDownload means the game can't be placed: no EmuDeck, no folder for its platform, or
+	// a layout the plugin doesn't place.
+	ErrorCantDownload ErrorKind = "cant_download"
+	// ErrorTargetExists means a file the plugin didn't download sits where the game would go.
+	ErrorTargetExists ErrorKind = "target_exists"
 )
 
 type ErrorData struct {
@@ -68,6 +75,9 @@ type Methods struct {
 	ListGames           Method[ListGamesParams, ListGamesResult]                     `json:"list_games"`
 	GetGame             Method[GetGameParams, Game]                                  `json:"get_game"`
 	SearchGames         Method[SearchGamesParams, SearchGamesResult]                 `json:"search_games"`
+	DownloadGame        Method[DownloadGameParams, DownloadItem]                     `json:"download_game"`
+	CancelDownload      Method[CancelDownloadParams, CancelDownloadResult]           `json:"cancel_download"`
+	ListDownloads       Method[ListDownloadsParams, ListDownloadsResult]             `json:"list_downloads"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -79,6 +89,8 @@ type Events struct {
 	Connection ConnectionStatus `json:"connection"`
 	// Catalog fires each time a library refresh starts, makes progress or ends.
 	Catalog CatalogStatus `json:"catalog"`
+	// Download fires each time a download is queued, makes progress or ends.
+	Download DownloadEvent `json:"download"`
 }
 
 // Method pairs a method's params with its result.
@@ -316,6 +328,11 @@ type GameState string
 const (
 	// GameOnRomM is a game on the server and not on this Deck.
 	GameOnRomM GameState = "on_romm"
+	// GameQueued is waiting for a download slot.
+	GameQueued      GameState = "queued"
+	GameDownloading GameState = "downloading"
+	// GameInstalled is on this Deck, downloaded by the plugin.
+	GameInstalled GameState = "installed"
 )
 
 type GameSummary struct {
@@ -367,4 +384,52 @@ type Game struct {
 	// MultiFile is set when the game is a folder of several files.
 	MultiFile bool      `json:"multiFile"`
 	State     GameState `json:"state"`
+	// InstalledPaths are the files the plugin placed, set when installed.
+	InstalledPaths []string `json:"installedPaths,omitempty"`
+}
+
+type DownloadGameParams struct {
+	ID int `json:"id"`
+}
+
+type CancelDownloadParams struct {
+	ID int `json:"id"`
+}
+
+type CancelDownloadResult struct {
+	// Cancelled is false when the game wasn't queued or downloading.
+	Cancelled bool `json:"cancelled"`
+}
+
+type ListDownloadsParams struct{}
+
+type ListDownloadsResult struct {
+	// Downloads are the queued and running downloads, in queue order.
+	Downloads []DownloadItem `json:"downloads"`
+	// Problem says why downloading is off.
+	Problem *Error `json:"problem,omitempty"`
+}
+
+type DownloadItem struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	PlatformID   int    `json:"platformId"`
+	PlatformName string `json:"platformName"`
+	// State is queued or downloading.
+	State         GameState `json:"state"`
+	ReceivedBytes int64     `json:"receivedBytes"`
+	TotalBytes    int64     `json:"totalBytes"`
+}
+
+// DownloadEvent is a change to a download. One that ends is installed, or on_romm when it failed,
+// with Problem saying why, or was cancelled.
+type DownloadEvent struct {
+	ID            int       `json:"id"`
+	Name          string    `json:"name"`
+	PlatformID    int       `json:"platformId"`
+	PlatformName  string    `json:"platformName"`
+	State         GameState `json:"state"`
+	ReceivedBytes int64     `json:"receivedBytes"`
+	TotalBytes    int64     `json:"totalBytes"`
+	Problem       *Error    `json:"problem,omitempty"`
 }

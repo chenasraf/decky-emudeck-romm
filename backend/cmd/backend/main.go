@@ -18,6 +18,7 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/settings"
+	statedb "github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/state"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/system"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/app"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -88,11 +89,29 @@ func run(log *slog.Logger) error {
 	catalogDial := func(server domain.Server, token string) app.CatalogServer {
 		return romm.New(server, token, version).WithLogger(rommLog)
 	}
-	catalog := app.NewCatalog(ctx, cache, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))
+	downloadDial := func(server domain.Server, token string) app.DownloadServer {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
+
+	// A state.db the plugin can't use turns downloads off rather than the whole backend, so the
+	// library still browses and the QAM can say what's wrong.
+	var ownership app.OwnershipStore
+	stateLog := log.With("component", "state")
+	owned, stateErr := statedb.Open(ctx, filepath.Join(runtimeDir, "state.db"), stateLog)
+	if stateErr != nil {
+		stateLog.Error("state.db unusable; downloads are off", "err", stateErr)
+	} else {
+		defer func() { _ = owned.Close() }()
+		ownership = owned
+	}
+	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr,
+		store.DownloadConcurrency(), rpc.DownloadEvents(srv), log.With("component", "downloads"))
+
+	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))
 	events.catalog = catalog
-	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog})
+	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog, Downloads: downloads})
 	go conn.Watch(ctx, connectionCheckInterval)
-	go install.State(false)
+	go downloads.CleanStaging()
 	catalog.Refresh(false)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {

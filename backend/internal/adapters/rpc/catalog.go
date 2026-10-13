@@ -16,7 +16,7 @@ const (
 	maxSearch        = 100
 )
 
-func catalogRoutes(s *Server, catalog *app.Catalog) {
+func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 	Register(s, "catalog_status", func(ctx context.Context, _ schema.CatalogStatusParams) (schema.CatalogStatus, error) {
 		status, err := catalog.Status(ctx)
 		if err != nil {
@@ -70,7 +70,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog) {
 				Name:      r.Name,
 				SizeBytes: r.SizeBytes,
 				Regions:   nonNil(r.Regions),
-				State:     schema.GameOnRomM,
+				State:     schema.GameState(domain.StateOf(page.States, r.ID)),
 			})
 		}
 		return out, nil
@@ -94,28 +94,39 @@ func catalogRoutes(s *Server, catalog *app.Catalog) {
 				PlatformName: result.PlatformNames[r.PlatformID],
 				SizeBytes:    r.SizeBytes,
 				Regions:      nonNil(r.Regions),
-				State:        schema.GameOnRomM,
+				State:        schema.GameState(domain.StateOf(result.States, r.ID)),
 			})
 		}
 		return out, nil
 	})
 
 	Register(s, "get_game", func(ctx context.Context, p schema.GetGameParams) (schema.Game, error) {
-		rom, platform, err := catalog.Game(ctx, p.ID)
+		rom, platform, state, err := catalog.Game(ctx, p.ID)
 		if err != nil {
 			return schema.Game{}, wireError(err)
 		}
+		var paths []string
+		if state == domain.StateInstalled {
+			owned, _, err := downloads.Owned(ctx, p.ID)
+			if err != nil {
+				return schema.Game{}, wireError(err)
+			}
+			for _, f := range owned.Files {
+				paths = append(paths, f.Path)
+			}
+		}
 		return schema.Game{
-			ID:           rom.ID,
-			PlatformID:   rom.PlatformID,
-			PlatformName: platform.Name,
-			Name:         rom.Name,
-			FileName:     rom.FileName,
-			SizeBytes:    rom.SizeBytes,
-			Regions:      nonNil(rom.Regions),
-			Revision:     rom.Revision,
-			MultiFile:    rom.MultiFile,
-			State:        schema.GameOnRomM,
+			ID:             rom.ID,
+			PlatformID:     rom.PlatformID,
+			PlatformName:   platform.Name,
+			Name:           rom.Name,
+			FileName:       rom.FileName,
+			SizeBytes:      rom.SizeBytes,
+			Regions:        nonNil(rom.Regions),
+			Revision:       rom.Revision,
+			MultiFile:      rom.MultiFile,
+			State:          schema.GameState(state),
+			InstalledPaths: paths,
 		}, nil
 	})
 }

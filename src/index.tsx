@@ -20,7 +20,15 @@ import {
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
-import { GamesView, GameView, LibrarySection, PlatformsView, SearchView } from './library/Library'
+import { watchDownloads } from './downloads'
+import {
+  DownloadsSection,
+  GamesView,
+  GameView,
+  LibrarySection,
+  PlatformsView,
+  SearchView,
+} from './library/Library'
 import type { GameFilter, PlatformSummary } from './rpc/schema.gen'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
@@ -212,6 +220,7 @@ type View =
   | { name: 'platforms' }
   | { name: 'games'; platform: PlatformSummary; filter: GameFilter; game?: number }
   | { name: 'search'; query: string; game?: number }
+  | { name: 'game'; id: number }
 
 function Content() {
   const [view, setView] = useState<View>({ name: 'home' })
@@ -262,9 +271,13 @@ function Content() {
       </>
     )
   }
+  if (view.name === 'game') {
+    return <GameView id={view.id} onBack={() => setView({ name: 'home' })} />
+  }
   return (
     <>
       <ServerSection />
+      <DownloadsSection onOpen={(id) => setView({ name: 'game', id })} />
       <LibrarySection
         onBrowse={() => setView({ name: 'platforms' })}
         onSearch={() => setView({ name: 'search', query: '' })}
@@ -279,6 +292,7 @@ export default definePlugin(() => {
   routerHook.addRoute(SETUP_ROUTE, SetupPage, { exact: true })
   routerHook.addRoute(STATUS_ROUTE, StatusPage, { exact: true })
   const stopWatchingConnection = watchConnection()
+  const stopWatchingDownloads = watchDownloads()
 
   return {
     name: 'EmuDeck RomM Sync',
@@ -289,6 +303,7 @@ export default definePlugin(() => {
       routerHook.removeRoute(SETUP_ROUTE)
       routerHook.removeRoute(STATUS_ROUTE)
       stopWatchingConnection()
+      stopWatchingDownloads()
     },
   }
 })

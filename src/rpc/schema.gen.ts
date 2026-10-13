@@ -46,6 +46,19 @@ export const ErrorAccountDisabled: ErrorKind = "account_disabled";
 export const ErrorMissingPermission: ErrorKind = "missing_permission";
 export const ErrorSignedOut: ErrorKind = "signed_out";
 export const ErrorNotFound: ErrorKind = "not_found";
+/**
+ * ErrorNewerData means the plugin's data is from a newer version of the plugin.
+ */
+export const ErrorNewerData: ErrorKind = "newer_data";
+/**
+ * ErrorCantDownload means the game can't be placed: no EmuDeck, no folder for its platform, or
+ * a layout the plugin doesn't place.
+ */
+export const ErrorCantDownload: ErrorKind = "cant_download";
+/**
+ * ErrorTargetExists means a file the plugin didn't download sits where the game would go.
+ */
+export const ErrorTargetExists: ErrorKind = "target_exists";
 export interface ErrorData {
   kind: ErrorKind;
   /**
@@ -76,6 +89,9 @@ export interface Methods {
   list_games: Method<ListGamesParams, ListGamesResult>;
   get_game: Method<GetGameParams, Game>;
   search_games: Method<SearchGamesParams, SearchGamesResult>;
+  download_game: Method<DownloadGameParams, DownloadItem>;
+  cancel_download: Method<CancelDownloadParams, CancelDownloadResult>;
+  list_downloads: Method<ListDownloadsParams, ListDownloadsResult>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -92,6 +108,10 @@ export interface Events {
    * Catalog fires each time a library refresh starts, makes progress or ends.
    */
   catalog: CatalogStatus;
+  /**
+   * Download fires each time a download is queued, makes progress or ends.
+   */
+  download: DownloadEvent;
 }
 /**
  * Method pairs a method's params with its result.
@@ -359,6 +379,15 @@ export type GameState = string;
  * GameOnRomM is a game on the server and not on this Deck.
  */
 export const GameOnRomM: GameState = "on_romm";
+/**
+ * GameQueued is waiting for a download slot.
+ */
+export const GameQueued: GameState = "queued";
+export const GameDownloading: GameState = "downloading";
+/**
+ * GameInstalled is on this Deck, downloaded by the plugin.
+ */
+export const GameInstalled: GameState = "installed";
 export interface GameSummary {
   id: number /* int */;
   name: string;
@@ -413,4 +442,58 @@ export interface Game {
    */
   multiFile: boolean;
   state: GameState;
+  /**
+   * InstalledPaths are the files the plugin placed, set when installed.
+   */
+  installedPaths?: string[];
+}
+export interface DownloadGameParams {
+  id: number /* int */;
+}
+export interface CancelDownloadParams {
+  id: number /* int */;
+}
+export interface CancelDownloadResult {
+  /**
+   * Cancelled is false when the game wasn't queued or downloading.
+   */
+  cancelled: boolean;
+}
+export interface ListDownloadsParams {
+}
+export interface ListDownloadsResult {
+  /**
+   * Downloads are the queued and running downloads, in queue order.
+   */
+  downloads: DownloadItem[];
+  /**
+   * Problem says why downloading is off.
+   */
+  problem?: Error;
+}
+export interface DownloadItem {
+  id: number /* int */;
+  name: string;
+  platformId: number /* int */;
+  platformName: string;
+  /**
+   * State is queued or downloading.
+   */
+  state: GameState;
+  receivedBytes: number /* int64 */;
+  totalBytes: number /* int64 */;
+}
+/**
+ * DownloadEvent is a change to a download. One that ends is installed, or on_romm when it failed,
+ * with Problem saying why, or was cancelled.
+ */
+export interface DownloadEvent {
+  id: number /* int */;
+  name: string;
+  platformId: number /* int */;
+  platformName: string;
+  state: GameState;
+  receivedBytes: number /* int64 */;
+  totalBytes: number /* int64 */;
+  problem?: Error;
 }

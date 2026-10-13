@@ -5,16 +5,26 @@ import {
   Focusable,
   PanelSection,
   PanelSectionRow,
+  ProgressBarWithInfo,
   TextField,
 } from '@decky/ui'
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useState } from 'react'
+import {
+  type CSSProperties,
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react'
 
 import { call } from '../backend'
 import { formatSize, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
+import { type Downloads, percent, useDownloads } from '../downloads'
 import type {
   Game,
   GameFilter,
+  GameState,
   GameSummary,
   PlatformSummary,
   Error as RpcError,
@@ -65,6 +75,17 @@ function Problem({ error }: { error: RpcError | null }) {
       <Field label="⚠ Couldn't load" description={error.message} />
     </PanelSectionRow>
   )
+}
+
+/**
+ * A game's state for its row: download progress while queued or downloading, "Installed" once on
+ * this Deck, and null while it's only on RomM.
+ */
+function stateLabel(game: { id: number; state: GameState }, downloads: Downloads): string | null {
+  const d = downloads.items.find((i) => i.id === game.id)
+  if (d) return d.state === 'queued' ? 'Queued' : `${percent(d)}%`
+  if (game.state === 'installed') return 'Installed'
+  return null
 }
 
 /** Says the server is down while the library shows from the local copy. */
@@ -228,6 +249,7 @@ export function GamesView({
   onOpen: (game: GameSummary) => void
 }) {
   const catalog = useCatalog()
+  const downloads = useDownloads()
   const [games, setGames] = useState<GameSummary[]>([])
   const [total, setTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -250,11 +272,13 @@ export function GamesView({
     [platform.id, filter],
   )
 
-  // Starts over when the filter changes or a refresh ends.
+  // Starts over when the filter changes, a refresh ends, or a download ends and moves a game
+  // between filters.
   const syncedAt = catalog?.syncedAt
+  const ended = downloads.ended
   useEffect(() => {
     void load(0)
-  }, [load, syncedAt])
+  }, [load, syncedAt, ended])
 
   const more = () => {
     setLoading(true)
@@ -279,7 +303,12 @@ export function GamesView({
         </PanelSectionRow>
       )}
       {games.map((g) => (
-        <Row key={g.id} label={g.name} value={formatSize(g.sizeBytes)} onClick={() => onOpen(g)} />
+        <Row
+          key={g.id}
+          label={g.name}
+          value={stateLabel(g, downloads) ?? formatSize(g.sizeBytes)}
+          onClick={() => onOpen(g)}
+        />
       ))}
       {total !== null && games.length < total && (
         <PanelSectionRow>
@@ -307,6 +336,7 @@ export function SearchView({
   onOpen: (game: SearchHit) => void
 }) {
   const catalog = useCatalog()
+  const downloads = useDownloads()
   // The latest answer, and the query it answers: while it isn't for the current query, a search
   // is pending.
   const [answer, setAnswer] = useState<{
@@ -335,7 +365,7 @@ export function SearchView({
       current = false
       clearTimeout(timer)
     }
-  }, [query, syncedAt])
+  }, [query, syncedAt, downloads.ended])
 
   const blank = query.trim() === ''
   const searching = !blank && answer?.query !== query
@@ -370,34 +400,158 @@ export function SearchView({
           />
         </PanelSectionRow>
       )}
-      {result?.games.map((g) => (
-        <Row key={g.id} label={g.name} value={g.platformName} onClick={() => onOpen(g)} />
-      ))}
+      {result?.games.map((g) => {
+        const state = stateLabel(g, downloads)
+        return (
+          <Row
+            key={g.id}
+            label={g.name}
+            value={state ? `${g.platformName} · ${state}` : g.platformName}
+            onClick={() => onOpen(g)}
+          />
+        )
+      })}
     </PanelSection>
   )
 }
 
 const STATE_LABELS: Record<string, string> = {
   on_romm: 'On RomM',
+  queued: 'Queued',
+  downloading: 'Downloading',
+  installed: 'Installed',
+}
+
+const downloadName: CSSProperties = { flex: '1 1 auto', minWidth: 0, padding: '8px 12px' }
+const cancelButton: CSSProperties = { flex: '0 0 auto', minWidth: 0, width: 40, padding: '8px 0' }
+
+/** The download queue on the QAM home, or why downloading is off. Hidden while there's neither. */
+export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
+  const downloads = useDownloads()
+  if (downloads.items.length === 0 && !downloads.problem) return null
+  return (
+    <PanelSection title="Downloads">
+      {downloads.problem && (
+        <PanelSectionRow>
+          <Field label="⚠ Downloads are off" description={downloads.problem.message} />
+        </PanelSectionRow>
+      )}
+      {downloads.items.map((d) => (
+        <Fragment key={d.id}>
+          <PanelSectionRow>
+            <Focusable style={{ display: 'flex', gap: 4 }} flow-children="horizontal">
+              <DialogButton style={downloadName} onClick={() => onOpen(d.id)}>
+                <span style={row}>
+                  <span style={name}>{d.name}</span>
+                  <span style={count}>{d.state === 'queued' ? 'Queued' : `${percent(d)}%`}</span>
+                </span>
+              </DialogButton>
+              <DialogButton
+                style={cancelButton}
+                aria-label={`Cancel ${d.name}`}
+                onClick={() => void call('cancel_download', { id: d.id }).catch(() => {})}
+              >
+                ✕
+              </DialogButton>
+            </Focusable>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ProgressBarWithInfo
+              nProgress={d.state === 'queued' ? 0 : percent(d)}
+              sOperationText={
+                d.state === 'queued'
+                  ? `${d.platformName} · waiting`
+                  : `${d.platformName} · ${formatSize(d.receivedBytes)} of ${formatSize(d.totalBytes)}`
+              }
+            />
+          </PanelSectionRow>
+        </Fragment>
+      ))}
+    </PanelSection>
+  )
 }
 
 export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
+  const downloads = useDownloads()
   const [game, setGame] = useState<Game | null>(null)
   const [error, setError] = useState<RpcError | null>(null)
+  const [busy, setBusy] = useState(false)
 
+  // Reloads when a download ends, which may be this game's.
   useEffect(() => {
     call('get_game', { id }).then(setGame, (err: unknown) => setError(asRpcError(err)))
-  }, [id])
+  }, [id, downloads.ended])
+
+  const download = downloads.items.find((d) => d.id === id)
+  const state = download?.state ?? game?.state
+  const failure = downloads.failures[id]
+
+  const act = async (action: () => Promise<unknown>) => {
+    setBusy(true)
+    try {
+      await action()
+      setError(null)
+    } catch (err) {
+      setError(asRpcError(err))
+    }
+    setBusy(false)
+  }
 
   return (
     <PanelSection title={game?.name ?? 'Game'}>
       <Back onBack={onBack} />
       <Problem error={error} />
-      {game && (
+      {game && state && (
         <>
           <PanelSectionRow>
-            <Field label="State">{STATE_LABELS[game.state] ?? game.state}</Field>
+            <Field label="State">
+              {download?.state === 'downloading'
+                ? `Downloading ${percent(download)}%`
+                : (STATE_LABELS[state] ?? state)}
+            </Field>
           </PanelSectionRow>
+          {download?.state === 'downloading' && (
+            <PanelSectionRow>
+              <ProgressBarWithInfo
+                nProgress={percent(download)}
+                sOperationText={`${formatSize(download.receivedBytes)} of ${formatSize(download.totalBytes)}`}
+              />
+            </PanelSectionRow>
+          )}
+          {failure && state === 'on_romm' && (
+            <PanelSectionRow>
+              <Field label="⚠ Download failed" description={failure.message} />
+            </PanelSectionRow>
+          )}
+          {state === 'on_romm' && (
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                disabled={busy || downloads.problem !== null}
+                onClick={() => void act(() => call('download_game', { id }))}
+              >
+                Download
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
+          {(state === 'queued' || state === 'downloading') && (
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                disabled={busy}
+                onClick={() => void act(() => call('cancel_download', { id }))}
+              >
+                Cancel
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
+          {game.installedPaths?.map((p) => (
+            <PanelSectionRow key={p}>
+              <Field label="Installed at">
+                <span style={{ wordBreak: 'break-all' }}>{p}</span>
+              </Field>
+            </PanelSectionRow>
+          ))}
           <PanelSectionRow>
             <Field label="Platform">{game.platformName}</Field>
           </PanelSectionRow>

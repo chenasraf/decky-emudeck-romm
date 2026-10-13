@@ -42,7 +42,9 @@ type Client struct {
 	http      *http.Client
 	// bulk is http with room for catalog pages.
 	bulk *http.Client
-	log  *slog.Logger
+	// download has no timeout; DownloadFile watches for stalls instead.
+	download *http.Client
+	log      *slog.Logger
 }
 
 // WithLogger makes the client log each request at debug level, and failed ones at warn.
@@ -74,6 +76,7 @@ func New(server domain.Server, token, version string) *Client {
 		userAgent: clientName + "/" + version,
 		http:      &http.Client{Transport: transport, Timeout: requestTimeout},
 		bulk:      &http.Client{Transport: transport, Timeout: bulkTimeout},
+		download:  &http.Client{Transport: transport},
 		log:       slog.New(slog.DiscardHandler),
 	}
 }
