@@ -67,6 +67,9 @@ type CatalogStore interface {
 type GameStates interface {
 	// States returns the state of every game that isn't just On RomM.
 	States(ctx context.Context) (map[int]domain.GameState, error)
+	// CheckOwned stops recording files the plugin placed that the user has since removed or
+	// changed. Each refresh runs it.
+	CheckOwned(ctx context.Context) error
 }
 
 // CatalogListener hears the Catalog's status each time a refresh starts, makes progress or ends.
@@ -162,6 +165,10 @@ func (c *Catalog) Refresh(force bool) {
 func (c *Catalog) run() {
 	start := c.now()
 	err := c.sync(c.base)
+	// The files are on this Deck, so they're checked even when the Server couldn't be reached.
+	if err := c.states.CheckOwned(c.base); err != nil {
+		c.log.Error("check owned games", "err", err)
+	}
 
 	c.mu.Lock()
 	c.refreshing = false

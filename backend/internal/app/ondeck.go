@@ -27,16 +27,29 @@ type LinkStore interface {
 	DeleteLinked(ctx context.Context, id int) error
 }
 
-// OwnershipChange is a game Adopted, now Plugin-owned, or Linked to RomM.
+// OwnershipKind is what changed a game's ownership.
+type OwnershipKind string
+
+const (
+	// OwnershipAdopted: the user Adopted the game's file, now Plugin-owned.
+	OwnershipAdopted OwnershipKind = "adopted"
+	// OwnershipLinked: the user Linked the game's file to RomM.
+	OwnershipLinked OwnershipKind = "linked"
+	// OwnershipGone: every file the plugin placed for the game is gone.
+	OwnershipGone OwnershipKind = "gone"
+	// OwnershipChanged: a file the plugin placed changed or went, so the rest are User-managed.
+	OwnershipChanged OwnershipKind = "changed"
+)
+
+// OwnershipChange is a game whose ownership changed, and the state it's in now.
 type OwnershipChange struct {
 	ROMID int
 	Name  string
-	// State is StateInstalled once adopted, StateOnDeck once linked.
-	State  domain.GameState
-	Linked bool
+	State domain.GameState
+	Kind  OwnershipKind
 }
 
-// OwnershipListener hears each game adopted or linked.
+// OwnershipListener hears each change to a game's ownership.
 type OwnershipListener func(OwnershipChange)
 
 // OnDeckCheck is how the User-managed file where a game would go compares with the game on RomM.
@@ -451,7 +464,7 @@ func (d *Downloads) Adopt(ctx context.Context, id int) error {
 	d.mu.Unlock()
 	d.Cancel(id)
 	d.log.Info("game adopted", "rom_id", id, "path", j.path)
-	d.announceOwnership(OwnershipChange{ROMID: id, Name: rom.Name, State: domain.StateInstalled})
+	d.announceOwnership(OwnershipChange{ROMID: id, Name: rom.Name, State: domain.StateInstalled, Kind: OwnershipAdopted})
 	return nil
 }
 
@@ -483,7 +496,7 @@ func (d *Downloads) Link(ctx context.Context, id int) error {
 	}
 	d.Cancel(id)
 	d.log.Info("game linked", "rom_id", id, "path", path)
-	d.announceOwnership(OwnershipChange{ROMID: id, Name: rom.Name, State: domain.StateOnDeck, Linked: true})
+	d.announceOwnership(OwnershipChange{ROMID: id, Name: rom.Name, State: domain.StateOnDeck, Kind: OwnershipLinked})
 	return nil
 }
 

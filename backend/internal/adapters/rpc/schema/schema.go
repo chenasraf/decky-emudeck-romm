@@ -115,7 +115,8 @@ type Events struct {
 	Delete DeleteEvent `json:"delete"`
 	// DownloadHold fires when the download queue goes on hold for space, and when it comes off.
 	DownloadHold DownloadHoldEvent `json:"download_hold"`
-	// Ownership fires when a game is adopted or linked.
+	// Ownership fires when a game is adopted or linked, and when a library refresh finds an
+	// installed game's files gone or changed.
 	Ownership OwnershipEvent `json:"ownership"`
 	// BIOS fires when a platform's BIOS download starts and when it ends.
 	BIOS BIOSEvent `json:"bios"`
@@ -621,12 +622,27 @@ type LinkGameParams struct {
 
 type LinkGameResult struct{}
 
-// OwnershipEvent is a game adopted, now installed, or linked, still on_deck.
+// OwnershipKind is what changed a game's ownership.
+type OwnershipKind string
+
+const (
+	// OwnershipAdopted is a game adopted, now installed.
+	OwnershipAdopted OwnershipKind = "adopted"
+	// OwnershipLinked is a game linked to RomM, still on_deck.
+	OwnershipLinked OwnershipKind = "linked"
+	// OwnershipGone is an installed game whose files are all gone, found on a library refresh.
+	OwnershipGone OwnershipKind = "gone"
+	// OwnershipChanged is an installed game with a file changed or gone, found on a library
+	// refresh; the plugin no longer manages what's left.
+	OwnershipChanged OwnershipKind = "changed"
+)
+
+// OwnershipEvent is a change to a game's ownership, and the state it left the game in.
 type OwnershipEvent struct {
-	ID     int       `json:"id"`
-	Name   string    `json:"name"`
-	State  GameState `json:"state"`
-	Linked bool      `json:"linked"`
+	ID    int           `json:"id"`
+	Name  string        `json:"name"`
+	State GameState     `json:"state"`
+	Kind  OwnershipKind `json:"kind"`
 }
 
 // DownloadGameParams names the game to download. A failed download is retried, resuming what it

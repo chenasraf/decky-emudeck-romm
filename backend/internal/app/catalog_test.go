@@ -197,6 +197,8 @@ func (f fixedStates) States(context.Context) (map[int]domain.GameState, error) {
 	return maps.Clone(f), nil
 }
 
+func (f fixedStates) CheckOwned(context.Context) error { return nil }
+
 func (s *memStore) Counts(context.Context) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

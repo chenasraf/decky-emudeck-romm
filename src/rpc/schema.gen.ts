@@ -145,7 +145,8 @@ export interface Events {
    */
   download_hold: DownloadHoldEvent;
   /**
-   * Ownership fires when a game is adopted or linked.
+   * Ownership fires when a game is adopted or linked, and when a library refresh finds an
+   * installed game's files gone or changed.
    */
   ownership: OwnershipEvent;
   /**
@@ -758,13 +759,34 @@ export interface LinkGameParams {
 export interface LinkGameResult {
 }
 /**
- * OwnershipEvent is a game adopted, now installed, or linked, still on_deck.
+ * OwnershipKind is what changed a game's ownership.
+ */
+export type OwnershipKind = string;
+/**
+ * OwnershipAdopted is a game adopted, now installed.
+ */
+export const OwnershipAdopted: OwnershipKind = "adopted";
+/**
+ * OwnershipLinked is a game linked to RomM, still on_deck.
+ */
+export const OwnershipLinked: OwnershipKind = "linked";
+/**
+ * OwnershipGone is an installed game whose files are all gone, found on a library refresh.
+ */
+export const OwnershipGone: OwnershipKind = "gone";
+/**
+ * OwnershipChanged is an installed game with a file changed or gone, found on a library
+ * refresh; the plugin no longer manages what's left.
+ */
+export const OwnershipChanged: OwnershipKind = "changed";
+/**
+ * OwnershipEvent is a change to a game's ownership, and the state it left the game in.
  */
 export interface OwnershipEvent {
   id: number /* int */;
   name: string;
   state: GameState;
-  linked: boolean;
+  kind: OwnershipKind;
 }
 /**
  * DownloadGameParams names the game to download. A failed download is retried, resuming what it

@@ -295,10 +295,11 @@ type downloadFixture struct {
 	prefs  *memPrefs
 	games  *Games
 	// playing is set while an emulator runs a game.
-	playing atomic.Bool
-	gaming  *memGamePrefs
-	updates chan Download
-	deletes chan DeleteUpdate
+	playing   atomic.Bool
+	gaming    *memGamePrefs
+	updates   chan Download
+	deletes   chan DeleteUpdate
+	ownership chan OwnershipChange
 	// stop stops the backend the downloads run under.
 	stop context.CancelFunc
 	root string
@@ -328,11 +329,12 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			converts: map[int]conversion{},
 			started:  make(chan int, 64),
 		},
-		settings: &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
-		updates:  make(chan Download, 256),
-		deletes:  make(chan DeleteUpdate, 256),
-		root:     root,
-		snes:     filepath.Join(root, "roms", "snes"),
+		settings:  &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
+		updates:   make(chan Download, 256),
+		deletes:   make(chan DeleteUpdate, 256),
+		ownership: make(chan OwnershipChange, 256),
+		root:      root,
+		snes:      filepath.Join(root, "roms", "snes"),
 	}
 
 	catalog := &memStore{}
@@ -403,9 +405,10 @@ func (f *downloadFixture) measure(path string) (int64, error) {
 
 func (f *downloadFixture) listeners() DownloadListeners {
 	return DownloadListeners{
-		Change: func(u Download) { f.updates <- u },
-		Delete: func(u DeleteUpdate) { f.deletes <- u },
-		Hold:   func(err error) { f.holds <- err },
+		Change:    func(u Download) { f.updates <- u },
+		Delete:    func(u DeleteUpdate) { f.deletes <- u },
+		Hold:      func(err error) { f.holds <- err },
+		Ownership: func(c OwnershipChange) { f.ownership <- c },
 	}
 }
 

@@ -75,9 +75,24 @@ function applyDelete(e: DeleteEvent) {
 }
 
 function applyOwnership(e: OwnershipEvent) {
-  // Adopting moves the game to Installed; linking changes its page.
+  // Each moves the game between Installed and another state, or changes its page.
   publish({ ...current, ended: current.ended + 1 })
-  toaster.toast({ title: e.linked ? 'Linked to RomM' : 'Adopted', body: e.name })
+  switch (e.kind) {
+    case 'adopted':
+      toaster.toast({ title: 'Adopted', body: e.name })
+      break
+    case 'linked':
+      toaster.toast({ title: 'Linked to RomM', body: e.name })
+      break
+    case 'changed':
+      // The plugin stopped managing a game on its own, so the user hears why.
+      toaster.toast({
+        title: `${e.name} changed on disk`,
+        body: 'The plugin no longer manages it, and won’t delete it.',
+      })
+      break
+    // A game the user deleted by hand needs no word: it's simply On RomM again.
+  }
 }
 
 function applyHold(e: DownloadHoldEvent) {

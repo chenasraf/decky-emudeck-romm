@@ -127,7 +127,7 @@ func DownloadListeners(s *Server) app.DownloadListeners {
 
 func ownershipEvents(s *Server) app.OwnershipListener {
 	return func(c app.OwnershipChange) {
-		event := schema.OwnershipEvent{ID: c.ROMID, Name: c.Name, State: schema.GameState(c.State), Linked: c.Linked}
+		event := schema.OwnershipEvent{ID: c.ROMID, Name: c.Name, State: schema.GameState(c.State), Kind: schema.OwnershipKind(c.Kind)}
 		if err := s.Notify("ownership", event); err != nil {
 			s.log.Error("send ownership", "err", err)
 		}
