@@ -44,6 +44,7 @@ export const ErrorRateLimited: ErrorKind = "rate_limited";
 export const ErrorBadCredentials: ErrorKind = "bad_credentials";
 export const ErrorAccountDisabled: ErrorKind = "account_disabled";
 export const ErrorMissingPermission: ErrorKind = "missing_permission";
+export const ErrorSignedOut: ErrorKind = "signed_out";
 export interface ErrorData {
   kind: ErrorKind;
   /**
@@ -74,6 +75,11 @@ export interface Methods {
  */
 export interface Events {
   device_pairing: DevicePairingEvent;
+  /**
+   * Connection fires each time the plugin signs in, wherever the sign-in finished, and once each
+   * time the server stops accepting the plugin's token.
+   */
+  connection: ConnectionStatus;
 }
 /**
  * Method pairs a method's params with its result.
@@ -91,11 +97,20 @@ export type ConnectionState = string;
 export const ConnectionNotSetUp: ConnectionState = "not_set_up";
 export const ConnectionConnected: ConnectionState = "connected";
 export const ConnectionOffline: ConnectionState = "offline";
+/**
+ * ConnectionSignedOut means the server no longer accepts the plugin's token. Work is paused
+ * until the user signs in again on the same server.
+ */
+export const ConnectionSignedOut: ConnectionState = "signed_out";
 export interface ConnectionStatusParams {
 }
 export interface ConnectionStatus {
   state: ConnectionState;
   serverUrl?: string;
+  /**
+   * CertFingerprint is the certificate pinned for the server, which signing in again passes back.
+   */
+  certFingerprint?: string;
   /**
    * Version is the server's RomM version, set when connected.
    */

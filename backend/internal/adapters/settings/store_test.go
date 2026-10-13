@@ -20,10 +20,11 @@ func TestEmptyStore(t *testing.T) {
 func TestRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := domain.SignIn{
-		Server:   domain.Server{URL: "https://romm.lan", CertFingerprint: "AB:CD"},
-		Token:    "rmm_secret",
-		DeviceID: "dev-1",
-		Scopes:   []string{"roms.read", "me.read"},
+		Server:    domain.Server{URL: "https://romm.lan", CertFingerprint: "AB:CD"},
+		Token:     "rmm_secret",
+		DeviceID:  "dev-1",
+		Scopes:    []string{"roms.read", "me.read"},
+		SignedOut: true,
 	}
 	if err := New(dir).SaveSignIn(want); err != nil {
 		t.Fatal(err)

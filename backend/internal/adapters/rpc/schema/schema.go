@@ -39,6 +39,7 @@ const (
 	ErrorBadCredentials     ErrorKind = "bad_credentials"
 	ErrorAccountDisabled    ErrorKind = "account_disabled"
 	ErrorMissingPermission  ErrorKind = "missing_permission"
+	ErrorSignedOut          ErrorKind = "signed_out"
 )
 
 type ErrorData struct {
@@ -65,6 +66,9 @@ type Methods struct {
 // event of the same name, to its params.
 type Events struct {
 	DevicePairing DevicePairingEvent `json:"device_pairing"`
+	// Connection fires each time the plugin signs in, wherever the sign-in finished, and once each
+	// time the server stops accepting the plugin's token.
+	Connection ConnectionStatus `json:"connection"`
 }
 
 // Method pairs a method's params with its result.
@@ -85,6 +89,9 @@ const (
 	ConnectionNotSetUp  ConnectionState = "not_set_up"
 	ConnectionConnected ConnectionState = "connected"
 	ConnectionOffline   ConnectionState = "offline"
+	// ConnectionSignedOut means the server no longer accepts the plugin's token. Work is paused
+	// until the user signs in again on the same server.
+	ConnectionSignedOut ConnectionState = "signed_out"
 )
 
 type ConnectionStatusParams struct{}
@@ -92,6 +99,8 @@ type ConnectionStatusParams struct{}
 type ConnectionStatus struct {
 	State     ConnectionState `json:"state"`
 	ServerURL string          `json:"serverUrl,omitempty"`
+	// CertFingerprint is the certificate pinned for the server, which signing in again passes back.
+	CertFingerprint string `json:"certFingerprint,omitempty"`
 	// Version is the server's RomM version, set when connected.
 	Version string `json:"version,omitempty"`
 	// Problem says why the server is offline.

@@ -39,6 +39,7 @@ type fileServer struct {
 	CertFingerprint string   `json:"certFingerprint,omitempty"`
 	DeviceID        string   `json:"deviceId,omitempty"`
 	Scopes          []string `json:"scopes,omitempty"`
+	SignedOut       bool     `json:"signedOut,omitempty"`
 }
 
 // SignIn returns the saved sign-in, or nil when there is no server or no token.
@@ -54,10 +55,11 @@ func (s *Store) SignIn() (*domain.SignIn, error) {
 		return nil, err
 	}
 	return &domain.SignIn{
-		Server:   domain.Server{URL: f.Server.URL, CertFingerprint: f.Server.CertFingerprint},
-		Token:    token,
-		DeviceID: f.Server.DeviceID,
-		Scopes:   f.Server.Scopes,
+		Server:    domain.Server{URL: f.Server.URL, CertFingerprint: f.Server.CertFingerprint},
+		Token:     token,
+		DeviceID:  f.Server.DeviceID,
+		Scopes:    f.Server.Scopes,
+		SignedOut: f.Server.SignedOut,
 	}, nil
 }
 
@@ -77,6 +79,7 @@ func (s *Store) SaveSignIn(in domain.SignIn) error {
 		CertFingerprint: in.Server.CertFingerprint,
 		DeviceID:        in.DeviceID,
 		Scopes:          in.Scopes,
+		SignedOut:       in.SignedOut,
 	}
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {

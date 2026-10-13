@@ -2,7 +2,7 @@ import { DialogButton, Field, Focusable, Navigation, TextField } from '@decky/ui
 import { type CSSProperties, useState } from 'react'
 
 import { call } from '../backend'
-import { publishConnection } from '../connection'
+import { currentConnection, publishConnection } from '../connection'
 import { disabledReason, featureLabel } from '../features'
 import type {
   CheckServerResult,
@@ -223,7 +223,7 @@ function SignInStep({
 
   return (
     <>
-      <Field label="Server" description={`RomM ${found.version}`}>
+      <Field label="Server" description={found.version ? `RomM ${found.version}` : undefined}>
         {found.server.url}
       </Field>
       {method === 'qr' && <DevicePairingPanel server={found.server} onSignedIn={onSignedIn} />}
@@ -263,8 +263,25 @@ function DoneStep({ status }: { status: ConnectionStatus }) {
   )
 }
 
+/**
+ * Signed out, the route signs in again on the same server, with its pinned certificate, so the
+ * Device and every local record carry over.
+ */
+function firstStep(): Step {
+  const status = currentConnection()
+  if (status?.state !== 'signed_out' || !status.serverUrl) return { name: 'server' }
+  return {
+    name: 'sign_in',
+    found: {
+      server: { url: status.serverUrl, certFingerprint: status.certFingerprint },
+      version: status.version ?? '',
+    },
+  }
+}
+
 export function SetupPage() {
-  const [step, setStep] = useState<Step>({ name: 'server' })
+  const [step, setStep] = useState<Step>(firstStep)
+  const [reSignIn] = useState(() => step.name === 'sign_in')
 
   const signedIn = (status: ConnectionStatus) => {
     publishConnection(status)
@@ -273,14 +290,16 @@ export function SetupPage() {
 
   return (
     <div style={page}>
-      <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>Set up RomM</div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>
+        {reSignIn ? 'Sign in again' : 'Set up RomM'}
+      </div>
       {step.name === 'server' && (
         <ServerStep onFound={(found) => setStep({ name: 'sign_in', found })} />
       )}
       {step.name === 'sign_in' && (
         <SignInStep
           found={step.found}
-          onBack={() => setStep({ name: 'server' })}
+          onBack={reSignIn ? () => Navigation.NavigateBack() : () => setStep({ name: 'server' })}
           onSignedIn={signedIn}
         />
       )}

@@ -17,7 +17,7 @@ import {
   backendStatus,
   restartBackend,
 } from './backend'
-import { SETUP_ROUTE, useConnection } from './connection'
+import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { SetupPage } from './setup/SetupPage'
 
@@ -54,6 +54,26 @@ function ServerSection() {
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openSetup}>
             Set up RomM
+          </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+    )
+  }
+
+  if (status.state === 'signed_out') {
+    return (
+      <PanelSection title="RomM">
+        <PanelSectionRow>
+          <Field
+            label="Signed out"
+            description="RomM no longer accepts this Deck's sign-in. Work with RomM is paused until you sign in again."
+          >
+            {status.serverUrl}
+          </Field>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={openSetup}>
+            Sign in again
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
@@ -136,6 +156,7 @@ function Content() {
 
 export default definePlugin(() => {
   routerHook.addRoute(SETUP_ROUTE, SetupPage, { exact: true })
+  const stopWatchingConnection = watchConnection()
 
   return {
     name: 'EmuDeck RomM Sync',
@@ -144,6 +165,7 @@ export default definePlugin(() => {
     icon: <FaCompactDisc />,
     onDismount() {
       routerHook.removeRoute(SETUP_ROUTE)
+      stopWatchingConnection()
     },
   }
 })

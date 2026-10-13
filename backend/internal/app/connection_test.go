@@ -49,15 +49,18 @@ type fakeNet struct {
 	grantErr error
 	// allowed is what the signed-in account may grant a pending pairing.
 	allowed []string
+	// revoked holds the tokens RomM no longer accepts.
+	revoked map[string]bool
 
-	mu        sync.Mutex
-	dialed    []domain.Server
-	started   []domain.DeviceIdentity
-	scopes    []string
-	polls     []error
-	pollCalls int
-	pollTimes []time.Time
-	approved  domain.SignIn
+	mu          sync.Mutex
+	tokenChecks int
+	dialed      []domain.Server
+	started     []domain.DeviceIdentity
+	scopes      []string
+	polls       []error
+	pollCalls   int
+	pollTimes   []time.Time
+	approved    domain.SignIn
 	// grantScopes, approvals and approvedScopes record the password sign-in's calls.
 	grantScopes    []string
 	approvals      []string
@@ -115,6 +118,16 @@ func (r fakeRomM) Heartbeat(context.Context) (string, error) {
 	return "", &domain.Error{Kind: domain.KindUnreachable, Message: "unreachable"}
 }
 
+func (r fakeRomM) CheckToken(context.Context) error {
+	r.net.mu.Lock()
+	defer r.net.mu.Unlock()
+	r.net.tokenChecks++
+	if r.net.revoked[r.token] {
+		return &domain.Error{Kind: domain.KindSignedOut, Message: "signed out"}
+	}
+	return nil
+}
+
 func (r fakeRomM) ExchangePairCode(_ context.Context, code string) (domain.SignIn, error) {
 	if code == r.net.pairCode {
 		return domain.SignIn{Token: "rmm_new", Scopes: []string{"roms.read"}}, nil
@@ -148,24 +161,52 @@ func version(v string) func(domain.Server) (string, error) {
 	return func(domain.Server) (string, error) { return v, nil }
 }
 
-func kindOf(err error) domain.Kind {
-	var de *domain.Error
-	if errors.As(err, &de) {
-		return de.Kind
-	}
-	return ""
+type updates chan PairingUpdate
+
+type fakeEvents struct {
+	pairing updates
+	changed chan ConnectionStatus
 }
 
-type updates chan PairingUpdate
+func (e fakeEvents) Pairing(u PairingUpdate)    { e.pairing <- u }
+func (e fakeEvents) Changed(s ConnectionStatus) { e.changed <- s }
+
+// next returns the next connection change, failing when none comes.
+func (e fakeEvents) next(t *testing.T) ConnectionStatus {
+	t.Helper()
+	select {
+	case s := <-e.changed:
+		return s
+	case <-time.After(time.Second):
+		t.Fatal("no connection change")
+		return ConnectionStatus{}
+	}
+}
+
+// none fails if a connection change is waiting.
+func (e fakeEvents) none(t *testing.T) {
+	t.Helper()
+	select {
+	case s := <-e.changed:
+		t.Fatalf("unexpected connection change %+v", s)
+	default:
+	}
+}
 
 func newConnection(t *testing.T, settings Settings, n *fakeNet) (*Connection, updates) {
 	t.Helper()
+	c, events := newConnectionWithEvents(t, settings, n)
+	return c, events.pairing
+}
+
+func newConnectionWithEvents(t *testing.T, settings Settings, n *fakeNet) (*Connection, fakeEvents) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	ch := make(updates, 4)
-	c := NewConnection(ctx, settings, n.dial, fakeIdentity{}, func(u PairingUpdate) { ch <- u }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	events := fakeEvents{pairing: make(updates, 4), changed: make(chan ConnectionStatus, 16)}
+	c := NewConnection(ctx, settings, n.dial, fakeIdentity{}, events, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	c.slowDownStep = 20 * time.Millisecond
-	return c, ch
+	return c, events
 }
 
 func (u updates) next(t *testing.T) PairingUpdate {
@@ -338,6 +379,98 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+func TestRevokedTokenSignsOutOnce(t *testing.T) {
+	n := &fakeNet{heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")}}
+	server := domain.Server{URL: "https://romm.lan", CertFingerprint: "AA:BB"}
+	settings := &fakeSettings{in: &domain.SignIn{Server: server, Token: "rmm_old", DeviceID: "dev-1"}}
+	c, events := newConnectionWithEvents(t, settings, n)
+
+	if s, _ := c.Status(context.Background()); s.State != Connected {
+		t.Fatalf("before revoking: %+v", s)
+	}
+	n.mu.Lock()
+	n.revoked = map[string]bool{"rmm_old": true}
+	n.mu.Unlock()
+
+	s, err := c.Status(context.Background())
+	if err != nil || s.State != SignedOut || s.ServerURL != server.URL || s.CertFingerprint != "AA:BB" {
+		t.Fatalf("after revoking: %+v, %v", s, err)
+	}
+	if got := events.next(t); got.State != SignedOut || got.ServerURL != server.URL {
+		t.Fatalf("event %+v", got)
+	}
+	// Every local record stays, so signing in again picks up where it left off.
+	if !settings.in.SignedOut || settings.in.Token != "rmm_old" || settings.in.DeviceID != "dev-1" || settings.in.Server != server {
+		t.Fatalf("saved %+v", settings.in)
+	}
+
+	checks := n.tokenChecks
+	for range 3 {
+		if s, _ := c.Status(context.Background()); s.State != SignedOut {
+			t.Fatalf("still signed out: %+v", s)
+		}
+	}
+	if n.tokenChecks != checks {
+		t.Fatal("a signed-out status asked RomM again")
+	}
+	// Only the lapse itself is reported, not every check after it.
+	events.none(t)
+}
+
+func TestSignInAgainResumesPausedWork(t *testing.T) {
+	n := &fakeNet{
+		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
+		pairCode:   "ABCD2345",
+	}
+	server := domain.Server{URL: "https://romm.lan"}
+	old := domain.SignIn{Server: server, Token: "rmm_old", DeviceID: "dev-1", SignedOut: true}
+	settings := &fakeSettings{in: &old}
+	c, events := newConnectionWithEvents(t, settings, n)
+
+	resumed := make(chan error, 1)
+	go func() { resumed <- c.WaitSignedIn(context.Background()) }()
+	select {
+	case err := <-resumed:
+		t.Fatalf("work ran while signed out: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if s, err := c.SignInWithPairCode(context.Background(), server, "ABCD2345"); err != nil || s.State != Connected {
+		t.Fatalf("sign in again: %+v, %v", s, err)
+	}
+	select {
+	case err := <-resumed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("paused work didn't resume after signing in again")
+	}
+	if settings.in.SignedOut || settings.in.Token != "rmm_new" {
+		t.Fatalf("saved %+v", settings.in)
+	}
+	// The QAM hears of the sign-in even when the page that made it is gone.
+	if got := events.next(t); got.State != Connected {
+		t.Fatalf("change %+v", got)
+	}
+
+	// A request made with the old token that fails late leaves the new sign-in alone.
+	_ = c.observe(old, &domain.Error{Kind: domain.KindSignedOut})
+	if settings.in.SignedOut {
+		t.Fatal("a stale rejection signed the new token out")
+	}
+	events.none(t)
+}
+
+func TestWaitSignedInStopsWithContext(t *testing.T) {
+	c, _ := newConnection(t, &fakeSettings{}, &fakeNet{})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := c.WaitSignedIn(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestDevicePairingApproved(t *testing.T) {
 	n := &fakeNet{
 		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
@@ -345,7 +478,8 @@ func TestDevicePairingApproved(t *testing.T) {
 		approved:   domain.SignIn{Token: "rmm_dev", DeviceID: "dev-1", Scopes: []string{"me.read", "roms.read", "platforms.read"}},
 	}
 	settings := &fakeSettings{}
-	c, updates := newConnection(t, settings, n)
+	c, events := newConnectionWithEvents(t, settings, n)
+	updates := events.pairing
 	server := domain.Server{URL: "https://romm.lan"}
 
 	pairing, err := c.StartDevicePairing(context.Background(), server)
@@ -355,6 +489,10 @@ func TestDevicePairingApproved(t *testing.T) {
 	u := updates.next(t)
 	if u.State != PairingApproved || u.Status.State != Connected {
 		t.Fatalf("update %+v", u)
+	}
+	// A pairing approved after the setup page closed still reaches the QAM.
+	if got := events.next(t); got.State != Connected {
+		t.Fatalf("change %+v", got)
 	}
 	if settings.in.Token != "rmm_dev" || settings.in.DeviceID != "dev-1" || settings.in.Server != server {
 		t.Fatalf("saved %+v", settings.in)

@@ -71,29 +71,41 @@ func Routes(s *Server, version string, conn *app.Connection) {
 	})
 }
 
-// PairingEvents returns a listener that sends each pairing update as a device_pairing
-// notification.
-func PairingEvents(s *Server) app.PairingListener {
-	return func(u app.PairingUpdate) {
-		event := schema.DevicePairingEvent{State: schema.PairingState(u.State)}
-		if u.State == app.PairingApproved {
-			status := toWireStatus(u.Status)
-			event.Status = &status
-		}
-		if u.Problem != nil {
-			event.Problem = problemOf(u.Problem)
-		}
-		if err := s.Notify("device_pairing", event); err != nil {
-			s.log.Error("send device_pairing", "err", err)
-		}
+// ConnectionEvents sends the connection's background events as notifications.
+type ConnectionEvents struct{ s *Server }
+
+func NewConnectionEvents(s *Server) ConnectionEvents { return ConnectionEvents{s: s} }
+
+// Pairing sends a device_pairing notification.
+func (e ConnectionEvents) Pairing(u app.PairingUpdate) {
+	event := schema.DevicePairingEvent{State: schema.PairingState(u.State)}
+	if u.State == app.PairingApproved {
+		status := toWireStatus(u.Status)
+		event.Status = &status
+	}
+	if u.Problem != nil {
+		event.Problem = problemOf(u.Problem)
+	}
+	e.notify("device_pairing", event)
+}
+
+// Changed sends a connection notification.
+func (e ConnectionEvents) Changed(status app.ConnectionStatus) {
+	e.notify("connection", toWireStatus(status))
+}
+
+func (e ConnectionEvents) notify(method string, params any) {
+	if err := e.s.Notify(method, params); err != nil {
+		e.s.log.Error("send "+method, "err", err)
 	}
 }
 
 func toWireStatus(s app.ConnectionStatus) schema.ConnectionStatus {
 	out := schema.ConnectionStatus{
-		State:     schema.ConnectionState(s.State),
-		ServerURL: s.ServerURL,
-		Version:   s.Version,
+		State:           schema.ConnectionState(s.State),
+		ServerURL:       s.ServerURL,
+		CertFingerprint: s.CertFingerprint,
+		Version:         s.Version,
 	}
 	for _, f := range s.DisabledFeatures {
 		out.DisabledFeatures = append(out.DisabledFeatures, schema.DisabledFeature{

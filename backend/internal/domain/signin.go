@@ -14,6 +14,9 @@ type SignIn struct {
 	DeviceID string
 	// Scopes are what RomM granted the token. Nil when unknown, which gates nothing.
 	Scopes []string
+	// SignedOut is set once the Server stops accepting Token. The sign-in is kept so the user can
+	// sign in again on the same Server.
+	SignedOut bool
 }
 
 // Feature is a part of the plugin that needs particular token scopes.

@@ -22,6 +22,8 @@ const statusTimeout = 5 * time.Second
 // Server.
 type RomM interface {
 	Heartbeat(ctx context.Context) (string, error)
+	// CheckToken fails with domain.KindSignedOut when RomM no longer accepts the token.
+	CheckToken(ctx context.Context) error
 	ExchangePairCode(ctx context.Context, code string) (domain.SignIn, error)
 	StartDeviceAuth(ctx context.Context, device domain.DeviceIdentity, scopes []string) (domain.DevicePairing, error)
 	PollDeviceAuth(ctx context.Context, deviceCode string) (domain.SignIn, error)
@@ -50,12 +52,14 @@ const (
 	NotSetUp  ConnectionState = "not_set_up"
 	Connected ConnectionState = "connected"
 	Offline   ConnectionState = "offline"
+	SignedOut ConnectionState = "signed_out"
 )
 
 type ConnectionStatus struct {
-	State     ConnectionState
-	ServerURL string
-	Version   string
+	State           ConnectionState
+	ServerURL       string
+	CertFingerprint string
+	Version         string
 	// Problem says why the server is Offline.
 	Problem          error
 	DisabledFeatures []domain.DisabledFeature
@@ -79,15 +83,21 @@ type PairingUpdate struct {
 	Problem error
 }
 
-// PairingListener hears how each device pairing ends. A cancelled pairing ends silently.
-type PairingListener func(PairingUpdate)
+// Events hears what the connection does in the background.
+type Events interface {
+	// Pairing hears how each device pairing ends. A cancelled pairing ends silently.
+	Pairing(PairingUpdate)
+	// Changed hears the connection each time a sign-in is saved, and once each time the Server
+	// stops accepting the token.
+	Changed(ConnectionStatus)
+}
 
 type Connection struct {
-	settings  Settings
-	dial      Dialer
-	identity  Identity
-	onPairing PairingListener
-	log       *slog.Logger
+	settings Settings
+	dial     Dialer
+	identity Identity
+	events   Events
+	log      *slog.Logger
 	// base outlives single calls: device pairings poll under it after their call returns.
 	base context.Context
 
@@ -98,22 +108,27 @@ type Connection struct {
 	// pairingCode and cancelPairing belong to the pending device pairing.
 	pairingCode   string
 	cancelPairing context.CancelFunc
+	// resume is closed and replaced each time a sign-in is saved, waking work that
+	// WaitSignedIn paused.
+	resume chan struct{}
 }
 
 // NewConnection returns the connection use cases. Background work stops when ctx ends.
-func NewConnection(ctx context.Context, settings Settings, dial Dialer, identity Identity, onPairing PairingListener, log *slog.Logger) *Connection {
+func NewConnection(ctx context.Context, settings Settings, dial Dialer, identity Identity, events Events, log *slog.Logger) *Connection {
 	return &Connection{
 		settings:     settings,
 		dial:         dial,
 		identity:     identity,
-		onPairing:    onPairing,
+		events:       events,
 		log:          log,
 		base:         ctx,
 		slowDownStep: 5 * time.Second,
+		resume:       make(chan struct{}),
 	}
 }
 
-// Status reports whether a server is set up and, if so, whether it answers right now.
+// Status reports whether a server is set up and, if so, whether it answers and still accepts the
+// token right now.
 func (c *Connection) Status(ctx context.Context) (ConnectionStatus, error) {
 	in, err := c.settings.SignIn()
 	if err != nil {
@@ -122,19 +137,121 @@ func (c *Connection) Status(ctx context.Context) (ConnectionStatus, error) {
 	if in == nil {
 		return ConnectionStatus{State: NotSetUp}, nil
 	}
+	if in.SignedOut {
+		return signedOutStatus(*in), nil
+	}
 
-	status := ConnectionStatus{ServerURL: in.Server.URL, DisabledFeatures: domain.DisabledFeatures(in.Scopes)}
+	status := ConnectionStatus{
+		ServerURL:        in.Server.URL,
+		CertFingerprint:  in.Server.CertFingerprint,
+		DisabledFeatures: domain.DisabledFeatures(in.Scopes),
+	}
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
-	version, err := c.dial(in.Server, in.Token).Heartbeat(ctx)
+	client := c.dial(in.Server, in.Token)
+	version, err := client.Heartbeat(ctx)
 	if err != nil {
 		status.State = Offline
 		status.Problem = err
 		return status, nil
 	}
-	status.State = Connected
 	status.Version = version
+
+	// The heartbeat is unauthenticated, so it can't tell a revoked token from a working one.
+	if err := c.observe(*in, client.CheckToken(ctx)); err != nil {
+		switch kindOf(err) {
+		case domain.KindSignedOut:
+			return signedOutStatus(*in), nil
+		case domain.KindUnreachable:
+			status.State = Offline
+			status.Problem = err
+			return status, nil
+		}
+		// RomM answered the heartbeat and didn't reject the token, so a hiccup here isn't worth
+		// reporting the server as down.
+		c.log.Warn("check token", "err", err)
+	}
+	status.State = Connected
 	return status, nil
+}
+
+func signedOutStatus(in domain.SignIn) ConnectionStatus {
+	return ConnectionStatus{State: SignedOut, ServerURL: in.Server.URL, CertFingerprint: in.Server.CertFingerprint}
+}
+
+// observe looks at the outcome of a request made with in's token and signs out when RomM rejected
+// the token. It returns err unchanged.
+func (c *Connection) observe(in domain.SignIn, err error) error {
+	if kindOf(err) == domain.KindSignedOut {
+		c.signOut(in)
+	}
+	return err
+}
+
+// signOut marks in as Signed out, keeping it so the user can sign in again on the same Server.
+// Only the first rejection of a token reports the lapse; a late one for a token that a newer
+// sign-in replaced changes nothing.
+func (c *Connection) signOut(in domain.SignIn) {
+	c.mu.Lock()
+	cur, err := c.settings.SignIn()
+	if err != nil || cur == nil || cur.SignedOut || cur.Token != in.Token {
+		c.mu.Unlock()
+		return
+	}
+	out := *cur
+	out.SignedOut = true
+	if err := c.settings.SaveSignIn(out); err != nil {
+		c.log.Error("save signed out", "err", err)
+	}
+	c.mu.Unlock()
+
+	c.log.Warn("signed out", "url", out.Server.URL, "device_id", out.DeviceID, "reason", "RomM rejected the token")
+	c.events.Changed(signedOutStatus(out))
+}
+
+// saveSignIn stores in, replacing any earlier sign-in, and resumes work paused while signed out.
+func (c *Connection) saveSignIn(in domain.SignIn) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.settings.SaveSignIn(in); err != nil {
+		return err
+	}
+	close(c.resume)
+	c.resume = make(chan struct{})
+	return nil
+}
+
+// WaitSignedIn returns once the plugin holds a token RomM accepts, as far as it knows. Work calls
+// it before each request so that it pauses while Signed out, and resumes after Sign in again,
+// instead of failing.
+func (c *Connection) WaitSignedIn(ctx context.Context) error {
+	for {
+		// Taken before reading the sign-in, so a sign-in saved in between still wakes this wait.
+		c.mu.Lock()
+		resume := c.resume
+		c.mu.Unlock()
+
+		in, err := c.settings.SignIn()
+		if err != nil {
+			return err
+		}
+		if in != nil && !in.SignedOut {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-resume:
+		}
+	}
+}
+
+func kindOf(err error) domain.Kind {
+	var de *domain.Error
+	if errors.As(err, &de) {
+		return de.Kind
+	}
+	return ""
 }
 
 // CheckServer finds a RomM server at the address the user typed and checks its version.
@@ -162,8 +279,7 @@ func (c *Connection) CheckServer(ctx context.Context, input, trustFingerprint st
 		lastErr = err
 		// Something answered at this address, so falling back to plain HTTP would reach a
 		// different service, or the same one without encryption.
-		var de *domain.Error
-		if errors.As(err, &de) && (de.Kind == domain.KindUntrustedCert || de.Kind == domain.KindNotRomM) {
+		if k := kindOf(err); k == domain.KindUntrustedCert || k == domain.KindNotRomM {
 			return domain.Server{}, "", err
 		}
 	}
@@ -186,11 +302,7 @@ func (c *Connection) SignInWithPairCode(ctx context.Context, server domain.Serve
 		return ConnectionStatus{}, err
 	}
 	in.Server = server
-	if err := c.settings.SaveSignIn(in); err != nil {
-		return ConnectionStatus{}, err
-	}
-	c.logSignIn("pair code", in)
-	return c.Status(ctx)
+	return c.signedIn(ctx, "pair code", in)
 }
 
 // SignInWithPassword signs in with the user's RomM username and password, which are used once and
@@ -232,21 +344,28 @@ func (c *Connection) SignInWithPassword(ctx context.Context, server domain.Serve
 	}
 
 	in.Server = server
-	if err := c.settings.SaveSignIn(in); err != nil {
-		return ConnectionStatus{}, err
-	}
-	c.logSignIn("password", in)
-	return c.Status(ctx)
+	return c.signedIn(ctx, "password", in)
 }
 
-func (c *Connection) logSignIn(method string, in domain.SignIn) {
+// signedIn saves a successful sign-in and reports the connection it leaves, both to the caller and
+// to Events.Changed, so every surface hears of it even when the one that started it is gone.
+func (c *Connection) signedIn(ctx context.Context, method string, in domain.SignIn) (ConnectionStatus, error) {
+	if err := c.saveSignIn(in); err != nil {
+		return ConnectionStatus{}, fmt.Errorf("save sign-in: %w", err)
+	}
 	c.log.Info("signed in", "method", method, "url", in.Server.URL, "device_id", in.DeviceID,
 		"scopes", in.Scopes, "disabled_features", len(domain.DisabledFeatures(in.Scopes)))
+	status, err := c.Status(ctx)
+	if err != nil {
+		return ConnectionStatus{}, err
+	}
+	c.events.Changed(status)
+	return status, nil
 }
 
 // StartDevicePairing asks RomM to pair this Deck as a Device and returns the code for the user to
 // approve in RomM's web UI. Polling for the approval carries on in the background, and the
-// PairingListener hears how it ends. Starting another pairing cancels this one.
+// Events.Pairing hears how it ends. Starting another pairing cancels this one.
 func (c *Connection) StartDevicePairing(ctx context.Context, server domain.Server) (domain.DevicePairing, error) {
 	if err := checkServerURL(server); err != nil {
 		return domain.DevicePairing{}, err
@@ -301,7 +420,7 @@ func (c *Connection) pollPairing(ctx context.Context, cancel context.CancelFunc,
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				log.Info("device pairing expired", "reason", "no approval in time")
-				c.onPairing(PairingUpdate{State: PairingExpired})
+				c.events.Pairing(PairingUpdate{State: PairingExpired})
 			}
 			return
 		case <-time.After(interval):
@@ -311,28 +430,24 @@ func (c *Connection) pollPairing(ctx context.Context, cancel context.CancelFunc,
 		switch {
 		case err == nil:
 			in.Server = server
-			if err := c.settings.SaveSignIn(in); err != nil {
-				log.Error("save device sign-in", "err", err)
-				c.onPairing(PairingUpdate{State: PairingFailed, Problem: fmt.Errorf("save sign-in: %w", err)})
+			status, err := c.signedIn(ctx, "device pairing", in)
+			if err != nil {
+				log.Error("keep device sign-in", "err", err)
+				c.events.Pairing(PairingUpdate{State: PairingFailed, Problem: err})
 				return
 			}
-			c.logSignIn("device pairing", in)
-			status, err := c.Status(ctx)
-			if err != nil {
-				log.Error("read status after device sign-in", "err", err)
-			}
-			c.onPairing(PairingUpdate{State: PairingApproved, Status: status})
+			c.events.Pairing(PairingUpdate{State: PairingApproved, Status: status})
 			return
 		case errors.Is(err, domain.ErrPairingSlowDown):
 			interval += c.slowDownStep
 			log.Info("device pairing polled too fast, slowing down", "interval", interval)
 		case errors.Is(err, domain.ErrPairingDenied):
 			log.Info("device pairing denied")
-			c.onPairing(PairingUpdate{State: PairingDenied})
+			c.events.Pairing(PairingUpdate{State: PairingDenied})
 			return
 		case errors.Is(err, domain.ErrPairingExpired):
 			log.Info("device pairing expired", "reason", "RomM dropped the request")
-			c.onPairing(PairingUpdate{State: PairingExpired})
+			c.events.Pairing(PairingUpdate{State: PairingExpired})
 			return
 		case errors.Is(err, domain.ErrPairingPending):
 			log.Debug("device pairing waiting for approval")

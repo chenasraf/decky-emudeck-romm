@@ -60,7 +60,7 @@ func run(log *slog.Logger) error {
 	}
 
 	srv := rpc.NewServer(os.Stdout, log)
-	conn := app.NewConnection(ctx, store, dial, identity, rpc.PairingEvents(srv), log.With("component", "connection"))
+	conn := app.NewConnection(ctx, store, dial, identity, rpc.NewConnectionEvents(srv), log.With("component", "connection"))
 	rpc.Routes(srv, version, conn)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {

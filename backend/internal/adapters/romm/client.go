@@ -127,6 +127,28 @@ func (c *Client) Heartbeat(ctx context.Context) (string, error) {
 	return body.System.Version, nil
 }
 
+// errSignedOut is what any request made with the client's token returns on a 401: client tokens
+// don't refresh, so RomM revoked it or it expired.
+var errSignedOut = &domain.Error{Kind: domain.KindSignedOut, Message: "RomM no longer accepts this Deck's sign-in. Sign in again."}
+
+// CheckToken asks RomM whether it still accepts the client's token.
+func (c *Client) CheckToken(ctx context.Context) error {
+	status, err := c.do(ctx, http.MethodGet, "/api/users/me", nil, nil)
+	if err != nil {
+		return err
+	}
+	switch status {
+	// A 403 means the token is valid but lacks me.read, which the user may narrow away when
+	// approving a pairing.
+	case http.StatusOK, http.StatusForbidden:
+		return nil
+	case http.StatusUnauthorized:
+		return errSignedOut
+	default:
+		return fmt.Errorf("check token: unexpected status %d", status)
+	}
+}
+
 var errRateLimited = &domain.Error{Kind: domain.KindRateLimited, Message: "Too many pairing attempts. Wait a minute and try again."}
 
 // ExchangePairCode redeems a pair code for a client token. RomM regenerates the token's secret on

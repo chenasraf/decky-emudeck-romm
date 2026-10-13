@@ -224,6 +224,38 @@ func TestPollDeviceAuth(t *testing.T) {
 	}
 }
 
+func TestCheckToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/users/me" {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Header.Get("Authorization") {
+		case "Bearer rmm_ok":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "username": "chen"})
+		case "Bearer rmm_narrow":
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": "Forbidden"})
+		case "Bearer rmm_broken":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"detail": "Invalid token"})
+		}
+	}))
+	defer srv.Close()
+	server := domain.Server{URL: srv.URL}
+
+	for token, want := range map[string]domain.Kind{"rmm_ok": "", "rmm_narrow": "", "rmm_revoked": domain.KindSignedOut} {
+		if err := New(server, token, ver).CheckToken(context.Background()); kindOf(err) != want || (want == "" && err != nil) {
+			t.Errorf("%s: want %q, got %v", token, want, err)
+		}
+	}
+	if err := New(server, "rmm_broken", ver).CheckToken(context.Background()); err == nil || kindOf(err) == domain.KindSignedOut {
+		t.Errorf("a server error should fail without signing out, got %v", err)
+	}
+}
+
 func TestPasswordGrant(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/token" || r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
