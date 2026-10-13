@@ -42,20 +42,8 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 
 // DownloadEvents returns a listener that sends each download change as a download notification.
 func DownloadEvents(s *Server) app.DownloadListener {
-	return func(u app.DownloadUpdate) {
-		event := schema.DownloadEvent{
-			ID:            u.ROMID,
-			Name:          u.Name,
-			PlatformID:    u.PlatformID,
-			PlatformName:  u.PlatformName,
-			State:         schema.GameState(u.State),
-			ReceivedBytes: u.Received,
-			TotalBytes:    u.Total,
-		}
-		if u.Problem != nil {
-			event.Problem = problemOf(u.Problem)
-		}
-		if err := s.Notify("download", event); err != nil {
+	return func(d app.Download) {
+		if err := s.Notify("download", schema.DownloadEvent(toWireDownload(d))); err != nil {
 			s.log.Error("send download", "err", err)
 		}
 	}
@@ -76,7 +64,7 @@ func DeleteEvents(s *Server) app.DeleteListener {
 }
 
 func toWireDownload(d app.Download) schema.DownloadItem {
-	return schema.DownloadItem{
+	item := schema.DownloadItem{
 		ID:            d.ROMID,
 		Name:          d.Name,
 		PlatformID:    d.PlatformID,
@@ -85,4 +73,8 @@ func toWireDownload(d app.Download) schema.DownloadItem {
 		ReceivedBytes: d.Received,
 		TotalBytes:    d.Total,
 	}
+	if d.Problem != nil {
+		item.Problem = problemOf(d.Problem)
+	}
+	return item
 }

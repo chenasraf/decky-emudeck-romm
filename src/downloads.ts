@@ -5,17 +5,18 @@ import { BACKEND_STATUS_EVENT, type BackendStatus, call, onEvent } from './backe
 import type { DeleteEvent, DownloadEvent, DownloadItem, Error as RpcError } from './rpc/schema.gen'
 
 export interface Downloads {
-  /** The queued and running downloads, in queue order. */
+  /** The queued, running and failed downloads, in queue order. */
   items: DownloadItem[]
   /** Why downloading is off, null when it works. */
   problem: RpcError | null
-  /** Goes up each time a download ends or a delete changes, so views listing states reload. */
+  /**
+   * Goes up each time a download ends or fails, or a delete changes, so views listing states
+   * reload.
+   */
   ended: number
-  /** Why each game's last download failed, until it's queued again. */
-  failures: Record<number, RpcError>
 }
 
-let current: Downloads = { items: [], problem: null, ended: 0, failures: {} }
+let current: Downloads = { items: [], problem: null, ended: 0 }
 const listeners = new Set<() => void>()
 
 function publish(next: Downloads) {
@@ -33,29 +34,26 @@ async function load() {
 }
 
 function apply(e: DownloadEvent) {
-  const { problem, ...item } = e
-  const failures = { ...current.failures }
-  if (e.state === 'queued' || e.state === 'downloading') {
-    delete failures[e.id]
-    const items = current.items.some((d) => d.id === e.id)
-      ? current.items.map((d) => (d.id === e.id ? item : d))
-      : [...current.items, item]
-    publish({ ...current, items, failures })
+  const was = current.items.find((d) => d.id === e.id)
+  if (e.state === 'queued' || e.state === 'downloading' || e.state === 'failed') {
+    const items = was ? current.items.map((d) => (d.id === e.id ? e : d)) : [...current.items, e]
+    // Failing moves the game between filters, like ending does.
+    const failed = e.state === 'failed' && was?.state !== 'failed'
+    publish({ ...current, items, ended: failed ? current.ended + 1 : current.ended })
+    // Only a download seen running fails here; one restored as failed when the backend started
+    // was reported when it failed.
+    if (failed && was && e.problem) {
+      toaster.toast({ title: `Couldn't download ${e.name}`, body: e.problem.message })
+    }
     return
   }
-  if (problem) failures[e.id] = problem
   publish({
     ...current,
     items: current.items.filter((d) => d.id !== e.id),
     ended: current.ended + 1,
-    failures,
   })
   // A download can end long after the QAM closed.
-  if (e.state === 'installed') {
-    toaster.toast({ title: 'Installed', body: e.name })
-  } else if (problem) {
-    toaster.toast({ title: `Couldn't download ${e.name}`, body: problem.message })
-  }
+  if (e.state === 'installed') toaster.toast({ title: 'Installed', body: e.name })
 }
 
 function applyDelete(e: DeleteEvent) {

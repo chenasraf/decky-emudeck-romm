@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -63,7 +64,7 @@ func TestDownloadFile(t *testing.T) {
 	defer srv.Close()
 
 	var out bytes.Buffer
-	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 70, "Chrono #1?.sfc", &out)
+	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 70, "Chrono #1?.sfc", 0, into(&out))
 	if err != nil || !bytes.Equal(out.Bytes(), body) {
 		t.Fatalf("got %d bytes, %v", out.Len(), err)
 	}
@@ -71,9 +72,71 @@ func TestDownloadFile(t *testing.T) {
 		t.Fatalf("path %s", path)
 	}
 
-	err = New(domain.Server{URL: srv.URL}, "rmm_old", ver).DownloadFile(context.Background(), 70, "x.sfc", &out)
+	err = New(domain.Server{URL: srv.URL}, "rmm_old", ver).DownloadFile(context.Background(), 70, "x.sfc", 0, into(&out))
 	if kindOf(err) != domain.KindSignedOut {
 		t.Fatalf("rejected token: %v", err)
+	}
+}
+
+// into opens w for a download, wherever its bytes start.
+func into(w io.Writer) func(int64) (io.Writer, error) {
+	return func(int64) (io.Writer, error) { return w, nil }
+}
+
+func TestDownloadResumes(t *testing.T) {
+	body := bytes.Repeat([]byte("0123456789"), 1000)
+	ranges := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !ranges {
+			r.Header.Del("Range")
+		}
+		http.ServeContent(w, r, "x", time.Time{}, bytes.NewReader(body))
+	}))
+	defer srv.Close()
+	c := New(domain.Server{URL: srv.URL}, "rmm_x", ver)
+
+	// The server sends the rest of the file from where the partial stopped.
+	var out bytes.Buffer
+	var start int64 = -1
+	open := func(s int64) (io.Writer, error) {
+		start = s
+		return &out, nil
+	}
+	if err := c.DownloadFile(context.Background(), 1, "x", 4000, open); err != nil {
+		t.Fatal(err)
+	}
+	if start != 4000 || !bytes.Equal(out.Bytes(), body[4000:]) {
+		t.Fatalf("start %d, got %d bytes", start, out.Len())
+	}
+
+	// A partial longer than the file starts over.
+	out.Reset()
+	if err := c.DownloadFile(context.Background(), 1, "x", int64(len(body)+5), open); err != nil {
+		t.Fatal(err)
+	}
+	if start != 0 || !bytes.Equal(out.Bytes(), body) {
+		t.Fatalf("too long: start %d, got %d bytes", start, out.Len())
+	}
+
+	// A server that ignores Range sends the whole file, and says so.
+	ranges = false
+	out.Reset()
+	if err := c.DownloadFile(context.Background(), 1, "x", 4000, open); err != nil {
+		t.Fatal(err)
+	}
+	if start != 0 || !bytes.Equal(out.Bytes(), body) {
+		t.Fatalf("no ranges: start %d, got %d bytes", start, out.Len())
+	}
+}
+
+func TestDownloadServerErrorIsRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 1, "x", 0, into(&bytes.Buffer{}))
+	if kindOf(err) != domain.KindUnreachable {
+		t.Fatalf("want unreachable, got %v", err)
 	}
 }
 
@@ -84,7 +147,7 @@ func TestDownloadCutOff(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 1, "x", &bytes.Buffer{})
+	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 1, "x", 0, into(&bytes.Buffer{}))
 	if kindOf(err) != domain.KindUnreachable {
 		t.Fatalf("want unreachable, got %v", err)
 	}
@@ -102,7 +165,7 @@ func TestDownloadWriteFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 1, "x", failingWriter{})
+	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(context.Background(), 1, "x", 0, into(failingWriter{}))
 	if !errors.Is(err, errDiskFull) {
 		t.Fatalf("want the disk's error, got %v", err)
 	}
@@ -124,7 +187,7 @@ func TestDownloadCancelled(t *testing.T) {
 		<-started
 		cancel()
 	}()
-	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(ctx, 1, "x", &bytes.Buffer{})
+	err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).DownloadFile(ctx, 1, "x", 0, into(&bytes.Buffer{}))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("want canceled, got %v", err)
 	}

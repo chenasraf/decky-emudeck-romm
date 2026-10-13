@@ -397,6 +397,11 @@ export const GameInstalled: GameState = "installed";
  * GameDeleting is installed, with its files being checked and deleted.
  */
 export const GameDeleting: GameState = "deleting";
+/**
+ * GameFailed is a download that stopped on an error. It stays in the queue, keeping what it
+ * downloaded, until download_game retries it or cancel_download dismisses it.
+ */
+export const GameFailed: GameState = "failed";
 export interface GameSummary {
   id: number /* int */;
   name: string;
@@ -460,9 +465,17 @@ export interface Game {
    */
   installedPaths?: string[];
 }
+/**
+ * DownloadGameParams names the game to download. A failed download is retried, resuming what it
+ * downloaded.
+ */
 export interface DownloadGameParams {
   id: number /* int */;
 }
+/**
+ * CancelDownloadParams names the download to cancel, or the failed download to dismiss. Either
+ * way, what it downloaded is deleted.
+ */
 export interface CancelDownloadParams {
   id: number /* int */;
 }
@@ -476,7 +489,7 @@ export interface ListDownloadsParams {
 }
 export interface ListDownloadsResult {
   /**
-   * Downloads are the queued and running downloads, in queue order.
+   * Downloads are the queued, running and failed downloads, in queue order.
    */
   downloads: DownloadItem[];
   /**
@@ -490,15 +503,19 @@ export interface DownloadItem {
   platformId: number /* int */;
   platformName: string;
   /**
-   * State is queued or downloading.
+   * State is queued, downloading or failed.
    */
   state: GameState;
   receivedBytes: number /* int64 */;
   totalBytes: number /* int64 */;
+  /**
+   * Problem says why the download failed.
+   */
+  problem?: Error;
 }
 /**
- * DownloadEvent is a change to a download. One that ends is installed, or on_romm when it failed,
- * with Problem saying why, or was cancelled.
+ * DownloadEvent is a change to a download. One that leaves the queue is installed, or on_romm when
+ * it was cancelled or dismissed.
  */
 export interface DownloadEvent {
   id: number /* int */;

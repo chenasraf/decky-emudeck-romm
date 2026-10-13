@@ -79,6 +79,47 @@ func TestOwnedRoundTrip(t *testing.T) {
 	}
 }
 
+func TestQueueRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	s := open(t, path)
+
+	at := time.Date(2026, 10, 13, 8, 0, 0, 123, time.UTC)
+	first := domain.QueuedDownload{ROMID: 9, PlatformID: 1, PlatformName: "SNES", Name: "Chrono Trigger", TotalBytes: 100}
+	second := domain.QueuedDownload{ROMID: 3, PlatformID: 1, PlatformName: "SNES", Name: "Super Metroid", TotalBytes: 50}
+	for _, d := range []domain.QueuedDownload{first, second} {
+		if err := s.SaveQueued(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Failing the first keeps its place at the front.
+	first.Problem = &domain.Error{Kind: domain.KindUnreachable, Message: "The download from RomM was interrupted."}
+	first.Partial = domain.FileSnapshot{FileID: 90, SizeBytes: 100, LastModified: at}
+	if err := s.SaveQueued(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+
+	s = open(t, path)
+	got, err := s.Queued(ctx)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("queued %+v, %v", got, err)
+	}
+	if got[0].ROMID != 9 || got[0].Problem == nil || *got[0].Problem != *first.Problem || got[0].Partial != first.Partial {
+		t.Fatalf("first %+v", got[0])
+	}
+	if got[1] != second {
+		t.Fatalf("second %+v", got[1])
+	}
+
+	if err := s.DeleteQueued(ctx, 9); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Queued(ctx); len(got) != 1 || got[0].ROMID != 3 {
+		t.Fatalf("after delete %+v", got)
+	}
+}
+
 func TestReopenKeepsRecords(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")
@@ -147,7 +188,7 @@ func TestMigrationBacksUpAndKeepsThree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(backups) != 3 || backups[0].Version != 4 || backups[2].Version != 2 {
+	if base := len(saved); len(backups) != 3 || backups[0].Version != base+3 || backups[2].Version != base+1 {
 		t.Fatalf("backups %+v", backups)
 	}
 

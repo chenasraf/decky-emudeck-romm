@@ -25,6 +25,7 @@ import { useConnection } from '../connection'
 import { type Downloads, percent, useDownloads } from '../downloads'
 import type {
   DeleteGamesParams,
+  DownloadItem,
   Game,
   GameFilter,
   GameState,
@@ -80,13 +81,21 @@ function Problem({ error }: { error: RpcError | null }) {
   )
 }
 
+/** A download's short state: Queued, its progress, or Failed. */
+function downloadLabel(d: DownloadItem): string {
+  if (d.state === 'queued') return 'Queued'
+  if (d.state === 'failed') return 'Failed'
+  return `${percent(d)}%`
+}
+
 /**
- * A game's state for its row: download progress while queued or downloading, "Installed" once on
- * this Deck, and null while it's only on RomM.
+ * A game's state for its row: its download's state while in the queue, "Installed" once on this
+ * Deck, and null while it's only on RomM.
  */
 function stateLabel(game: { id: number; state: GameState }, downloads: Downloads): string | null {
   const d = downloads.items.find((i) => i.id === game.id)
-  if (d) return d.state === 'queued' ? 'Queued' : `${percent(d)}%`
+  if (d) return downloadLabel(d)
+  if (game.state === 'failed') return 'Failed'
   if (game.state === 'installed') return 'Installed'
   if (game.state === 'deleting') return 'Deleting…'
   return null
@@ -508,6 +517,7 @@ const STATE_LABELS: Record<string, string> = {
   downloading: 'Downloading',
   installed: 'Installed',
   deleting: 'Deleting…',
+  failed: 'Download failed',
 }
 
 /** Where ES-DE cleans up the gamelist entries and media of games deleted from disk. */
@@ -538,7 +548,30 @@ function confirmDelete(what: string, params: DeleteGamesParams, onError: (e: Rpc
 }
 
 const downloadName: CSSProperties = { flex: '1 1 auto', minWidth: 0, padding: '8px 12px' }
-const cancelButton: CSSProperties = { flex: '0 0 auto', minWidth: 0, width: 40, padding: '8px 0' }
+const iconButton: CSSProperties = { flex: '0 0 auto', minWidth: 0, width: 40, padding: '8px 0' }
+
+/** What a download row says under its name: progress, the wait for a slot, or why it failed. */
+function DownloadDetail({ d }: { d: DownloadItem }) {
+  if (d.state === 'failed') {
+    return (
+      <PanelSectionRow>
+        <Field label="⚠ Failed" description={d.problem?.message} />
+      </PanelSectionRow>
+    )
+  }
+  return (
+    <PanelSectionRow>
+      <ProgressBarWithInfo
+        nProgress={d.state === 'queued' ? 0 : percent(d)}
+        sOperationText={
+          d.state === 'queued'
+            ? `${d.platformName} · waiting`
+            : `${d.platformName} · ${formatSize(d.receivedBytes)} of ${formatSize(d.totalBytes)}`
+        }
+      />
+    </PanelSectionRow>
+  )
+}
 
 /** The download queue on the QAM home, or why downloading is off. Hidden while there's neither. */
 export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
@@ -558,28 +591,28 @@ export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
               <DialogButton style={downloadName} onClick={() => onOpen(d.id)}>
                 <span style={row}>
                   <span style={name}>{d.name}</span>
-                  <span style={count}>{d.state === 'queued' ? 'Queued' : `${percent(d)}%`}</span>
+                  <span style={count}>{downloadLabel(d)}</span>
                 </span>
               </DialogButton>
+              {d.state === 'failed' && (
+                <DialogButton
+                  style={iconButton}
+                  aria-label={`Retry ${d.name}`}
+                  onClick={() => void call('download_game', { id: d.id }).catch(() => {})}
+                >
+                  ↻
+                </DialogButton>
+              )}
               <DialogButton
-                style={cancelButton}
-                aria-label={`Cancel ${d.name}`}
+                style={iconButton}
+                aria-label={d.state === 'failed' ? `Dismiss ${d.name}` : `Cancel ${d.name}`}
                 onClick={() => void call('cancel_download', { id: d.id }).catch(() => {})}
               >
                 ✕
               </DialogButton>
             </Focusable>
           </PanelSectionRow>
-          <PanelSectionRow>
-            <ProgressBarWithInfo
-              nProgress={d.state === 'queued' ? 0 : percent(d)}
-              sOperationText={
-                d.state === 'queued'
-                  ? `${d.platformName} · waiting`
-                  : `${d.platformName} · ${formatSize(d.receivedBytes)} of ${formatSize(d.totalBytes)}`
-              }
-            />
-          </PanelSectionRow>
+          <DownloadDetail d={d} />
         </Fragment>
       ))}
     </PanelSection>
@@ -599,7 +632,6 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
 
   const download = downloads.items.find((d) => d.id === id)
   const state = download?.state ?? game?.state
-  const failure = downloads.failures[id]
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true)
@@ -633,10 +665,32 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
               />
             </PanelSectionRow>
           )}
-          {failure && state === 'on_romm' && (
-            <PanelSectionRow>
-              <Field label="⚠ Download failed" description={failure.message} />
-            </PanelSectionRow>
+          {state === 'failed' && (
+            <>
+              {download?.problem && (
+                <PanelSectionRow>
+                  <Field label="⚠ Error" description={download.problem.message} />
+                </PanelSectionRow>
+              )}
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy || downloads.problem !== null}
+                  onClick={() => void act(() => call('download_game', { id }))}
+                >
+                  Retry
+                </ButtonItem>
+              </PanelSectionRow>
+              <PanelSectionRow>
+                <ButtonItem
+                  layout="below"
+                  disabled={busy}
+                  onClick={() => void act(() => call('cancel_download', { id }))}
+                >
+                  Dismiss
+                </ButtonItem>
+              </PanelSectionRow>
+            </>
           )}
           {state === 'on_romm' && (
             <PanelSectionRow>

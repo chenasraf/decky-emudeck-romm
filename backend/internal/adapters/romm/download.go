@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -57,8 +58,10 @@ func (c *Client) ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error)
 	return out, nil
 }
 
-// DownloadFile writes the content of the ROM file with id to w.
-func (c *Client) DownloadFile(ctx context.Context, id int, name string, w io.Writer) error {
+// DownloadFile fetches the content of the ROM file with id from byte offset from onward. Once the
+// server answers, it calls open with the offset its bytes start at: from when the server resumes,
+// or zero when it sends the whole file. It writes the bytes to the writer open returns.
+func (c *Client) DownloadFile(ctx context.Context, id int, name string, from int64, open func(start int64) (io.Writer, error)) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	// The path's last segment only names the download; RomM serves the file by id. Escaping it
@@ -70,6 +73,9 @@ func (c *Client) DownloadFile(ctx context.Context, id int, name string, w io.Wri
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	if from > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", from))
+	}
 
 	start := time.Now()
 	watchdog := time.AfterFunc(stallTimeout, func() { cancel(errStalled) })
@@ -80,7 +86,28 @@ func (c *Client) DownloadFile(ctx context.Context, id int, name string, w io.Wri
 		return c.downloadError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if err := statusError("download the game", resp.StatusCode, nil); err != nil {
+
+	offset := int64(0)
+	switch {
+	case resp.StatusCode == http.StatusPartialContent && from > 0:
+		if got := contentRangeStart(resp.Header.Get("Content-Range")); got != from {
+			return unreachable(fmt.Errorf("asked for bytes from %d, got a range from %d", from, got))
+		}
+		offset = from
+	case resp.StatusCode == http.StatusRequestedRangeNotSatisfiable && from > 0:
+		// The file on the server is shorter than what was kept, so the kept bytes aren't of it.
+		_ = resp.Body.Close()
+		return c.DownloadFile(ctx, id, name, 0, open)
+	case resp.StatusCode >= http.StatusInternalServerError:
+		// A proxy in front of a restarting server answers 502 to 504; the download is worth retrying.
+		return unreachable(fmt.Errorf("server answered %d", resp.StatusCode))
+	default:
+		if err := statusError("download the game", resp.StatusCode, nil); err != nil {
+			return err
+		}
+	}
+	w, err := open(offset)
+	if err != nil {
 		return err
 	}
 
@@ -98,6 +125,24 @@ func (c *Client) DownloadFile(ctx context.Context, id int, name string, w io.Wri
 		return unreachable(fmt.Errorf("got %d of %d bytes", n, resp.ContentLength))
 	}
 	return nil
+}
+
+// contentRangeStart returns the first byte offset of a "bytes first-last/size" Content-Range, or
+// -1 when it isn't one.
+func contentRangeStart(header string) int64 {
+	spec, ok := strings.CutPrefix(header, "bytes ")
+	if !ok {
+		return -1
+	}
+	first, _, ok := strings.Cut(spec, "-")
+	if !ok {
+		return -1
+	}
+	n, err := strconv.ParseInt(first, 10, 64)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 var errStalled = errors.New("no data for 60 s")

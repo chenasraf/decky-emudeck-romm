@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -25,11 +26,38 @@ func (p fixedProber) Probe() domain.InstallState {
 	return s
 }
 
-// memOwnership is an OwnershipStore in memory.
+// memOwnership is a DownloadStore in memory.
 type memOwnership struct {
 	mu      sync.Mutex
 	roms    map[int]domain.OwnedROM
+	queue   []domain.QueuedDownload
 	saveErr error
+}
+
+func (m *memOwnership) SaveQueued(_ context.Context, d domain.QueuedDownload) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, q := range m.queue {
+		if q.ROMID == d.ROMID {
+			m.queue[i] = d
+			return nil
+		}
+	}
+	m.queue = append(m.queue, d)
+	return nil
+}
+
+func (m *memOwnership) DeleteQueued(_ context.Context, id int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queue = slices.DeleteFunc(m.queue, func(q domain.QueuedDownload) bool { return q.ROMID == id })
+	return nil
+}
+
+func (m *memOwnership) Queued(context.Context) ([]domain.QueuedDownload, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.queue), nil
 }
 
 func (m *memOwnership) SaveOwned(_ context.Context, rom domain.OwnedROM) error {
@@ -66,15 +94,18 @@ func (m *memOwnership) OwnedIDs(context.Context) ([]int, error) {
 	return ids, nil
 }
 
-// fakeContent is a RomM server's files. A file with a gate sends half its bytes, then waits for
-// the gate to close.
+// fakeContent is a RomM server's files, which it resumes from any offset. A file with a gate sends
+// half of what's asked for, then waits for the gate to close. A file with drops left sends half of
+// what's asked for, then cuts the connection.
 type fakeContent struct {
 	mu      sync.Mutex
 	files   map[int][]domain.ROMFile
 	content map[int][]byte
 	gates   map[int]chan struct{}
-	// started receives a file id each time its download begins.
+	drops   map[int]int
+	// started receives a file id each time its download begins, and froms the offset it asked for.
 	started chan int
+	froms   []int64
 	err     error
 }
 
@@ -87,11 +118,27 @@ func (c *fakeContent) ROMFiles(_ context.Context, id int) ([]domain.ROMFile, err
 	return c.files[id], nil
 }
 
-func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, w io.Writer) error {
+func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, from int64, open func(int64) (io.Writer, error)) error {
 	c.mu.Lock()
 	data, gate := c.content[id], c.gates[id]
+	drop := c.drops[id] > 0
+	if drop {
+		c.drops[id]--
+	}
+	c.froms = append(c.froms, from)
 	c.mu.Unlock()
 	c.started <- id
+	w, err := open(from)
+	if err != nil {
+		return err
+	}
+	data = data[min(from, int64(len(data))):]
+	if drop {
+		if _, err := w.Write(data[:len(data)/2]); err != nil {
+			return err
+		}
+		return &domain.Error{Kind: domain.KindUnreachable, Message: "The download from RomM was interrupted."}
+	}
 	if gate != nil {
 		if _, err := w.Write(data[:len(data)/2]); err != nil {
 			return err
@@ -103,7 +150,7 @@ func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, w io.W
 		}
 		data = data[len(data)/2:]
 	}
-	_, err := w.Write(data)
+	_, err = w.Write(data)
 	return err
 }
 
@@ -112,10 +159,12 @@ type downloadFixture struct {
 	owned     *memOwnership
 	server    *fakeContent
 	settings  *fakeSettings
-	updates   chan DownloadUpdate
+	updates   chan Download
 	deletes   chan DeleteUpdate
-	root      string
-	snes      string
+	// stop stops the backend the downloads run under.
+	stop context.CancelFunc
+	root string
+	snes string
 }
 
 var (
@@ -136,10 +185,11 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			},
 			content: map[int][]byte{10: chrono, 20: metroid},
 			gates:   map[int]chan struct{}{},
-			started: make(chan int, 16),
+			drops:   map[int]int{},
+			started: make(chan int, 64),
 		},
 		settings: &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
-		updates:  make(chan DownloadUpdate, 256),
+		updates:  make(chan Download, 256),
 		deletes:  make(chan DeleteUpdate, 256),
 		root:     root,
 		snes:     filepath.Join(root, "roms", "snes"),
@@ -165,23 +215,30 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	}}, log)
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) DownloadServer { return f.server }
-	f.downloads = NewDownloads(t.Context(), catalog, install, conn, dial, f.owned, nil, limit,
-		func(u DownloadUpdate) { f.updates <- u }, func(u DeleteUpdate) { f.deletes <- u }, log)
+	base, stop := context.WithCancel(t.Context())
+	f.stop = stop
+	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, limit,
+		func(u Download) { f.updates <- u }, func(u DeleteUpdate) { f.deletes <- u }, log)
+	f.downloads.retries = testRetries
 	return f
 }
 
-// end waits for the download of id to end and returns its last update.
-func (f *downloadFixture) end(t *testing.T, id int) DownloadUpdate {
+// testRetries keep retries quick: three, a millisecond apart.
+var testRetries = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+
+// end waits for the download of id to end, installed, failed or out of the queue, and returns its
+// last update.
+func (f *downloadFixture) end(t *testing.T, id int) Download {
 	t.Helper()
 	for {
 		select {
 		case u := <-f.updates:
-			if u.ROMID == id && (u.State == domain.StateInstalled || u.State == domain.StateOnRomM) {
+			if u.ROMID == id && (u.State == domain.StateInstalled || u.State == domain.StateOnRomM || u.State == domain.StateFailed) {
 				return u
 			}
 		case <-time.After(3 * time.Second):
 			t.Fatalf("download %d didn't end", id)
-			return DownloadUpdate{}
+			return Download{}
 		}
 	}
 }
@@ -258,7 +315,7 @@ func TestDownloadNeverOverwrites(t *testing.T) {
 	if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
 		t.Fatal(err)
 	}
-	if u := f.end(t, 1); u.State != domain.StateOnRomM || kindOf(u.Problem) != domain.KindTargetExists {
+	if u := f.end(t, 1); u.State != domain.StateFailed || kindOf(u.Problem) != domain.KindTargetExists {
 		t.Fatalf("end: %+v", u)
 	}
 	if data, _ := os.ReadFile(target); string(data) != "the user's own dump" {
@@ -358,7 +415,7 @@ func TestDownloadWithoutStateDB(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	problem := &domain.Error{Kind: domain.KindNewerData, Message: "newer"}
 	d := NewDownloads(t.Context(), f.downloads.catalog, f.downloads.install, f.downloads.conn, f.downloads.dial,
-		nil, problem, 2, func(DownloadUpdate) {}, func(DeleteUpdate) {}, f.downloads.log)
+		nil, problem, 2, func(Download) {}, func(DeleteUpdate) {}, f.downloads.log)
 
 	if _, err := d.Queue(context.Background(), 1); kindOf(err) != domain.KindNewerData {
 		t.Fatalf("queue: %v", err)
@@ -381,13 +438,16 @@ func TestDownloadFailures(t *testing.T) {
 		if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
 			t.Fatal(err)
 		}
-		if u := f.end(t, 1); kindOf(u.Problem) != domain.KindUnreachable {
+		if u := f.end(t, 1); u.State != domain.StateFailed || kindOf(u.Problem) != domain.KindUnreachable {
 			t.Fatalf("end: %+v", u)
 		}
 		if entries, _ := os.ReadDir(f.snes); len(entries) != 0 {
 			t.Fatalf("placed a short file: %v", entries)
 		}
-		f.stagingEmpty(t)
+		// The first attempt and every retry.
+		if n := len(f.server.froms); n != 1+len(testRetries) {
+			t.Fatalf("%d attempts", n)
+		}
 	})
 
 	t.Run("record not saved", func(t *testing.T) {
@@ -396,41 +456,211 @@ func TestDownloadFailures(t *testing.T) {
 		if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
 			t.Fatal(err)
 		}
-		if u := f.end(t, 1); u.State != domain.StateOnRomM || u.Problem == nil {
+		if u := f.end(t, 1); u.State != domain.StateFailed || u.Problem == nil {
 			t.Fatalf("end: %+v", u)
 		}
 		// An unrecorded file would be User-managed forever, so the plugin takes it back out.
 		if entries, _ := os.ReadDir(f.snes); len(entries) != 0 {
 			t.Fatalf("left an unrecorded file: %v", entries)
 		}
-	})
-
-	t.Run("token rejected", func(t *testing.T) {
-		f := newDownloadFixture(t, 2)
-		f.server.err = &domain.Error{Kind: domain.KindSignedOut, Message: "signed out"}
-		if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
-			t.Fatal(err)
-		}
-		if u := f.end(t, 1); kindOf(u.Problem) != domain.KindSignedOut {
-			t.Fatalf("end: %+v", u)
-		}
-		if !f.settings.in.SignedOut {
-			t.Fatal("a 401 during a download didn't sign out")
+		// Only network errors are retried.
+		if n := len(f.server.froms); n != 1 {
+			t.Fatalf("%d attempts", n)
 		}
 	})
 }
 
-func TestCleanStaging(t *testing.T) {
+func TestDownloadWaitsForSignIn(t *testing.T) {
 	f := newDownloadFixture(t, 2)
-	leftover := filepath.Join(f.root, stagingDir, "7", "half.sfc")
-	if err := os.MkdirAll(filepath.Dir(leftover), 0o755); err != nil {
+	f.server.mu.Lock()
+	f.server.err = &domain.Error{Kind: domain.KindSignedOut, Message: "signed out"}
+	f.server.mu.Unlock()
+	if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(leftover, []byte("half"), 0o644); err != nil {
+	deadline := time.Now().Add(3 * time.Second)
+	for in, _ := f.settings.SignIn(); !in.SignedOut; in, _ = f.settings.SignIn() {
+		if time.Now().After(deadline) {
+			t.Fatal("a 401 during a download didn't sign out")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Signed out pauses the download rather than failing it.
+	if list := f.downloads.List(); len(list) != 1 || list[0].State == domain.StateFailed {
+		t.Fatalf("list %+v", list)
+	}
+
+	f.server.mu.Lock()
+	f.server.err = nil
+	f.server.mu.Unlock()
+	if err := f.downloads.conn.saveSignIn(domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_y"}); err != nil {
 		t.Fatal(err)
 	}
-	f.downloads.CleanStaging()
-	if _, err := os.Stat(filepath.Join(f.root, stagingDir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("staging still there: %v", err)
+	if u := f.end(t, 1); u.State != domain.StateInstalled {
+		t.Fatalf("end: %+v", u)
+	}
+}
+
+func TestDownloadRetriesDroppedConnection(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	// More drops than retries: each drop gets further, which starts the count over.
+	f.server.drops[10] = len(testRetries) + 2
+	if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if u := f.end(t, 1); u.State != domain.StateInstalled || u.Received != int64(len(chrono)) {
+		t.Fatalf("end: %+v", u)
+	}
+	// Each retry resumed where the last attempt stopped.
+	froms := f.server.froms
+	for i := 1; i < len(froms); i++ {
+		if froms[i] <= froms[i-1] {
+			t.Fatalf("froms %v", froms)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(f.snes, "Chrono Trigger (USA).sfc")); err != nil || !bytes.Equal(data, chrono) {
+		t.Fatalf("placed file: %q, %v", data, err)
+	}
+	rec, _, _ := f.owned.Owned(context.Background(), 1)
+	if sum := sha1.Sum(chrono); rec.Files[0].SHA1 != hex.EncodeToString(sum[:]) { //nolint:gosec // matches the code under test
+		t.Fatalf("hash of a resumed file %s", rec.Files[0].SHA1)
+	}
+	f.stagingEmpty(t)
+	if q, _ := f.owned.Queued(context.Background()); len(q) != 0 {
+		t.Fatalf("still in the saved queue: %+v", q)
+	}
+}
+
+func TestDownloadFailedThenRetried(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	// The link stays down: the first attempt gets halfway, and the retries get no further.
+	f.server.content[10] = chrono[:len(chrono)/2]
+	if _, err := f.downloads.Queue(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	u := f.end(t, 1)
+	if u.State != domain.StateFailed || kindOf(u.Problem) != domain.KindUnreachable {
+		t.Fatalf("end: %+v", u)
+	}
+	// Failed stays listed, and in state.db, with its error.
+	if list := f.downloads.List(); len(list) != 1 || list[0].State != domain.StateFailed || list[0].Problem == nil {
+		t.Fatalf("list %+v", list)
+	}
+	if states, _ := f.downloads.States(ctx); states[1] != domain.StateFailed {
+		t.Fatalf("states %v", states)
+	}
+	if q, _ := f.owned.Queued(ctx); len(q) != 1 || q[0].Problem == nil || q[0].Problem.Kind != domain.KindUnreachable {
+		t.Fatalf("saved queue %+v", q)
+	}
+
+	// Retry resumes from the partial once the server has the rest again.
+	f.server.mu.Lock()
+	f.server.content[10] = chrono
+	f.server.froms = nil
+	f.server.mu.Unlock()
+	if d, err := f.downloads.Queue(ctx, 1); err != nil || d.State != domain.StateQueued {
+		t.Fatalf("retry: %+v, %v", d, err)
+	}
+	if u := f.end(t, 1); u.State != domain.StateInstalled {
+		t.Fatalf("end: %+v", u)
+	}
+	if froms := f.server.froms; len(froms) != 1 || froms[0] != int64(len(chrono)/2) {
+		t.Fatalf("retry asked from %v", froms)
+	}
+	if data, _ := os.ReadFile(filepath.Join(f.snes, "Chrono Trigger (USA).sfc")); !bytes.Equal(data, chrono) {
+		t.Fatalf("placed file %q", data)
+	}
+}
+
+func TestDismissFailedDeletesPartial(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	f.server.content[10] = chrono[:len(chrono)/2]
+	if _, err := f.downloads.Queue(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	f.end(t, 1)
+	if !f.downloads.Cancel(1) {
+		t.Fatal("dismiss found no download")
+	}
+	if u := f.end(t, 1); u.State != domain.StateOnRomM || u.Problem != nil {
+		t.Fatalf("end: %+v", u)
+	}
+	f.stagingEmpty(t)
+	if q, _ := f.owned.Queued(context.Background()); len(q) != 0 {
+		t.Fatalf("still in the saved queue: %+v", q)
+	}
+}
+
+// restart makes a second Downloads over the same state.db, Emulation folder and server, the way
+// the backend comes back up.
+func (f *downloadFixture) restart(t *testing.T) *Downloads {
+	t.Helper()
+	old := f.downloads
+	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, 2,
+		func(u Download) { f.updates <- u }, func(u DeleteUpdate) { f.deletes <- u }, old.log)
+	d.retries = testRetries
+	f.downloads = d
+	return d
+}
+
+func TestResumeAfterRestart(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	f.server.gates[10] = make(chan struct{})
+	if _, err := f.downloads.Queue(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	f.started(t)
+	// A failed download comes back failed.
+	if err := f.owned.SaveQueued(ctx, domain.QueuedDownload{ROMID: 2, PlatformID: 1, Name: "Super Metroid",
+		Problem: &domain.Error{Kind: domain.KindUnreachable, Message: "interrupted"}}); err != nil {
+		t.Fatal(err)
+	}
+	// What a cancelled download left in staging, and a game recorded just before the backend stopped.
+	orphan := filepath.Join(f.root, stagingDir, "7", "half.sfc")
+	if err := os.MkdirAll(filepath.Dir(orphan), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(orphan, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owned.SaveQueued(ctx, domain.QueuedDownload{ROMID: 5, PlatformID: 1, Name: "Done"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owned.SaveOwned(ctx, domain.OwnedROM{ROMID: 5, PlatformID: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The backend stops mid-download, with half of Chrono Trigger in staging. Nothing reports
+	// that the download stopped, so give it a moment to do anything it shouldn't.
+	f.stop()
+	time.Sleep(20 * time.Millisecond)
+	if q, _ := f.owned.Queued(ctx); len(q) != 3 {
+		t.Fatalf("stopping changed the saved queue: %+v", q)
+	}
+
+	d := f.restart(t)
+	f.server.mu.Lock()
+	delete(f.server.gates, 10)
+	f.server.froms = nil
+	f.server.mu.Unlock()
+	d.Resume(ctx)
+
+	if u := f.end(t, 1); u.State != domain.StateInstalled {
+		t.Fatalf("end: %+v", u)
+	}
+	if froms := f.server.froms; len(froms) != 1 || froms[0] != int64(len(chrono)/2) {
+		t.Fatalf("resumed from %v", froms)
+	}
+	list := d.List()
+	if len(list) != 1 || list[0].ROMID != 2 || list[0].State != domain.StateFailed || list[0].Problem == nil {
+		t.Fatalf("list %+v", list)
+	}
+	if _, err := os.Stat(filepath.Dir(orphan)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("orphaned staging kept: %v", err)
+	}
+	if q, _ := f.owned.Queued(ctx); len(q) != 1 || q[0].ROMID != 2 {
+		t.Fatalf("saved queue %+v", q)
 	}
 }

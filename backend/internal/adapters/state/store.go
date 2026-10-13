@@ -49,6 +49,22 @@ CREATE TABLE server_snapshots (
 	PRIMARY KEY (rom_id, file_id)
 );
 `,
+	`
+CREATE TABLE download_queue (
+	rom_id          INTEGER PRIMARY KEY,
+	position        INTEGER NOT NULL,
+	platform_id     INTEGER NOT NULL,
+	platform_name   TEXT NOT NULL,
+	name            TEXT NOT NULL,
+	total_bytes     INTEGER NOT NULL,
+	failed          INTEGER NOT NULL,
+	problem_kind    TEXT NOT NULL,
+	problem_message TEXT NOT NULL,
+	file_id         INTEGER NOT NULL,
+	file_size       INTEGER NOT NULL,
+	file_modified   INTEGER NOT NULL
+);
+`,
 }
 
 // keepBackups is how many state.db.bak-<version> files are kept.
@@ -253,6 +269,62 @@ func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error
 		rom.Snapshot = append(rom.Snapshot, f)
 	}
 	return rom, true, rows.Err()
+}
+
+// SaveQueued writes a download in the queue. A new one goes to the back; one already there keeps
+// its place.
+func (s *Store) SaveQueued(ctx context.Context, d domain.QueuedDownload) error {
+	failed, kind, message := 0, "", ""
+	if d.Problem != nil {
+		failed, kind, message = 1, string(d.Problem.Kind), d.Problem.Message
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO download_queue
+		(rom_id, position, platform_id, platform_name, name, total_bytes, failed, problem_kind, problem_message,
+		 file_id, file_size, file_modified)
+		VALUES (?, (SELECT COALESCE(MAX(position), 0) + 1 FROM download_queue), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (rom_id) DO UPDATE SET
+			platform_id = excluded.platform_id, platform_name = excluded.platform_name, name = excluded.name,
+			total_bytes = excluded.total_bytes, failed = excluded.failed, problem_kind = excluded.problem_kind,
+			problem_message = excluded.problem_message, file_id = excluded.file_id, file_size = excluded.file_size,
+			file_modified = excluded.file_modified`,
+		d.ROMID, d.PlatformID, d.PlatformName, d.Name, d.TotalBytes, failed, kind, message,
+		d.Partial.FileID, d.Partial.SizeBytes, d.Partial.LastModified.UnixNano())
+	return err
+}
+
+// DeleteQueued takes the download of the ROM with id out of the queue.
+func (s *Store) DeleteQueued(ctx context.Context, id int) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM download_queue WHERE rom_id = ?", id)
+	return err
+}
+
+// Queued returns the downloads in the queue, in queue order.
+func (s *Store) Queued(ctx context.Context) ([]domain.QueuedDownload, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT rom_id, platform_id, platform_name, name, total_bytes, failed,
+		problem_kind, problem_message, file_id, file_size, file_modified FROM download_queue ORDER BY position`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.QueuedDownload
+	for rows.Next() {
+		var d domain.QueuedDownload
+		var failed bool
+		var kind, message string
+		var modified int64
+		if err := rows.Scan(&d.ROMID, &d.PlatformID, &d.PlatformName, &d.Name, &d.TotalBytes, &failed,
+			&kind, &message, &d.Partial.FileID, &d.Partial.SizeBytes, &modified); err != nil {
+			return nil, err
+		}
+		if failed {
+			d.Problem = &domain.Error{Kind: domain.Kind(kind), Message: message}
+		}
+		if d.Partial.FileID != 0 {
+			d.Partial.LastModified = time.Unix(0, modified).UTC()
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 // OwnedIDs returns the id of every Plugin-owned ROM.

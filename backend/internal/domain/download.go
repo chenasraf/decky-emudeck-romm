@@ -15,7 +15,25 @@ const (
 	StateInstalled   GameState = "installed"
 	// StateDeleting is an installed game whose files are being checked and deleted.
 	StateDeleting GameState = "deleting"
+	// StateFailed is a download that stopped on an error. It stays in the queue, keeping what it
+	// downloaded, until it is retried or dismissed.
+	StateFailed GameState = "failed"
 )
+
+// QueuedDownload is a download in the queue as state.db keeps it, so the queue outlives the
+// backend.
+type QueuedDownload struct {
+	ROMID        int
+	PlatformID   int
+	PlatformName string
+	Name         string
+	TotalBytes   int64
+	// Problem is why the download failed; nil while it is queued or running.
+	Problem *Error
+	// Partial is the file whose bytes are in staging, so a later attempt resumes them only while
+	// the Server still has that same file. Its FileID is zero before the first attempt.
+	Partial FileSnapshot
+}
 
 // ROMFile is one file of a ROM on the Server.
 type ROMFile struct {

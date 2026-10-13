@@ -95,7 +95,7 @@ func run(log *slog.Logger) error {
 
 	// A state.db the plugin can't use turns downloads off rather than the whole backend, so the
 	// library still browses and the QAM can say what's wrong.
-	var ownership app.OwnershipStore
+	var ownership app.DownloadStore
 	stateLog := log.With("component", "state")
 	owned, stateErr := statedb.Open(ctx, filepath.Join(runtimeDir, "state.db"), stateLog)
 	if stateErr != nil {
@@ -111,7 +111,7 @@ func run(log *slog.Logger) error {
 	events.catalog = catalog
 	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog, Downloads: downloads})
 	go conn.Watch(ctx, connectionCheckInterval)
-	go downloads.CleanStaging()
+	go downloads.Resume(ctx)
 	catalog.Refresh(false)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {

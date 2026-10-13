@@ -338,6 +338,9 @@ const (
 	GameInstalled GameState = "installed"
 	// GameDeleting is installed, with its files being checked and deleted.
 	GameDeleting GameState = "deleting"
+	// GameFailed is a download that stopped on an error. It stays in the queue, keeping what it
+	// downloaded, until download_game retries it or cancel_download dismisses it.
+	GameFailed GameState = "failed"
 )
 
 type GameSummary struct {
@@ -395,10 +398,14 @@ type Game struct {
 	InstalledPaths []string `json:"installedPaths,omitempty"`
 }
 
+// DownloadGameParams names the game to download. A failed download is retried, resuming what it
+// downloaded.
 type DownloadGameParams struct {
 	ID int `json:"id"`
 }
 
+// CancelDownloadParams names the download to cancel, or the failed download to dismiss. Either
+// way, what it downloaded is deleted.
 type CancelDownloadParams struct {
 	ID int `json:"id"`
 }
@@ -411,7 +418,7 @@ type CancelDownloadResult struct {
 type ListDownloadsParams struct{}
 
 type ListDownloadsResult struct {
-	// Downloads are the queued and running downloads, in queue order.
+	// Downloads are the queued, running and failed downloads, in queue order.
 	Downloads []DownloadItem `json:"downloads"`
 	// Problem says why downloading is off.
 	Problem *Error `json:"problem,omitempty"`
@@ -422,14 +429,16 @@ type DownloadItem struct {
 	Name         string `json:"name"`
 	PlatformID   int    `json:"platformId"`
 	PlatformName string `json:"platformName"`
-	// State is queued or downloading.
+	// State is queued, downloading or failed.
 	State         GameState `json:"state"`
 	ReceivedBytes int64     `json:"receivedBytes"`
 	TotalBytes    int64     `json:"totalBytes"`
+	// Problem says why the download failed.
+	Problem *Error `json:"problem,omitempty"`
 }
 
-// DownloadEvent is a change to a download. One that ends is installed, or on_romm when it failed,
-// with Problem saying why, or was cancelled.
+// DownloadEvent is a change to a download. One that leaves the queue is installed, or on_romm when
+// it was cancelled or dismissed.
 type DownloadEvent struct {
 	ID            int       `json:"id"`
 	Name          string    `json:"name"`
