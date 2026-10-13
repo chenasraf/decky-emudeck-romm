@@ -70,3 +70,23 @@ func TestCoverElsewhereGetsNoToken(t *testing.T) {
 		t.Fatalf("got %q, %v; auth %q", got, err, gotAuth)
 	}
 }
+
+func TestScreenshots(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/roms/7" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id": 7, "merged_screenshots": ["/assets/romm/resources/roms/1/7/screenshots/0.jpg"]}`))
+	}))
+	defer srv.Close()
+	c := New(domain.Server{URL: srv.URL}, "rmm_x", ver)
+
+	got, err := c.Screenshots(context.Background(), 7)
+	if err != nil || len(got) != 1 || got[0] != "/assets/romm/resources/roms/1/7/screenshots/0.jpg" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if _, err := c.Screenshots(context.Background(), 404); kindOf(err) != domain.KindNotFound {
+		t.Fatalf("missing ROM: %v", err)
+	}
+}

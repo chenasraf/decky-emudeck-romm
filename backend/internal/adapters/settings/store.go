@@ -45,6 +45,32 @@ type fileSettings struct {
 	AutoBIOS *bool `json:"autoBios,omitempty"`
 	// WaitForGames holds extracting and hashing while an emulator runs; unset means on.
 	WaitForGames *bool `json:"waitForGames,omitempty"`
+	// ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder; unset
+	// means on.
+	ESDEMedia *bool `json:"esdeMedia,omitempty"`
+}
+
+// ESDEMedia says whether downloads copy their art into ES-DE's media folder.
+func (s *Store) ESDEMedia() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil || f.ESDEMedia == nil {
+		return true
+	}
+	return *f.ESDEMedia
+}
+
+// SetESDEMedia turns copying art into ES-DE's media folder on or off.
+func (s *Store) SetESDEMedia(on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	f.ESDEMedia = &on
+	return s.save(f)
 }
 
 // WaitForGames says whether extracting and hashing wait for a running game to close.

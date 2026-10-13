@@ -165,6 +165,7 @@ func (d *Downloads) deleteGame(ctx context.Context, id int) error {
 		// Folders an archive's contents brought with them go too.
 		removeEmptyDirs(filepath.Dir(f.Path), d.dirHolding(ctx, rec.PlatformID, f.Path))
 	}
+	d.removeMedia(rec.Media)
 	return d.store.DeleteOwned(ctx, id)
 }
 

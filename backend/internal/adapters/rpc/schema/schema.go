@@ -948,12 +948,15 @@ type Preferences struct {
 	AutoBIOS bool `json:"autoBios"`
 	// WaitForGames holds extracting and hashing while an emulator runs a game.
 	WaitForGames bool `json:"waitForGames"`
+	// ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder.
+	ESDEMedia bool `json:"esdeMedia"`
 }
 
 // SetPreferencesParams changes the preferences it sets, leaving the rest.
 type SetPreferencesParams struct {
 	AutoBIOS     *bool `json:"autoBios,omitempty"`
 	WaitForGames *bool `json:"waitForGames,omitempty"`
+	ESDEMedia    *bool `json:"esdeMedia,omitempty"`
 }
 
 type ESDENoticeParams struct{}

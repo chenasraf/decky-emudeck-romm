@@ -1187,6 +1187,10 @@ export interface Preferences {
    * WaitForGames holds extracting and hashing while an emulator runs a game.
    */
   waitForGames: boolean;
+  /**
+   * ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder.
+   */
+  esdeMedia: boolean;
 }
 /**
  * SetPreferencesParams changes the preferences it sets, leaving the rest.
@@ -1194,6 +1198,7 @@ export interface Preferences {
 export interface SetPreferencesParams {
   autoBios?: boolean;
   waitForGames?: boolean;
+  esdeMedia?: boolean;
 }
 export interface ESDENoticeParams {
 }

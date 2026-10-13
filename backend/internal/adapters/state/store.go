@@ -107,6 +107,16 @@ CREATE TABLE ignored_updates (
 );
 ALTER TABLE owned_roms ADD COLUMN ignores_update INTEGER NOT NULL DEFAULT 0;
 `,
+	`
+CREATE TABLE owned_media (
+	rom_id     INTEGER NOT NULL REFERENCES owned_roms (rom_id) ON DELETE CASCADE,
+	path       TEXT NOT NULL,
+	size_bytes INTEGER NOT NULL,
+	mod_time   INTEGER NOT NULL,
+	sha1       TEXT NOT NULL
+);
+CREATE INDEX owned_media_by_rom ON owned_media (rom_id);
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -248,11 +258,11 @@ func (s *Store) MoveOwned(ctx context.Context, from int, rom domain.OwnedROM) er
 		rom.ROMID, rom.PlatformID, rom.InstalledAt.UnixNano(), rom.Ignored != nil); err != nil {
 		return err
 	}
-	for _, f := range rom.Files {
-		if _, err := tx.ExecContext(ctx, "INSERT INTO owned_files (rom_id, path, size_bytes, mod_time, sha1) VALUES (?, ?, ?, ?, ?)",
-			rom.ROMID, f.Path, f.SizeBytes, f.ModTime.UnixNano(), f.SHA1); err != nil {
-			return err
-		}
+	if err := insertPlaced(ctx, tx, "owned_files", rom.ROMID, rom.Files); err != nil {
+		return err
+	}
+	if err := insertPlaced(ctx, tx, "owned_media", rom.ROMID, rom.Media); err != nil {
+		return err
 	}
 	if err := insertSnapshots(ctx, tx, "server_snapshots", rom.ROMID, rom.Snapshot); err != nil {
 		return err
@@ -281,6 +291,17 @@ func (s *Store) IgnoreUpdate(ctx context.Context, id int, files []domain.FileSna
 		return err
 	}
 	return tx.Commit()
+}
+
+// insertPlaced writes files into table, owned_files or owned_media, for the ROM with id.
+func insertPlaced(ctx context.Context, tx *sql.Tx, table string, id int, files []domain.PlacedFile) error {
+	for _, f := range files {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+" (rom_id, path, size_bytes, mod_time, sha1) VALUES (?, ?, ?, ?, ?)",
+			id, f.Path, f.SizeBytes, f.ModTime.UnixNano(), f.SHA1); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // insertSnapshots writes files into table, server_snapshots or ignored_updates, for the ROM with id.
@@ -383,25 +404,12 @@ func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error
 	}
 	rom.InstalledAt = time.Unix(0, installed).UTC()
 
-	rows, err := s.db.QueryContext(ctx, "SELECT path, size_bytes, mod_time, sha1 FROM owned_files WHERE rom_id = ? ORDER BY path", id)
-	if err != nil {
+	if rom.Files, err = s.placed(ctx, "owned_files", id); err != nil {
 		return rom, false, err
 	}
-	for rows.Next() {
-		var f domain.PlacedFile
-		var mod int64
-		if err := rows.Scan(&f.Path, &f.SizeBytes, &mod, &f.SHA1); err != nil {
-			_ = rows.Close()
-			return rom, false, err
-		}
-		f.ModTime = time.Unix(0, mod).UTC()
-		rom.Files = append(rom.Files, f)
-	}
-	_ = rows.Close()
-	if err := rows.Err(); err != nil {
+	if rom.Media, err = s.placed(ctx, "owned_media", id); err != nil {
 		return rom, false, err
 	}
-
 	if rom.Snapshot, err = s.snapshots(ctx, "server_snapshots", id); err != nil {
 		return rom, false, err
 	}
@@ -414,6 +422,26 @@ func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error
 		}
 	}
 	return rom, true, nil
+}
+
+// placed reads the files table, owned_files or owned_media, holds for the ROM with id.
+func (s *Store) placed(ctx context.Context, table string, id int) ([]domain.PlacedFile, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT path, size_bytes, mod_time, sha1 FROM "+table+" WHERE rom_id = ? ORDER BY path", id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.PlacedFile
+	for rows.Next() {
+		var f domain.PlacedFile
+		var mod int64
+		if err := rows.Scan(&f.Path, &f.SizeBytes, &mod, &f.SHA1); err != nil {
+			return nil, err
+		}
+		f.ModTime = time.Unix(0, mod).UTC()
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // snapshots reads the files table, server_snapshots or ignored_updates, holds for the ROM with id.

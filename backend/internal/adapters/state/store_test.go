@@ -38,6 +38,7 @@ func TestOwnedRoundTrip(t *testing.T) {
 		Files:       []domain.PlacedFile{{Path: "/e/roms/snes/Chrono Trigger.sfc", SizeBytes: 4 << 20, ModTime: at, SHA1: "abc"}},
 		Snapshot:    []domain.FileSnapshot{{FileID: 70, SizeBytes: 4 << 20, LastModified: at, HashKind: "sha1", Hash: "def"}},
 		InstalledAt: at,
+		Media:       []domain.PlacedFile{{Path: "/e/tools/downloaded_media/snes/covers/Chrono Trigger.png", SizeBytes: 300, ModTime: at, SHA1: "ghi"}},
 	}
 	if err := s.SaveOwned(ctx, rom); err != nil {
 		t.Fatal(err)
@@ -47,7 +48,7 @@ func TestOwnedRoundTrip(t *testing.T) {
 		t.Fatalf("owned: %v %v", ok, err)
 	}
 	if got.PlatformID != 2 || !got.InstalledAt.Equal(at) || len(got.Files) != 1 || got.Files[0] != rom.Files[0] ||
-		len(got.Snapshot) != 1 || got.Snapshot[0] != rom.Snapshot[0] {
+		len(got.Snapshot) != 1 || got.Snapshot[0] != rom.Snapshot[0] || len(got.Media) != 1 || got.Media[0] != rom.Media[0] {
 		t.Fatalf("got %+v", got)
 	}
 
@@ -56,7 +57,7 @@ func TestOwnedRoundTrip(t *testing.T) {
 	if err := s.SaveOwned(ctx, rom); err != nil {
 		t.Fatal(err)
 	}
-	if got, _, _ := s.Owned(ctx, 7); len(got.Files) != 1 || got.Files[0].Path != rom.Files[0].Path || len(got.Snapshot) != 1 {
+	if got, _, _ := s.Owned(ctx, 7); len(got.Files) != 1 || got.Files[0].Path != rom.Files[0].Path || len(got.Snapshot) != 1 || len(got.Media) != 1 {
 		t.Fatalf("replaced: %+v", got)
 	}
 	if ids, err := s.OwnedIDs(ctx); err != nil || len(ids) != 1 || ids[0] != 7 {
@@ -81,9 +82,10 @@ func TestOwnedRoundTrip(t *testing.T) {
 	if _, ok, _ := s.Owned(ctx, 9); ok {
 		t.Fatal("record still there")
 	}
-	// Its files and snapshot go with it.
+	// Its files, media and snapshot go with it.
 	var rows int
-	if err := s.db.QueryRow("SELECT (SELECT COUNT(*) FROM owned_files) + (SELECT COUNT(*) FROM server_snapshots)").Scan(&rows); err != nil || rows != 0 {
+	if err := s.db.QueryRow("SELECT (SELECT COUNT(*) FROM owned_files) + (SELECT COUNT(*) FROM owned_media) + (SELECT COUNT(*) FROM server_snapshots)").
+		Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("%d rows left, %v", rows, err)
 	}
 }

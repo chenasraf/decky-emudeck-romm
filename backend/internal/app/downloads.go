@@ -152,11 +152,13 @@ type Downloads struct {
 	conn    *Connection
 	dial    DownloadDialer
 	// store is nil when state.db couldn't be opened, and problem says why.
-	store    DownloadStore
-	problem  error
-	free     FreeSpace
-	prefs    DownloadPrefs
-	games    *Games
+	store   DownloadStore
+	problem error
+	free    FreeSpace
+	prefs   DownloadPrefs
+	games   *Games
+	// media is nil when no art is placed for ES-DE.
+	media    *Media
 	limit    int
 	onChange DownloadListener
 	onDelete DeleteListener
@@ -210,12 +212,13 @@ type job struct {
 
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
 // turns downloading and deleting off, reporting problem. Extracting and zipping wait for games to
-// close; a nil games never waits.
+// close; a nil games never waits. Installs place their art for ES-DE through media, unless it's nil.
 func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial DownloadDialer,
-	store DownloadStore, problem error, free FreeSpace, prefs DownloadPrefs, games *Games, limit int, listen DownloadListeners, log *slog.Logger,
+	store DownloadStore, problem error, free FreeSpace, prefs DownloadPrefs, games *Games, media *Media, limit int, listen DownloadListeners,
+	log *slog.Logger,
 ) *Downloads {
 	return &Downloads{
-		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs, games: games,
+		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs, games: games, media: media,
 		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued,
 		onOwnership: listen.Ownership, onFind: listen.Find, onFolder: listen.Folder, log: log, now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx,
 		deleting: map[int]bool{}, checks: map[int]*onDeckJob{}, finds: map[int]*FindStatus{}, found: map[int]foundGame{},
@@ -640,7 +643,7 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return err
 	}
 	// An update replaces the files the plugin placed, in the folder they're in.
-	var old []domain.PlacedFile
+	var old, oldMedia []domain.PlacedFile
 	if j.update {
 		rec, ok, err := d.store.Owned(ctx, j.ROMID)
 		if err != nil {
@@ -649,7 +652,7 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		if !ok {
 			return &domain.Error{Kind: domain.KindInvalidInput, Message: "The plugin no longer manages that game, so it can't update it."}
 		}
-		old = rec.Files
+		old, oldMedia = rec.Files, rec.Media
 		if len(old) > 0 {
 			if held := d.dirHolding(ctx, rom.PlatformID, old[0].Path); held != "" {
 				dir = held
@@ -782,18 +785,25 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		}
 		snapshots = append(snapshots, domain.SnapshotOf(f.File))
 	}
+	// The files are in place, so the rest runs even if the download is cancelled now. An update's
+	// art goes the way of its old files, then comes again from RomM, except where something replaced
+	// it.
+	ctx = context.WithoutCancel(ctx)
+	d.removeMedia(oldMedia)
+	media := d.placeMedia(ctx, j.ROMID, dir, layout.Root)
 	owned := domain.OwnedROM{
 		ROMID:       j.ROMID,
 		PlatformID:  rom.PlatformID,
 		Files:       placed,
 		Snapshot:    snapshots,
 		InstalledAt: d.now().UTC(),
+		Media:       media,
 	}
-	// The files are in place, so the record is written even if the download is cancelled now.
-	if err := d.store.SaveOwned(context.WithoutCancel(ctx), owned); err != nil {
+	if err := d.store.SaveOwned(ctx, owned); err != nil {
 		// Without a record the files would be User-managed, and the plugin could never update or
 		// delete them. They are the plugin's own download, so they go.
 		d.removeFiles(placed, dir)
+		d.removeMedia(media)
 		return fmt.Errorf("record download: %w", err)
 	}
 	return nil

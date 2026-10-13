@@ -185,6 +185,9 @@ type OwnedROM struct {
 	// Ignored is the Server's game files when the user chose Ignore this update, nil when they
 	// never did. That update isn't offered again; one changing the files further is.
 	Ignored []FileSnapshot
+	// Media is the art the plugin placed in ES-DE's media folder. ES-DE's scraper may replace it, so
+	// unlike Files a changed one never hands the game back to the user: it's just left alone.
+	Media []PlacedFile
 }
 
 // SnapshotsOf takes the snapshot of each of files' game files.

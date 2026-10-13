@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -60,4 +61,20 @@ func (c *Client) Cover(ctx context.Context, path string) ([]byte, error) {
 	}
 	c.log.Debug("cover", "url", target, "bytes", len(data))
 	return data, nil
+}
+
+// Screenshots returns the screenshots of the ROM with id, as paths to fetch with Cover.
+func (c *Client) Screenshots(ctx context.Context, id int) ([]string, error) {
+	var body struct {
+		Screenshots []string `json:"merged_screenshots"`
+	}
+	// A ROM's details carry its full metadata, which can outgrow maxBody.
+	status, err := c.exchange(ctx, c.http, bulkMaxBody, http.MethodGet, "/api/roms/"+strconv.Itoa(id), nil, &body)
+	if status == http.StatusNotFound {
+		return nil, &domain.Error{Kind: domain.KindNotFound, Message: "That game is no longer on RomM. Refresh the library."}
+	}
+	if err := statusError("read the game's screenshots", status, err); err != nil {
+		return nil, err
+	}
+	return body.Screenshots, nil
 }

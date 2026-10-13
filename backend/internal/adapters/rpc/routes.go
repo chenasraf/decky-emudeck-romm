@@ -20,6 +20,7 @@ type Services struct {
 	Covers     *app.Covers
 	ESDE       *app.ESDE
 	Servers    *app.ServerSwitch
+	Media      *app.Media
 }
 
 // Routes registers a handler for every method in schema.Methods.
@@ -28,7 +29,7 @@ func Routes(s *Server, version string, svc Services) {
 	catalogRoutes(s, svc.Catalog, svc.Downloads)
 	downloadRoutes(s, svc.Downloads)
 	biosRoutes(s, svc.BIOS)
-	preferenceRoutes(s, svc.BIOS, svc.Games)
+	preferenceRoutes(s, svc.BIOS, svc.Games, svc.Media)
 	coverRoutes(s, svc.Covers)
 	esdeRoutes(s, svc.ESDE)
 

@@ -36,9 +36,9 @@ func biosRoutes(s *Server, bios *app.BIOS) {
 	})
 }
 
-func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games) {
+func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games, media *app.Media) {
 	current := func() schema.Preferences {
-		return schema.Preferences{AutoBIOS: bios.AutoDownload(), WaitForGames: games.WaitForGames()}
+		return schema.Preferences{AutoBIOS: bios.AutoDownload(), WaitForGames: games.WaitForGames(), ESDEMedia: media.Enabled()}
 	}
 
 	Register(s, "get_preferences", func(context.Context, schema.GetPreferencesParams) (schema.Preferences, error) {
@@ -53,6 +53,11 @@ func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games) {
 		}
 		if p.WaitForGames != nil {
 			if err := games.SetWaitForGames(*p.WaitForGames); err != nil {
+				return schema.Preferences{}, wireError(err)
+			}
+		}
+		if p.ESDEMedia != nil {
+			if err := media.SetEnabled(*p.ESDEMedia); err != nil {
 				return schema.Preferences{}, wireError(err)
 			}
 		}

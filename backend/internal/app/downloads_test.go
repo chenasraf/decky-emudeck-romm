@@ -404,6 +404,11 @@ type downloadFixture struct {
 	stop context.CancelFunc
 	root string
 	snes string
+	// mediaDir is ES-DE's media folder.
+	mediaDir   string
+	media      *Media
+	art        *fakeArt
+	mediaPrefs *memMediaPrefs
 }
 
 var (
@@ -435,6 +440,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		ownership: make(chan OwnershipChange, 256),
 		root:      root,
 		snes:      filepath.Join(root, "roms", "snes"),
+		mediaDir:  filepath.Join(root, "downloaded_media"),
 	}
 
 	catalog := &memStore{}
@@ -465,6 +471,10 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	install := NewInstall(fixedProber{domain.InstallState{
 		EmuDeck: domain.EmuDeckState{Root: root, ROMsPath: filepath.Join(root, "roms")},
+		ESDE: domain.ESDEState{
+			SettingsPath: filepath.Join(root, "es_settings.xml"), MediaDirectory: f.mediaDir,
+			ROMDirectory: filepath.Join(root, "roms"), ROMDirectoryMatches: true,
+		},
 		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
 			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")},
 			{Folder: "dreamcast", ROMPath: filepath.Join(root, "roms", "dreamcast")},
@@ -488,7 +498,11 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		return domain.Emulator{}, false
 	}, f.gaming, log)
 	f.games.poll = time.Millisecond
-	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, f.prefs, f.games, limit, f.listeners(), log)
+	f.art = &fakeArt{covers: map[int][]byte{}, screenshots: map[int][]string{}, images: map[string][]byte{}}
+	f.mediaPrefs = &memMediaPrefs{}
+	f.mediaPrefs.on.Store(true)
+	f.media = NewMedia(f.art, conn, func(domain.Server, string) MediaServer { return serverArt{f.art} }, f.mediaPrefs, log)
+	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, f.prefs, f.games, f.media, limit, f.listeners(), log)
 	f.downloads.retries = testRetries
 	f.downloads.spacePoll = time.Millisecond
 	return f
@@ -705,7 +719,7 @@ func TestDownloadWithoutStateDB(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	problem := &domain.Error{Kind: domain.KindNewerData, Message: "newer"}
 	d := NewDownloads(t.Context(), f.downloads.catalog, f.downloads.install, f.downloads.conn, f.downloads.dial,
-		nil, problem, f.measure, f.prefs, f.games, 2, DownloadListeners{}, f.downloads.log)
+		nil, problem, f.measure, f.prefs, f.games, nil, 2, DownloadListeners{}, f.downloads.log)
 
 	if _, err := d.Queue(context.Background(), 1); kindOf(err) != domain.KindNewerData {
 		t.Fatalf("queue: %v", err)
@@ -887,7 +901,7 @@ func TestDismissFailedDeletesPartial(t *testing.T) {
 func (f *downloadFixture) restart(t *testing.T) *Downloads {
 	t.Helper()
 	old := f.downloads
-	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, f.prefs, f.games, 2, f.listeners(), old.log)
+	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, f.prefs, f.games, f.media, 2, f.listeners(), old.log)
 	d.retries = testRetries
 	f.downloads = d
 	return d

@@ -237,6 +237,17 @@ function SettingsSection() {
           }}
         />
       </PanelSectionRow>
+      <PanelSectionRow>
+        <ToggleField
+          label="Add art to ES-DE"
+          description="Downloaded games get their RomM cover and screenshot in ES-DE without scraping. Art already in ES-DE is never replaced, and art ES-DE's scraper replaced stays when a game is deleted."
+          checked={prefs.esdeMedia}
+          onChange={(esdeMedia) => {
+            setPrefs({ ...prefs, esdeMedia })
+            call('set_preferences', { esdeMedia }).then(setPrefs, () => setPrefs(prefs))
+          }}
+        />
+      </PanelSectionRow>
     </PanelSection>
   )
 }

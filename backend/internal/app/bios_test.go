@@ -176,7 +176,7 @@ func newBIOSFixture(t *testing.T) *biosFixture {
 	}
 	f.downloads = NewDownloads(t.Context(), catalog, install, conn, func(domain.Server, string) DownloadServer { return gate },
 		&memOwnership{roms: map[int]domain.OwnedROM{}}, nil, func(string) (int64, error) { return 1 << 40, nil },
-		&memPrefs{keep: map[string]bool{}}, nil, 0, listeners, log)
+		&memPrefs{keep: map[string]bool{}}, nil, nil, 0, listeners, log)
 	f.downloads.limit = 0
 	return f
 }

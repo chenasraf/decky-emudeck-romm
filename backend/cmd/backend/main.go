@@ -150,8 +150,12 @@ func run(log *slog.Logger) error {
 		return domain.RunningESDE(procs)
 	}, rpc.ESDEEvents(srv), esdeLog)
 	listeners.Folder = esde.FolderChanged
+	mediaDial := func(server domain.Server, token string) app.MediaServer {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
+	media := app.NewMedia(coverArt, conn, mediaDial, store, log.With("component", "media"))
 	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr, system.FreeBytes, store,
-		games, store.DownloadConcurrency(), listeners, log.With("component", "downloads"))
+		games, media, store.DownloadConcurrency(), listeners, log.With("component", "downloads"))
 
 	sendCatalog := rpc.CatalogEvents(srv)
 	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, func(s app.CatalogStatus) {
@@ -164,7 +168,7 @@ func run(log *slog.Logger) error {
 	events.catalog = catalog
 	servers := app.NewServerSwitch(conn, downloads, catalog, log.With("component", "servers"))
 	rpc.Routes(srv, version, rpc.Services{
-		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde,
+		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde, Media: media,
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)

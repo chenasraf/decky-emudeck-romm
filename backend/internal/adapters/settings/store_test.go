@@ -136,6 +136,20 @@ func TestWaitForGames(t *testing.T) {
 	}
 }
 
+func TestESDEMedia(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if !s.ESDEMedia() {
+		t.Fatal("ES-DE media is off before anyone set it")
+	}
+	if err := s.SetESDEMedia(false); err != nil {
+		t.Fatal(err)
+	}
+	if New(dir).ESDEMedia() {
+		t.Fatal("turning it off didn't stick")
+	}
+}
+
 func TestSignInNeedsToken(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
