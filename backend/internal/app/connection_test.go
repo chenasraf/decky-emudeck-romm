@@ -297,7 +297,7 @@ func TestSignInWithPairCode(t *testing.T) {
 }
 
 func TestSignInWithPassword(t *testing.T) {
-	allowed := []string{"me.read", "platforms.read", "roms.read", "firmware.read"}
+	allowed := []string{"me.read", "platforms.read", "roms.read", "collections.read", "firmware.read"}
 	n := &fakeNet{
 		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
 		password:   "hunter2",
@@ -490,7 +490,7 @@ func TestDevicePairingApproved(t *testing.T) {
 	n := &fakeNet{
 		heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")},
 		polls:      []error{domain.ErrPairingPending, domain.ErrPairingSlowDown, &domain.Error{Kind: domain.KindUnreachable}, domain.ErrPairingPending},
-		approved:   domain.SignIn{Token: "rmm_dev", DeviceID: "dev-1", Scopes: []string{"me.read", "roms.read", "platforms.read"}},
+		approved:   domain.SignIn{Token: "rmm_dev", DeviceID: "dev-1", Scopes: []string{"me.read", "roms.read", "platforms.read", "collections.read"}},
 	}
 	settings := &fakeSettings{}
 	c, events := newConnectionWithEvents(t, settings, n)

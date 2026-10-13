@@ -20,7 +20,7 @@ import (
 
 // schemaVersion is stored as SQLite's user_version. A file with any other version is rebuilt, so
 // changing the schema below means bumping it.
-const schemaVersion = 1
+const schemaVersion = 2
 
 const schema = `
 CREATE TABLE platforms (
@@ -44,6 +44,19 @@ CREATE TABLE roms (
 	cover_large TEXT NOT NULL
 );
 CREATE INDEX roms_by_platform ON roms (platform_id, name COLLATE NOCASE, id);
+CREATE TABLE collections (
+	kind     TEXT NOT NULL,
+	id       INTEGER NOT NULL,
+	name     TEXT NOT NULL,
+	favorite INTEGER NOT NULL,
+	PRIMARY KEY (kind, id)
+);
+CREATE TABLE collection_roms (
+	kind          TEXT NOT NULL,
+	collection_id INTEGER NOT NULL,
+	rom_id        INTEGER NOT NULL,
+	PRIMARY KEY (kind, collection_id, rom_id)
+);
 CREATE TABLE meta (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
@@ -173,6 +186,10 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 		}
 	}
 
+	if err := replaceCollections(ctx, tx, sync.Collections); err != nil {
+		return err
+	}
+
 	if sync.Full {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM roms"); err != nil {
 			return err
@@ -211,6 +228,89 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func replaceCollections(ctx context.Context, tx *sql.Tx, collections []domain.Collection) error {
+	for _, table := range []string{"collections", "collection_roms"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	for _, c := range collections {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO collections (kind, id, name, favorite) VALUES (?, ?, ?, ?)",
+			c.Kind, c.ID, c.Name, c.Favorite); err != nil {
+			return err
+		}
+		for _, id := range c.ROMIDs {
+			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO collection_roms (kind, collection_id, rom_id) VALUES (?, ?, ?)",
+				c.Kind, c.ID, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Collections lists the collections the Catalog holds, favorites first, then by name. Each one's
+// ROMIDs are those the Catalog holds, by name.
+func (s *Store) Collections(ctx context.Context) ([]domain.Collection, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT kind, id, name, favorite FROM collections
+		ORDER BY favorite DESC, name COLLATE NOCASE, kind, id`)
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.Collection
+	for rows.Next() {
+		var c domain.Collection
+		if err := rows.Scan(&c.Kind, &c.ID, &c.Name, &c.Favorite); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].ROMIDs, err = s.collectionROMIDs(ctx, out[i].CollectionRef); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// Collection returns the collection ref names, with the ROMIDs the Catalog holds.
+func (s *Store) Collection(ctx context.Context, ref domain.CollectionRef) (domain.Collection, bool, error) {
+	c := domain.Collection{CollectionRef: ref}
+	err := s.db.QueryRowContext(ctx, "SELECT name, favorite FROM collections WHERE kind = ? AND id = ?", ref.Kind, ref.ID).
+		Scan(&c.Name, &c.Favorite)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, false, nil
+	}
+	if err != nil {
+		return c, false, err
+	}
+	c.ROMIDs, err = s.collectionROMIDs(ctx, ref)
+	return c, err == nil, err
+}
+
+func (s *Store) collectionROMIDs(ctx context.Context, ref domain.CollectionRef) ([]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT r.id FROM collection_roms c JOIN roms r ON r.id = c.rom_id
+		WHERE c.kind = ? AND c.collection_id = ? ORDER BY r.name COLLATE NOCASE, r.id`, ref.Kind, ref.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []int{}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // deleteMissing deletes every ROM whose id isn't in keep, through a temporary table so tens of
@@ -278,11 +378,15 @@ func (s *Store) Counts(ctx context.Context) (platforms, roms int, err error) {
 
 const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, updated_at, cover_small, cover_large"
 
-// ROMs returns a page of a platform's ROMs, by name, narrowed by only when it isn't nil.
+// ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, by name,
+// narrowed by only when it isn't nil.
 func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error) {
 	var page domain.ROMPage
 	where := "platform_id = ?"
 	args := []any{platformID}
+	if platformID == 0 {
+		where, args = "1", nil
+	}
 	if only != nil {
 		ids, err := json.Marshal(nonNilIDs(only.IDs))
 		if err != nil {

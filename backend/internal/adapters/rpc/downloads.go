@@ -5,6 +5,7 @@ import (
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/app"
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
 func downloadRoutes(s *Server, downloads *app.Downloads) {
@@ -29,26 +30,26 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 	})
 
 	Register(s, "plan_download_all", func(ctx context.Context, p schema.PlanDownloadAllParams) (schema.DownloadAllPlan, error) {
-		plan, err := downloads.PlanAll(ctx, p.PlatformID)
+		plan, err := downloads.PlanAll(ctx, toBatch(p.PlatformID, p.Collection))
 		if err != nil {
 			return schema.DownloadAllPlan{}, wireError(err)
 		}
 		return schema.DownloadAllPlan{
-			PlatformName: plan.PlatformName,
-			Count:        len(plan.Games),
-			TotalBytes:   plan.TotalBytes,
-			NeedBytes:    plan.NeedBytes,
-			FreeBytes:    max(plan.FreeBytes, 0),
-			FreeKnown:    plan.FreeKnown,
-			Fits:         plan.Fits(),
-			FitCount:     len(plan.Fit),
-			FitBytes:     plan.FitBytes,
-			Unplaceable:  plan.Unplaceable,
+			Name:        plan.Name,
+			Count:       len(plan.Games),
+			TotalBytes:  plan.TotalBytes,
+			NeedBytes:   plan.NeedBytes,
+			FreeBytes:   max(plan.FreeBytes, 0),
+			FreeKnown:   plan.FreeKnown,
+			Fits:        plan.Fits(),
+			FitCount:    len(plan.Fit),
+			FitBytes:    plan.FitBytes,
+			Unplaceable: plan.Unplaceable,
 		}, nil
 	})
 
 	Register(s, "download_all", func(ctx context.Context, p schema.DownloadAllParams) (schema.DownloadAllResult, error) {
-		queued, failed, err := downloads.QueueAll(ctx, p.PlatformID, p.OnlyWhatFits)
+		queued, failed, err := downloads.QueueAll(ctx, toBatch(p.PlatformID, p.Collection), p.OnlyWhatFits)
 		if err != nil {
 			return schema.DownloadAllResult{}, wireError(err)
 		}
@@ -75,6 +76,18 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		}
 		return out, nil
 	})
+}
+
+func toBatch(platformID int, collection *schema.CollectionRef) app.Batch {
+	if collection == nil {
+		return app.Batch{PlatformID: platformID}
+	}
+	ref := fromWireCollection(*collection)
+	return app.Batch{Collection: &ref}
+}
+
+func fromWireCollection(c schema.CollectionRef) domain.CollectionRef {
+	return domain.CollectionRef{Kind: domain.CollectionKind(c.Kind), ID: c.ID}
 }
 
 // DownloadListeners returns the listeners that send what the download queue does as download,

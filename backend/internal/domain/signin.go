@@ -27,16 +27,19 @@ const (
 	FeatureDownload Feature = "download"
 	FeatureBIOS     Feature = "bios"
 	FeatureSaveSync Feature = "save_sync"
+	// FeatureCollections browses and downloads RomM collections.
+	FeatureCollections Feature = "collections"
 )
 
 // Features lists every Feature in the order the UI shows them.
-var Features = []Feature{FeatureBrowse, FeatureDownload, FeatureBIOS, FeatureSaveSync}
+var Features = []Feature{FeatureBrowse, FeatureDownload, FeatureCollections, FeatureBIOS, FeatureSaveSync}
 
 var featureScopes = map[Feature][]string{
-	FeatureBrowse:   {"platforms.read", "roms.read"},
-	FeatureDownload: {"roms.read"},
-	FeatureBIOS:     {"firmware.read"},
-	FeatureSaveSync: {"assets.read", "assets.write", "devices.read", "devices.write"},
+	FeatureBrowse:      {"platforms.read", "roms.read"},
+	FeatureDownload:    {"roms.read"},
+	FeatureCollections: {"collections.read"},
+	FeatureBIOS:        {"firmware.read"},
+	FeatureSaveSync:    {"assets.read", "assets.write", "devices.read", "devices.write"},
 }
 
 // RequestedScopes is what the plugin asks RomM for: the union of every Feature's scopes, plus

@@ -26,7 +26,10 @@ import { usePlatformBios } from '../bios'
 import { formatSize, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
 import { type Downloads, percent, useDownloads } from '../downloads'
+import { disabledReason } from '../features'
 import type {
+  CollectionRef,
+  CollectionSummary,
   DeleteGamesParams,
   DownloadItem,
   Game,
@@ -122,9 +125,11 @@ function OfflineBanner() {
 /** The library's line on the QAM home: what it holds, and the way into browsing it. */
 export function LibrarySection({
   onBrowse,
+  onCollections,
   onSearch,
 }: {
   onBrowse: () => void
+  onCollections: () => void
   onSearch: () => void
 }) {
   const catalog = useCatalog()
@@ -156,6 +161,7 @@ export function LibrarySection({
         <>
           <Row label="Search" onClick={onSearch} />
           <Row label="Browse library" onClick={onBrowse} />
+          <Row label="Collections" onClick={onCollections} />
         </>
       )}
       <PanelSectionRow>
@@ -210,6 +216,60 @@ export function PlatformsView({
       {platforms?.length === 0 && (
         <PanelSectionRow>
           <Field label="No games yet" description="Refresh the library to load it from RomM." />
+        </PanelSectionRow>
+      )}
+    </PanelSection>
+  )
+}
+
+export function CollectionsView({
+  onBack,
+  onOpen,
+}: {
+  onBack: () => void
+  onOpen: (collection: CollectionSummary) => void
+}) {
+  const catalog = useCatalog()
+  const connection = useConnection()
+  const [collections, setCollections] = useState<CollectionSummary[] | null>(null)
+  const [error, setError] = useState<RpcError | null>(null)
+  const off = connection?.disabledFeatures?.find((d) => d.feature === 'collections')
+
+  // Reloads whenever a refresh ends, so new collections and counts show without leaving.
+  const syncedAt = catalog?.syncedAt
+  useEffect(() => {
+    call('list_collections').then(
+      (r) => {
+        setCollections(r.collections)
+        setError(null)
+      },
+      (err: unknown) => setError(asRpcError(err)),
+    )
+  }, [syncedAt])
+
+  return (
+    <PanelSection title="Collections">
+      <Back onBack={onBack} />
+      <OfflineBanner />
+      <Problem error={error} />
+      {collections?.map((c) => (
+        <Row
+          key={`${c.kind}-${c.id}`}
+          label={c.favorite ? `★ ${c.name}` : c.name}
+          value={`${c.installed}/${c.games}`}
+          onClick={() => onOpen(c)}
+        />
+      ))}
+      {collections?.length === 0 && (
+        <PanelSectionRow>
+          {off ? (
+            <Field label="Collections are off" description={disabledReason(off)} />
+          ) : (
+            <Field
+              label="No collections"
+              description="Collections you make in RomM, and smart collections, show here after the next refresh."
+            />
+          )}
         </PanelSectionRow>
       )}
     </PanelSection>
@@ -385,14 +445,25 @@ function matchesFilter(state: GameState, filter: GameFilter): boolean {
   }
 }
 
+/** Where a game list comes from: a platform, or a collection, whose games span platforms. */
+export type GameSource =
+  | { kind: 'platform'; platform: PlatformSummary }
+  | { kind: 'collection'; collection: CollectionSummary }
+
+/** The list_games and download-all params that name source. */
+function sourceParams(source: GameSource): { platformId?: number; collection?: CollectionRef } {
+  if (source.kind === 'platform') return { platformId: source.platform.id }
+  return { collection: { kind: source.collection.kind, id: source.collection.id } }
+}
+
 export function GamesView({
-  platform,
+  source,
   filter,
   onFilter,
   onBack,
   onOpen,
 }: {
-  platform: PlatformSummary
+  source: GameSource
   filter: GameFilter
   onFilter: (filter: GameFilter) => void
   onBack: () => void
@@ -406,12 +477,29 @@ export function GamesView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<RpcError | null>(null)
   const [query, setQuery] = useState('')
-  const search = useSearch(query, platform.id)
+  const platform = source.kind === 'platform' ? source.platform : null
+  const title = platform?.name ?? (source.kind === 'collection' ? source.collection.name : '')
+  // Search narrows to a platform; a collection's list has no search, so its query stays blank.
+  const search = useSearch(query, platform?.id)
   const hits = search.result?.games.filter((g) => matchesFilter(g.state, filter)) ?? []
+  const params = sourceParams(source)
+  // The params object is new each render; these name the same source while it stays.
+  const { platformId, collection } = params
+  const collectionKind = collection?.kind
+  const collectionId = collection?.id
 
   const load = useCallback(
     (offset: number) =>
-      call('list_games', { platformId: platform.id, filter, offset, limit: PAGE_SIZE }).then(
+      call('list_games', {
+        platformId,
+        collection:
+          collectionKind && collectionId !== undefined
+            ? { kind: collectionKind, id: collectionId }
+            : undefined,
+        filter,
+        offset,
+        limit: PAGE_SIZE,
+      }).then(
         (r) => {
           setGames((prev) => (offset === 0 ? r.games : [...prev, ...r.games]))
           setTotal(r.total)
@@ -424,8 +512,12 @@ export function GamesView({
           setLoading(false)
         },
       ),
-    [platform.id, filter],
+    [platformId, collectionKind, collectionId, filter],
   )
+  const value = (g: GameSummary) => {
+    const state = stateLabel(g, downloads) ?? formatSize(g.sizeBytes)
+    return g.platformName ? `${g.platformName} · ${state}` : state
+  }
 
   // Starts over when the filter changes, a refresh ends, or a download ends and moves a game
   // between filters.
@@ -441,7 +533,7 @@ export function GamesView({
   }
 
   return (
-    <PanelSection title={platform.name}>
+    <PanelSection title={title}>
       <Back onBack={onBack} />
       <OfflineBanner />
       <FilterChips
@@ -451,15 +543,19 @@ export function GamesView({
           onFilter(f)
         }}
       />
-      <KeepArchivesToggle platformId={platform.id} result={listing} onError={setError} />
-      <BiosSection platformId={platform.id} />
-      <PanelSectionRow>
-        <TextField
-          label={`Search ${platform.name}`}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </PanelSectionRow>
+      {platform && (
+        <>
+          <KeepArchivesToggle platformId={platform.id} result={listing} onError={setError} />
+          <BiosSection platformId={platform.id} />
+          <PanelSectionRow>
+            <TextField
+              label={`Search ${platform.name}`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </PanelSectionRow>
+        </>
+      )}
       {search.blank ? (
         <>
           <Problem error={error} />
@@ -473,13 +569,13 @@ export function GamesView({
               <ButtonItem
                 layout="below"
                 disabled={downloads.problem !== null}
-                onClick={() => void confirmDownloadAll(platform.id, setError)}
+                onClick={() => void confirmDownloadAll(params, setError)}
               >
                 Download all missing
               </ButtonItem>
             </PanelSectionRow>
           )}
-          {filter === 'installed' && total !== null && total > 0 && (
+          {platform && filter === 'installed' && total !== null && total > 0 && (
             <PanelSectionRow>
               <ButtonItem
                 layout="below"
@@ -497,12 +593,7 @@ export function GamesView({
             </PanelSectionRow>
           )}
           {games.map((g) => (
-            <Row
-              key={g.id}
-              label={g.name}
-              value={stateLabel(g, downloads) ?? formatSize(g.sizeBytes)}
-              onClick={() => onOpen(g)}
-            />
+            <Row key={g.id} label={g.name} value={value(g)} onClick={() => onOpen(g)} />
           ))}
         </>
       ) : (
@@ -693,26 +784,29 @@ function games(n: number): string {
  * Asks before queueing every missing game of a platform, with how many and how big. When they don't
  * all fit, offers to queue the ones that do, taken by name.
  */
-async function confirmDownloadAll(platformId: number, onError: (e: RpcError) => void) {
+async function confirmDownloadAll(
+  source: { platformId?: number; collection?: CollectionRef },
+  onError: (e: RpcError) => void,
+) {
   let plan
   try {
-    plan = await call('plan_download_all', { platformId })
+    plan = await call('plan_download_all', source)
   } catch (err) {
     onError(asRpcError(err))
     return
   }
   const queue = (onlyWhatFits: boolean) =>
-    call('download_all', { platformId, onlyWhatFits }).then(
+    call('download_all', { ...source, onlyWhatFits }).then(
       (r) =>
         toaster.toast({
           title: `Queued ${games(r.queued)}`,
-          body: r.failed > 0 ? `${games(r.failed)} didn't queue.` : plan.platformName,
+          body: r.failed > 0 ? `${games(r.failed)} didn't queue.` : plan.name,
         }),
       (err: unknown) => onError(asRpcError(err)),
     )
   const left =
     plan.unplaceable > 0
-      ? ` ${games(plan.unplaceable)} the plugin can't lay out in EmuDeck ${plan.unplaceable === 1 ? 'is' : 'are'} left out.`
+      ? ` ${games(plan.unplaceable)} the plugin can't place in EmuDeck ${plan.unplaceable === 1 ? 'is' : 'are'} left out.`
       : ''
 
   if (plan.count === 0) {
@@ -720,7 +814,7 @@ async function confirmDownloadAll(platformId: number, onError: (e: RpcError) => 
       <ConfirmModal
         bAlertDialog
         strTitle="Nothing to download"
-        strDescription={`Every ${plan.platformName} game is on this Deck or in the queue.${left}`}
+        strDescription={`Every ${plan.name} game is on this Deck or in the queue.${left}`}
       />,
     )
     return

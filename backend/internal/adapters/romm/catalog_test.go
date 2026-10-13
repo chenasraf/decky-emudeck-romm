@@ -27,6 +27,36 @@ func TestPlatforms(t *testing.T) {
 	}
 }
 
+func TestCollections(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/collections":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 2, "name": "Favorites", "is_favorite": true, "rom_ids": []int{2089, 1}, "rom_count": 2},
+			})
+		case "/api/collections/smart":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 2, "name": "Fire Emblem", "is_smart": true, "rom_ids": []int{1274}, "rom_count": 1},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).Collections(context.Background())
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	fav, smart := got[0], got[1]
+	if fav.CollectionRef != (domain.CollectionRef{Kind: domain.CollectionRegular, ID: 2}) || !fav.Favorite || !slices.Equal(fav.ROMIDs, []int{2089, 1}) {
+		t.Fatalf("favorites %+v", fav)
+	}
+	if smart.CollectionRef != (domain.CollectionRef{Kind: domain.CollectionSmart, ID: 2}) || smart.Name != "Fire Emblem" || !slices.Equal(smart.ROMIDs, []int{1274}) {
+		t.Fatalf("smart %+v", smart)
+	}
+}
+
 func TestROMsPage(t *testing.T) {
 	var query map[string][]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -232,6 +232,7 @@ func (c *fakeContent) DownloadConverted(_ context.Context, _, fileID int, _, _ s
 
 type downloadFixture struct {
 	downloads *Downloads
+	catalog   *memStore
 	owned     *memOwnership
 	server    *fakeContent
 	settings  *fakeSettings
@@ -279,6 +280,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	}
 
 	catalog := &memStore{}
+	f.catalog = catalog
 	if err := catalog.Apply(context.Background(), domain.CatalogSync{
 		Platforms: []domain.Platform{{ID: 1, Slug: "snes", Name: "Super Nintendo"}, {ID: 2, Slug: "unknown-console", Name: "Mystery"},
 			{ID: 3, Slug: "psx", Name: "PlayStation"}, {ID: 4, Slug: "arcade", Name: "Arcade"},

@@ -10,9 +10,17 @@ import (
 // batchPage is how many games PlanAll reads from the Catalog at a time.
 const batchPage = 1000
 
-// BatchPlan is what downloading every missing game of a platform would take.
+// Batch names the games Download all missing looks at: a platform's, or with Collection set a
+// collection's, which can span platforms.
+type Batch struct {
+	PlatformID int
+	Collection *domain.CollectionRef
+}
+
+// BatchPlan is what downloading every missing game of a Batch would take.
 type BatchPlan struct {
-	PlatformName string
+	// Name is the platform's or the collection's.
+	Name string
 	// Games are the missing games the plugin can place, by name.
 	Games []domain.ROM
 	// TotalBytes is how much the Games download.
@@ -21,8 +29,9 @@ type BatchPlan struct {
 	// twice.
 	NeedBytes int64
 	// FreeBytes is the room left for them once the downloads already queued and the margin are taken
-	// off, and FreeKnown says whether the drive could be measured at all. An unmeasured drive doesn't
-	// block, as with single downloads.
+	// off, and FreeKnown says whether any drive could be measured at all. An unmeasured drive doesn't
+	// block, as with single downloads. When the games go to folders on several drives, the fullest
+	// one counts for all of them, so a plan never promises room a drive doesn't have.
 	FreeBytes int64
 	FreeKnown bool
 	// Fit are the Games that fit in FreeBytes: each in name order that still fits, so one large game
@@ -30,28 +39,37 @@ type BatchPlan struct {
 	Fit []domain.ROM
 	// FitBytes is how much the Fit games download.
 	FitBytes int64
-	// Unplaceable counts the missing games the plugin has no way to lay out in EmuDeck's folder.
+	// Unplaceable counts the missing games the plugin has no way to place: their platform has no
+	// EmuDeck folder, or no layout for a game of several files.
 	Unplaceable int
 }
 
 // Fits says whether every game fits.
 func (p BatchPlan) Fits() bool { return len(p.Fit) == len(p.Games) }
 
-// PlanAll works out what downloading every missing game of a platform takes: the games on RomM that
+// PlanAll works out what downloading every missing game of a batch takes: the games on RomM that
 // aren't on this Deck or in the queue.
-func (d *Downloads) PlanAll(ctx context.Context, platformID int) (BatchPlan, error) {
+func (d *Downloads) PlanAll(ctx context.Context, b Batch) (BatchPlan, error) {
 	if d.store == nil {
 		return BatchPlan{}, d.problem
 	}
-	platform, ok, err := d.catalog.Platform(ctx, platformID)
-	if err != nil {
+	// A ROM of one file stands in for every game: what fails it fails them all. A platform batch
+	// checks its platform's folder too.
+	var platform domain.Platform
+	if b.Collection == nil {
+		p, ok, err := d.catalog.Platform(ctx, b.PlatformID)
+		if err != nil {
+			return BatchPlan{}, err
+		}
+		if !ok {
+			return BatchPlan{}, errNotInCatalog
+		}
+		platform = p
+	}
+	if _, _, err := d.targetDir(domain.ROM{}, platform); err != nil && (b.Collection == nil || !d.install.State(false).EmuDeckFound()) {
 		return BatchPlan{}, err
 	}
-	if !ok {
-		return BatchPlan{}, errNotInCatalog
-	}
-	// A ROM of one file stands in for the platform: whatever fails it fails every game.
-	system, dir, err := d.targetDir(domain.ROM{}, platform)
+	name, roms, err := d.batchROMs(ctx, b)
 	if err != nil {
 		return BatchPlan{}, err
 	}
@@ -60,36 +78,42 @@ func (d *Downloads) PlanAll(ctx context.Context, platformID int) (BatchPlan, err
 		return BatchPlan{}, err
 	}
 
-	plan := BatchPlan{PlatformName: platform.Name}
+	plan := BatchPlan{Name: name}
 	needs := map[int]int64{}
-	for offset := 0; ; offset += batchPage {
-		page, err := d.catalog.ROMs(ctx, platformID, nil, offset, batchPage)
+	dirs := map[string]bool{}
+	platforms := map[int]domain.Platform{}
+	for _, rom := range roms {
+		if domain.StateOf(states, rom.ID) != domain.StateOnRomM {
+			continue
+		}
+		platform, ok := platforms[rom.PlatformID]
+		if !ok {
+			if platform, _, err = d.catalog.Platform(ctx, rom.PlatformID); err != nil {
+				return BatchPlan{}, err
+			}
+			platforms[rom.PlatformID] = platform
+		}
+		system, dir, err := d.targetDir(rom, platform)
 		if err != nil {
-			return BatchPlan{}, err
+			plan.Unplaceable++
+			continue
 		}
-		for _, rom := range page.ROMs {
-			if domain.StateOf(states, rom.ID) != domain.StateOnRomM {
-				continue
-			}
-			if rom.MultiFile && system.MultiFile == "" {
-				plan.Unplaceable++
-				continue
-			}
-			need := roomFor(system, rom)
-			needs[rom.ID] = need
-			plan.Games = append(plan.Games, rom)
-			plan.TotalBytes += rom.SizeBytes
-			plan.NeedBytes += need
-		}
-		if len(page.ROMs) < batchPage {
-			break
-		}
+		dirs[dir] = true
+		need := roomFor(system, rom)
+		needs[rom.ID] = need
+		plan.Games = append(plan.Games, rom)
+		plan.TotalBytes += rom.SizeBytes
+		plan.NeedBytes += need
 	}
 
 	d.mu.Lock()
 	ahead := d.pending()
 	d.mu.Unlock()
-	plan.FreeBytes, plan.FreeKnown = d.room(dir)
+	paths := []string{d.install.State(false).EmuDeck.Root}
+	for dir := range dirs {
+		paths = append(paths, dir)
+	}
+	plan.FreeBytes, plan.FreeKnown = d.room(paths...)
 	plan.FreeBytes -= ahead + spaceMargin
 	left := plan.FreeBytes
 	for _, rom := range plan.Games {
@@ -103,11 +127,45 @@ func (d *Downloads) PlanAll(ctx context.Context, platformID int) (BatchPlan, err
 	return plan, nil
 }
 
-// QueueAll queues every missing game of a platform, or with onlyWhatFits those of them that fit,
-// and returns how many it queued and how many it couldn't. Without onlyWhatFits, a batch that
-// doesn't fit queues nothing.
-func (d *Downloads) QueueAll(ctx context.Context, platformID int, onlyWhatFits bool) (queued, failed int, err error) {
-	plan, err := d.PlanAll(ctx, platformID)
+// batchROMs returns a batch's name and its games, by name.
+func (d *Downloads) batchROMs(ctx context.Context, b Batch) (string, []domain.ROM, error) {
+	if b.Collection != nil {
+		col, ok, err := d.catalog.Collection(ctx, *b.Collection)
+		if err != nil {
+			return "", nil, err
+		}
+		if !ok {
+			return "", nil, errNotInCatalog
+		}
+		roms, err := d.catalog.ROMsByID(ctx, col.ROMIDs)
+		return col.Name, roms, err
+	}
+
+	platform, ok, err := d.catalog.Platform(ctx, b.PlatformID)
+	if err != nil {
+		return "", nil, err
+	}
+	if !ok {
+		return "", nil, errNotInCatalog
+	}
+	var roms []domain.ROM
+	for offset := 0; ; offset += batchPage {
+		page, err := d.catalog.ROMs(ctx, b.PlatformID, nil, offset, batchPage)
+		if err != nil {
+			return "", nil, err
+		}
+		roms = append(roms, page.ROMs...)
+		if len(page.ROMs) < batchPage {
+			return platform.Name, roms, nil
+		}
+	}
+}
+
+// QueueAll queues every missing game of a batch, or with onlyWhatFits those of them that fit, and
+// returns how many it queued and how many it couldn't. Without onlyWhatFits, a batch that doesn't
+// fit queues nothing.
+func (d *Downloads) QueueAll(ctx context.Context, b Batch, onlyWhatFits bool) (queued, failed int, err error) {
+	plan, err := d.PlanAll(ctx, b)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -134,15 +192,15 @@ func (d *Downloads) QueueAll(ctx context.Context, platformID int, onlyWhatFits b
 			d.log.Warn("queue from batch", "rom_id", rom.ID, "err", err)
 		}
 	}
-	d.log.Info("batch queued", "platform_id", platformID, "queued", queued, "failed", failed, "only_what_fits", onlyWhatFits)
+	d.log.Info("batch queued", "name", plan.Name, "queued", queued, "failed", failed, "only_what_fits", onlyWhatFits)
 	return queued, failed, nil
 }
 
-// room is the least free space of staging's drive and dir's, and whether either could be measured.
-func (d *Downloads) room(dir string) (int64, bool) {
+// room is the least free space of the drives paths are on, and whether any could be measured.
+func (d *Downloads) room(paths ...string) (int64, bool) {
 	var least int64
 	known := false
-	for _, path := range []string{d.install.State(false).EmuDeck.Root, dir} {
+	for _, path := range paths {
 		free, err := d.freeAt(path)
 		if err != nil {
 			d.log.Warn("measure free space", "path", path, "err", err)

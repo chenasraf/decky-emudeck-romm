@@ -33,6 +33,7 @@ type CatalogServer interface {
 	Platforms(ctx context.Context) ([]domain.Platform, error)
 	ROMs(ctx context.Context, since time.Time, offset, limit int) ([]domain.ROM, error)
 	ROMIDs(ctx context.Context) ([]int, error)
+	Collections(ctx context.Context) ([]domain.Collection, error)
 	// SearchROMs returns the ids of the ROMs matching q by name or hash, most relevant first.
 	SearchROMs(ctx context.Context, q domain.SearchQuery) ([]int, error)
 }
@@ -46,8 +47,12 @@ type CatalogStore interface {
 	Apply(ctx context.Context, sync domain.CatalogSync) error
 	Platforms(ctx context.Context) ([]domain.PlatformSummary, error)
 	Platform(ctx context.Context, id int) (domain.Platform, bool, error)
-	// ROMs returns a page of a platform's ROMs, narrowed by only when it isn't nil.
+	// ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, narrowed
+	// by only when it isn't nil.
 	ROMs(ctx context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error)
+	// Collections lists the collections, each with the ROMIDs the Catalog holds.
+	Collections(ctx context.Context) ([]domain.Collection, error)
+	Collection(ctx context.Context, ref domain.CollectionRef) (domain.Collection, bool, error)
 	ROM(ctx context.Context, id int) (domain.ROM, bool, error)
 	// CountByPlatform returns how many of the ROMs with ids each platform holds.
 	CountByPlatform(ctx context.Context, ids []int) (map[int]int, error)
@@ -225,7 +230,16 @@ func (c *Catalog) sync(ctx context.Context) error {
 		}
 	}
 
-	update := domain.CatalogSync{Platforms: platforms, ROMs: roms, Full: full, Cursor: cursor, At: c.now()}
+	collections, err := server.Collections(ctx)
+	switch {
+	case kindOf(err) == domain.KindMissingPermission:
+		// Collections are off for this token; the rest of the library still syncs.
+		collections = nil
+	case err != nil:
+		return c.conn.observe(*in, err)
+	}
+
+	update := domain.CatalogSync{Platforms: platforms, Collections: collections, ROMs: roms, Full: full, Cursor: cursor, At: c.now()}
 	for _, r := range roms {
 		if r.UpdatedAt.After(update.Cursor) {
 			update.Cursor = r.UpdatedAt
@@ -292,6 +306,71 @@ func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFi
 	page, err := c.store.ROMs(ctx, platformID, only, offset, limit)
 	page.States = states
 	return platform, page, err
+}
+
+// Collections lists the collections, favorites first, with how many of their games the Catalog
+// holds and how many are on this Deck.
+func (c *Catalog) Collections(ctx context.Context) ([]domain.CollectionSummary, error) {
+	collections, err := c.store.Collections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	states, err := c.states.States(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.CollectionSummary, 0, len(collections))
+	for _, col := range collections {
+		s := domain.CollectionSummary{Collection: col, Games: len(col.ROMIDs)}
+		for _, id := range col.ROMIDs {
+			if st := states[id]; st == domain.StateInstalled || st == domain.StateDeleting {
+				s.Installed++
+			}
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// PlatformName is the name of the platform with id, empty when the Catalog doesn't hold it.
+func (c *Catalog) PlatformName(ctx context.Context, id int) string {
+	p, _, err := c.store.Platform(ctx, id)
+	if err != nil {
+		c.log.Warn("read platform", "platform_id", id, "err", err)
+	}
+	return p.Name
+}
+
+// CollectionGames returns a page of a collection's games that match filter, across platforms.
+func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef, filter domain.ROMFilter, offset, limit int) (domain.Collection, domain.ROMPage, error) {
+	col, ok, err := c.store.Collection(ctx, ref)
+	if err != nil {
+		return col, domain.ROMPage{}, err
+	}
+	if !ok {
+		return col, domain.ROMPage{}, errNotInCatalog
+	}
+	states, err := c.states.States(ctx)
+	if err != nil {
+		return col, domain.ROMPage{}, err
+	}
+	installed := map[int]bool{}
+	for _, id := range installedIDs(states) {
+		installed[id] = true
+	}
+	ids := []int{}
+	for _, id := range col.ROMIDs {
+		switch {
+		case filter == domain.FilterUpdates:
+		case filter == domain.FilterInstalled && !installed[id]:
+		case filter == domain.FilterNotInstalled && installed[id]:
+		default:
+			ids = append(ids, id)
+		}
+	}
+	page, err := c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: ids}, offset, limit)
+	page.States = states
+	return col, page, err
 }
 
 // installedIDs are the games on this Deck, counting those being deleted until their files are gone.

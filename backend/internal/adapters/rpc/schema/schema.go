@@ -78,6 +78,7 @@ type Methods struct {
 	RefreshCatalog      Method[RefreshCatalogParams, CatalogStatus]                  `json:"refresh_catalog"`
 	ListPlatforms       Method[ListPlatformsParams, ListPlatformsResult]             `json:"list_platforms"`
 	ListGames           Method[ListGamesParams, ListGamesResult]                     `json:"list_games"`
+	ListCollections     Method[ListCollectionsParams, ListCollectionsResult]         `json:"list_collections"`
 	GetGame             Method[GetGameParams, Game]                                  `json:"get_game"`
 	SearchGames         Method[SearchGamesParams, SearchGamesResult]                 `json:"search_games"`
 	DownloadGame        Method[DownloadGameParams, DownloadItem]                     `json:"download_game"`
@@ -157,6 +158,8 @@ const (
 	FeatureDownload Feature = "download"
 	FeatureBIOS     Feature = "bios"
 	FeatureSaveSync Feature = "save_sync"
+	// FeatureCollections browses and downloads RomM collections.
+	FeatureCollections Feature = "collections"
 )
 
 type DisabledFeature struct {
@@ -334,21 +337,57 @@ const (
 	GameFilterUpdates      GameFilter = "updates"
 )
 
+type CollectionKind string
+
+const (
+	// CollectionRegular is a collection a user put games in by hand.
+	CollectionRegular CollectionKind = "regular"
+	// CollectionSmart is a collection RomM fills from a saved filter.
+	CollectionSmart CollectionKind = "smart"
+)
+
+// CollectionRef names a collection. Each kind numbers its collections on its own.
+type CollectionRef struct {
+	Kind CollectionKind `json:"kind"`
+	ID   int            `json:"id"`
+}
+
+type ListCollectionsParams struct{}
+
+type ListCollectionsResult struct {
+	Collections []CollectionSummary `json:"collections"`
+}
+
+type CollectionSummary struct {
+	Kind     CollectionKind `json:"kind"`
+	ID       int            `json:"id"`
+	Name     string         `json:"name"`
+	Favorite bool           `json:"favorite"`
+	// Games is how many of the collection's games the library holds.
+	Games int `json:"games"`
+	// Installed is how many of them are on this Deck.
+	Installed int `json:"installed"`
+}
+
+// ListGamesParams lists a platform's games, or with Collection set a collection's, across
+// platforms.
 type ListGamesParams struct {
-	PlatformID int        `json:"platformId"`
-	Filter     GameFilter `json:"filter,omitempty"`
-	Offset     int        `json:"offset,omitempty"`
+	PlatformID int            `json:"platformId,omitempty"`
+	Collection *CollectionRef `json:"collection,omitempty"`
+	Filter     GameFilter     `json:"filter,omitempty"`
+	Offset     int            `json:"offset,omitempty"`
 	// Limit is capped at 200; zero means 50.
 	Limit int `json:"limit,omitempty"`
 }
 
 type ListGamesResult struct {
-	PlatformName string        `json:"platformName"`
-	Games        []GameSummary `json:"games"`
+	// Name is the platform's or the collection's.
+	Name  string        `json:"name"`
+	Games []GameSummary `json:"games"`
 	// Total is how many games match the filter, across every page.
 	Total int `json:"total"`
 	// Archives is what the plugin does with the platform's games that arrive as archives; empty
-	// when EmuDeck has no folder for it.
+	// when EmuDeck has no folder for it, and for a collection.
 	Archives ArchivePolicy `json:"archives,omitempty"`
 	// KeepArchives is the platform's Keep archives toggle, which applies when Archives is optional.
 	KeepArchives bool `json:"keepArchives"`
@@ -398,6 +437,8 @@ type GameSummary struct {
 	SizeBytes int64     `json:"sizeBytes"`
 	Regions   []string  `json:"regions"`
 	State     GameState `json:"state"`
+	// PlatformName is set in a collection's list, where games come from several platforms.
+	PlatformName string `json:"platformName,omitempty"`
 }
 
 type SearchGamesParams struct {
@@ -513,15 +554,18 @@ type DownloadEvent struct {
 	Converting    bool      `json:"converting,omitempty"`
 }
 
-// PlanDownloadAllParams names the platform whose missing games Download all missing would queue.
+// PlanDownloadAllParams names the platform, or with Collection set the collection, whose missing
+// games Download all missing would queue.
 type PlanDownloadAllParams struct {
-	PlatformID int `json:"platformId"`
+	PlatformID int            `json:"platformId,omitempty"`
+	Collection *CollectionRef `json:"collection,omitempty"`
 }
 
-// DownloadAllPlan is what downloading every missing game of a platform would take: those on the
-// server that aren't on this Deck or in the queue.
+// DownloadAllPlan is what downloading every missing game of a platform or collection would take:
+// those on the server that aren't on this Deck or in the queue.
 type DownloadAllPlan struct {
-	PlatformName string `json:"platformName"`
+	// Name is the platform's or the collection's.
+	Name string `json:"name"`
 	// Count is how many missing games the plugin can place, and TotalBytes how much they download.
 	Count      int   `json:"count"`
 	TotalBytes int64 `json:"totalBytes"`
@@ -536,15 +580,17 @@ type DownloadAllPlan struct {
 	Fits     bool  `json:"fits"`
 	FitCount int   `json:"fitCount"`
 	FitBytes int64 `json:"fitBytes"`
-	// Unplaceable counts missing games laid out in a way the plugin can't place in EmuDeck.
+	// Unplaceable counts missing games the plugin can't place in EmuDeck: their platform has no
+	// folder, or no layout for a game of several files.
 	Unplaceable int `json:"unplaceable"`
 }
 
-// DownloadAllParams queues a platform's missing games: every one, which fails with no_space when
-// they don't fit, or with OnlyWhatFits those that fit.
+// DownloadAllParams queues a platform's or collection's missing games: every one, which fails with
+// no_space when they don't fit, or with OnlyWhatFits those that fit.
 type DownloadAllParams struct {
-	PlatformID   int  `json:"platformId"`
-	OnlyWhatFits bool `json:"onlyWhatFits,omitempty"`
+	PlatformID   int            `json:"platformId,omitempty"`
+	Collection   *CollectionRef `json:"collection,omitempty"`
+	OnlyWhatFits bool           `json:"onlyWhatFits,omitempty"`
 }
 
 type DownloadAllResult struct {

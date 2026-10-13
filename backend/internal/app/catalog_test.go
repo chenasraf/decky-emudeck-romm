@@ -18,12 +18,13 @@ import (
 
 // memStore is a CatalogStore in memory.
 type memStore struct {
-	mu        sync.Mutex
-	platforms []domain.Platform
-	roms      map[int]domain.ROM
-	cursor    time.Time
-	syncedAt  time.Time
-	syncs     []domain.CatalogSync
+	mu          sync.Mutex
+	platforms   []domain.Platform
+	collections []domain.Collection
+	roms        map[int]domain.ROM
+	cursor      time.Time
+	syncedAt    time.Time
+	syncs       []domain.CatalogSync
 }
 
 func (s *memStore) SyncState(context.Context) (time.Time, time.Time, error) {
@@ -37,6 +38,7 @@ func (s *memStore) Apply(_ context.Context, sync domain.CatalogSync) error {
 	defer s.mu.Unlock()
 	s.syncs = append(s.syncs, sync)
 	s.platforms = sync.Platforms
+	s.collections = sync.Collections
 	if sync.Full || s.roms == nil {
 		s.roms = map[int]domain.ROM{}
 	}
@@ -80,7 +82,7 @@ func (s *memStore) ROMs(_ context.Context, platformID int, only *domain.IDFilter
 	defer s.mu.Unlock()
 	var all []domain.ROM
 	for _, r := range s.roms {
-		if r.PlatformID != platformID {
+		if platformID != 0 && r.PlatformID != platformID {
 			continue
 		}
 		if only != nil && slices.Contains(only.IDs, r.ID) == only.Exclude {
@@ -94,6 +96,39 @@ func (s *memStore) ROMs(_ context.Context, platformID int, only *domain.IDFilter
 		page.ROMs = all[offset:min(offset+limit, len(all))]
 	}
 	return page, nil
+}
+
+// held narrows c's ROMIDs to those the store holds. s.mu must be held.
+func (s *memStore) held(c domain.Collection) domain.Collection {
+	ids := []int{}
+	for _, id := range c.ROMIDs {
+		if _, ok := s.roms[id]; ok {
+			ids = append(ids, id)
+		}
+	}
+	c.ROMIDs = ids
+	return c
+}
+
+func (s *memStore) Collections(context.Context) ([]domain.Collection, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []domain.Collection
+	for _, c := range s.collections {
+		out = append(out, s.held(c))
+	}
+	return out, nil
+}
+
+func (s *memStore) Collection(_ context.Context, ref domain.CollectionRef) (domain.Collection, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.collections {
+		if c.CollectionRef == ref {
+			return s.held(c), true, nil
+		}
+	}
+	return domain.Collection{}, false, nil
 }
 
 func (s *memStore) ROM(_ context.Context, id int) (domain.ROM, bool, error) {
@@ -158,10 +193,19 @@ func (s *memStore) Counts(context.Context) (int, int, error) {
 
 // fakeLibrary is a RomM server's library.
 type fakeLibrary struct {
-	mu    sync.Mutex
-	roms  map[int]domain.ROM
-	err   error
-	since []time.Time
+	mu          sync.Mutex
+	roms        map[int]domain.ROM
+	collections []domain.Collection
+	// collectionsErr is what listing collections fails with.
+	collectionsErr error
+	err            error
+	since          []time.Time
+}
+
+func (l *fakeLibrary) Collections(context.Context) ([]domain.Collection, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.collections, l.collectionsErr
 }
 
 func newLibrary(n int) *fakeLibrary {
@@ -375,6 +419,54 @@ func TestCatalogRejectedTokenSignsOut(t *testing.T) {
 	case s := <-f.statuses:
 		t.Fatalf("refreshed while signed out: %+v", s)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestCatalogCollections(t *testing.T) {
+	library := newLibrary(4)
+	fav := domain.CollectionRef{Kind: domain.CollectionRegular, ID: 2}
+	smart := domain.CollectionRef{Kind: domain.CollectionSmart, ID: 2}
+	library.collections = []domain.Collection{
+		// 99 is a game RomM lists in the collection that the library doesn't hold.
+		{CollectionRef: fav, Name: "Favorites", Favorite: true, ROMIDs: []int{1, 2, 99}},
+		{CollectionRef: smart, Name: "Fire Emblem", ROMIDs: []int{3, 4}},
+	}
+	f := newCatalogFixture(t, library)
+	f.refresh(t, false)
+	ctx := context.Background()
+	f.states[2] = domain.StateInstalled
+
+	cols, err := f.catalog.Collections(ctx)
+	if err != nil || len(cols) != 2 {
+		t.Fatalf("collections %+v, %v", cols, err)
+	}
+	// The same id names a different collection in each kind.
+	if cols[0].CollectionRef != fav || cols[0].Games != 2 || cols[0].Installed != 1 || cols[1].CollectionRef != smart || cols[1].Games != 2 {
+		t.Fatalf("collections %+v", cols)
+	}
+
+	col, page, err := f.catalog.CollectionGames(ctx, fav, domain.FilterNotInstalled, 0, 10)
+	if err != nil || col.Name != "Favorites" || page.Total != 1 || page.ROMs[0].ID != 1 {
+		t.Fatalf("not installed: %+v %+v, %v", col, page, err)
+	}
+	if _, page, _ := f.catalog.CollectionGames(ctx, fav, domain.FilterInstalled, 0, 10); page.Total != 1 || page.ROMs[0].ID != 2 {
+		t.Fatalf("installed: %+v", page)
+	}
+	if _, _, err := f.catalog.CollectionGames(ctx, domain.CollectionRef{Kind: domain.CollectionSmart, ID: 9}, domain.FilterAll, 0, 10); kindOf(err) != domain.KindNotFound {
+		t.Fatalf("unknown collection: %v", err)
+	}
+}
+
+func TestCatalogSyncsWithoutCollectionsPermission(t *testing.T) {
+	library := newLibrary(2)
+	library.collectionsErr = &domain.Error{Kind: domain.KindMissingPermission, Message: "no collections.read"}
+	f := newCatalogFixture(t, library)
+
+	if s := f.refresh(t, false); s.Problem != nil || s.ROMs != 2 {
+		t.Fatalf("refresh %+v", s)
+	}
+	if cols, _ := f.catalog.Collections(context.Background()); len(cols) != 0 {
+		t.Fatalf("collections %+v", cols)
 	}
 }
 

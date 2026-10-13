@@ -3,6 +3,7 @@ import type { DisabledFeature, Feature } from './rpc/schema.gen'
 const LABELS: Record<Feature, string> = {
   browse: 'Library browsing',
   download: 'ROM downloads',
+  collections: 'Collections',
   bios: 'BIOS downloads',
   save_sync: 'Save sync',
 }

@@ -40,6 +40,41 @@ type PlatformSummary struct {
 	Installed int
 }
 
+// CollectionKind tells RomM's collection kinds apart. Each kind numbers its collections on its own.
+type CollectionKind string
+
+const (
+	// CollectionRegular is a collection a user put games in by hand.
+	CollectionRegular CollectionKind = "regular"
+	// CollectionSmart is a collection RomM fills from a saved filter.
+	CollectionSmart CollectionKind = "smart"
+)
+
+// CollectionRef names a collection on the Server.
+type CollectionRef struct {
+	Kind CollectionKind
+	ID   int
+}
+
+// Collection is a collection on the Server, as the Catalog keeps it.
+type Collection struct {
+	CollectionRef
+	Name string
+	// Favorite is set on the user's Favorites collection.
+	Favorite bool
+	// ROMIDs are the ids of its ROMs.
+	ROMIDs []int
+}
+
+// CollectionSummary is a collection with what the Catalog and this Deck hold of it.
+type CollectionSummary struct {
+	Collection
+	// Games is how many of its ROMs the Catalog holds.
+	Games int
+	// Installed is how many of them are on this Deck.
+	Installed int
+}
+
 // ROMFilter narrows a platform's game list.
 type ROMFilter string
 
@@ -53,6 +88,8 @@ const (
 // CatalogSync is what one sync with the Server brings to the Catalog.
 type CatalogSync struct {
 	Platforms []Platform
+	// Collections replace every collection the Catalog holds.
+	Collections []Collection
 	// ROMs are the ROMs the Server sent: all of them on a full sync, or those changed since the
 	// last one.
 	ROMs []ROM

@@ -33,6 +33,36 @@ func (c *Client) Platforms(ctx context.Context) ([]domain.Platform, error) {
 	return out, nil
 }
 
+// Collections returns the regular and smart collections the token's user can see. RomM's virtual
+// collections, which it builds from metadata on its own, are left out.
+func (c *Client) Collections(ctx context.Context) ([]domain.Collection, error) {
+	var out []domain.Collection
+	for _, kind := range []struct {
+		path string
+		kind domain.CollectionKind
+	}{{"/api/collections", domain.CollectionRegular}, {"/api/collections/smart", domain.CollectionSmart}} {
+		var body []struct {
+			ID         int    `json:"id"`
+			Name       string `json:"name"`
+			IsFavorite bool   `json:"is_favorite"`
+			ROMIDs     []int  `json:"rom_ids"`
+		}
+		status, err := c.getBulk(ctx, kind.path, &body)
+		if err := statusError("list collections", status, err); err != nil {
+			return nil, err
+		}
+		for _, b := range body {
+			out = append(out, domain.Collection{
+				CollectionRef: domain.CollectionRef{Kind: kind.kind, ID: b.ID},
+				Name:          b.Name,
+				Favorite:      b.IsFavorite,
+				ROMIDs:        b.ROMIDs,
+			})
+		}
+	}
+	return out, nil
+}
+
 // romQuery turns off the indexes RomM computes over the whole library on every page by default.
 const romQuery = "with_char_index=false&with_filter_values=false"
 

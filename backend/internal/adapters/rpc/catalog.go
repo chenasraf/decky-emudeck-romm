@@ -57,24 +57,59 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 		if filter == "" {
 			filter = domain.FilterAll
 		}
-		platform, page, err := catalog.Games(ctx, p.PlatformID, filter, max(p.Offset, 0), min(limit, maxGamesPage))
-		if err != nil {
-			return schema.ListGamesResult{}, wireError(err)
+		offset, limit := max(p.Offset, 0), min(limit, maxGamesPage)
+		out := schema.ListGamesResult{Games: []schema.GameSummary{}}
+		var page domain.ROMPage
+		if p.Collection != nil {
+			col, colPage, err := catalog.CollectionGames(ctx, fromWireCollection(*p.Collection), filter, offset, limit)
+			if err != nil {
+				return schema.ListGamesResult{}, wireError(err)
+			}
+			out.Name, page = col.Name, colPage
+		} else {
+			platform, platPage, err := catalog.Games(ctx, p.PlatformID, filter, offset, limit)
+			if err != nil {
+				return schema.ListGamesResult{}, wireError(err)
+			}
+			out.Name, page = platform.Name, platPage
+			policy, keep := downloads.Archives(ctx, p.PlatformID)
+			out.Archives, out.KeepArchives = schema.ArchivePolicy(policy), keep
 		}
-		out := schema.ListGamesResult{
-			PlatformName: platform.Name,
-			Games:        []schema.GameSummary{},
-			Total:        page.Total,
-		}
-		policy, keep := downloads.Archives(ctx, p.PlatformID)
-		out.Archives, out.KeepArchives = schema.ArchivePolicy(policy), keep
+		out.Total = page.Total
+		names := map[int]string{}
 		for _, r := range page.ROMs {
-			out.Games = append(out.Games, schema.GameSummary{
+			g := schema.GameSummary{
 				ID:        r.ID,
 				Name:      r.Name,
 				SizeBytes: r.SizeBytes,
 				Regions:   nonNil(r.Regions),
 				State:     schema.GameState(domain.StateOf(page.States, r.ID)),
+			}
+			if p.Collection != nil {
+				if _, ok := names[r.PlatformID]; !ok {
+					names[r.PlatformID] = catalog.PlatformName(ctx, r.PlatformID)
+				}
+				g.PlatformName = names[r.PlatformID]
+			}
+			out.Games = append(out.Games, g)
+		}
+		return out, nil
+	})
+
+	Register(s, "list_collections", func(ctx context.Context, _ schema.ListCollectionsParams) (schema.ListCollectionsResult, error) {
+		collections, err := catalog.Collections(ctx)
+		if err != nil {
+			return schema.ListCollectionsResult{}, wireError(err)
+		}
+		out := schema.ListCollectionsResult{Collections: []schema.CollectionSummary{}}
+		for _, c := range collections {
+			out.Collections = append(out.Collections, schema.CollectionSummary{
+				Kind:      schema.CollectionKind(c.Kind),
+				ID:        c.ID,
+				Name:      c.Name,
+				Favorite:  c.Favorite,
+				Games:     c.Games,
+				Installed: c.Installed,
 			})
 		}
 		return out, nil

@@ -96,6 +96,7 @@ export interface Methods {
   refresh_catalog: Method<RefreshCatalogParams, CatalogStatus>;
   list_platforms: Method<ListPlatformsParams, ListPlatformsResult>;
   list_games: Method<ListGamesParams, ListGamesResult>;
+  list_collections: Method<ListCollectionsParams, ListCollectionsResult>;
   get_game: Method<GetGameParams, Game>;
   search_games: Method<SearchGamesParams, SearchGamesResult>;
   download_game: Method<DownloadGameParams, DownloadItem>;
@@ -190,6 +191,10 @@ export const FeatureBrowse: Feature = "browse";
 export const FeatureDownload: Feature = "download";
 export const FeatureBIOS: Feature = "bios";
 export const FeatureSaveSync: Feature = "save_sync";
+/**
+ * FeatureCollections browses and downloads RomM collections.
+ */
+export const FeatureCollections: Feature = "collections";
 export interface DisabledFeature {
   feature: Feature;
   missingScopes: string[];
@@ -399,8 +404,48 @@ export const GameFilterAll: GameFilter = "all";
 export const GameFilterInstalled: GameFilter = "installed";
 export const GameFilterNotInstalled: GameFilter = "not_installed";
 export const GameFilterUpdates: GameFilter = "updates";
+export type CollectionKind = string;
+/**
+ * CollectionRegular is a collection a user put games in by hand.
+ */
+export const CollectionRegular: CollectionKind = "regular";
+/**
+ * CollectionSmart is a collection RomM fills from a saved filter.
+ */
+export const CollectionSmart: CollectionKind = "smart";
+/**
+ * CollectionRef names a collection. Each kind numbers its collections on its own.
+ */
+export interface CollectionRef {
+  kind: CollectionKind;
+  id: number /* int */;
+}
+export interface ListCollectionsParams {
+}
+export interface ListCollectionsResult {
+  collections: CollectionSummary[];
+}
+export interface CollectionSummary {
+  kind: CollectionKind;
+  id: number /* int */;
+  name: string;
+  favorite: boolean;
+  /**
+   * Games is how many of the collection's games the library holds.
+   */
+  games: number /* int */;
+  /**
+   * Installed is how many of them are on this Deck.
+   */
+  installed: number /* int */;
+}
+/**
+ * ListGamesParams lists a platform's games, or with Collection set a collection's, across
+ * platforms.
+ */
 export interface ListGamesParams {
-  platformId: number /* int */;
+  platformId?: number /* int */;
+  collection?: CollectionRef;
   filter?: GameFilter;
   offset?: number /* int */;
   /**
@@ -409,7 +454,10 @@ export interface ListGamesParams {
   limit?: number /* int */;
 }
 export interface ListGamesResult {
-  platformName: string;
+  /**
+   * Name is the platform's or the collection's.
+   */
+  name: string;
   games: GameSummary[];
   /**
    * Total is how many games match the filter, across every page.
@@ -417,7 +465,7 @@ export interface ListGamesResult {
   total: number /* int */;
   /**
    * Archives is what the plugin does with the platform's games that arrive as archives; empty
-   * when EmuDeck has no folder for it.
+   * when EmuDeck has no folder for it, and for a collection.
    */
   archives?: ArchivePolicy;
   /**
@@ -478,6 +526,10 @@ export interface GameSummary {
   sizeBytes: number /* int64 */;
   regions: string[];
   state: GameState;
+  /**
+   * PlatformName is set in a collection's list, where games come from several platforms.
+   */
+  platformName?: string;
 }
 export interface SearchGamesParams {
   /**
@@ -619,17 +671,22 @@ export interface DownloadEvent {
   converting?: boolean;
 }
 /**
- * PlanDownloadAllParams names the platform whose missing games Download all missing would queue.
+ * PlanDownloadAllParams names the platform, or with Collection set the collection, whose missing
+ * games Download all missing would queue.
  */
 export interface PlanDownloadAllParams {
-  platformId: number /* int */;
+  platformId?: number /* int */;
+  collection?: CollectionRef;
 }
 /**
- * DownloadAllPlan is what downloading every missing game of a platform would take: those on the
- * server that aren't on this Deck or in the queue.
+ * DownloadAllPlan is what downloading every missing game of a platform or collection would take:
+ * those on the server that aren't on this Deck or in the queue.
  */
 export interface DownloadAllPlan {
-  platformName: string;
+  /**
+   * Name is the platform's or the collection's.
+   */
+  name: string;
   /**
    * Count is how many missing games the plugin can place, and TotalBytes how much they download.
    */
@@ -653,16 +710,18 @@ export interface DownloadAllPlan {
   fitCount: number /* int */;
   fitBytes: number /* int64 */;
   /**
-   * Unplaceable counts missing games laid out in a way the plugin can't place in EmuDeck.
+   * Unplaceable counts missing games the plugin can't place in EmuDeck: their platform has no
+   * folder, or no layout for a game of several files.
    */
   unplaceable: number /* int */;
 }
 /**
- * DownloadAllParams queues a platform's missing games: every one, which fails with no_space when
- * they don't fit, or with OnlyWhatFits those that fit.
+ * DownloadAllParams queues a platform's or collection's missing games: every one, which fails with
+ * no_space when they don't fit, or with OnlyWhatFits those that fit.
  */
 export interface DownloadAllParams {
-  platformId: number /* int */;
+  platformId?: number /* int */;
+  collection?: CollectionRef;
   onlyWhatFits?: boolean;
 }
 export interface DownloadAllResult {

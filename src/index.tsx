@@ -25,14 +25,16 @@ import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
 import { watchDownloads } from './downloads'
 import {
+  CollectionsView,
   DownloadsSection,
+  type GameSource,
   GamesView,
   GameView,
   LibrarySection,
   PlatformsView,
   SearchView,
 } from './library/Library'
-import type { GameFilter, PlatformSummary, Preferences } from './rpc/schema.gen'
+import type { GameFilter, Preferences } from './rpc/schema.gen'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
 
@@ -256,7 +258,8 @@ function BackendSection() {
 type View =
   | { name: 'home' }
   | { name: 'platforms' }
-  | { name: 'games'; platform: PlatformSummary; filter: GameFilter; game?: number }
+  | { name: 'collections' }
+  | { name: 'games'; source: GameSource; filter: GameFilter; game?: number }
   | { name: 'search'; query: string; game?: number }
   | { name: 'game'; id: number }
 
@@ -286,7 +289,19 @@ function Content() {
     return (
       <PlatformsView
         onBack={() => setView({ name: 'home' })}
-        onOpen={(platform) => setView({ name: 'games', platform, filter: 'all' })}
+        onOpen={(platform) =>
+          setView({ name: 'games', source: { kind: 'platform', platform }, filter: 'all' })
+        }
+      />
+    )
+  }
+  if (view.name === 'collections') {
+    return (
+      <CollectionsView
+        onBack={() => setView({ name: 'home' })}
+        onOpen={(collection) =>
+          setView({ name: 'games', source: { kind: 'collection', collection }, filter: 'all' })
+        }
       />
     )
   }
@@ -296,10 +311,14 @@ function Content() {
         {/* Kept mounted while a game is open, so Back returns to the same place in a long list. */}
         <div style={{ display: view.game === undefined ? undefined : 'none' }}>
           <GamesView
-            platform={view.platform}
+            source={view.source}
             filter={view.filter}
             onFilter={(filter) => setView({ ...view, filter })}
-            onBack={() => setView({ name: 'platforms' })}
+            onBack={() =>
+              setView(
+                view.source.kind === 'platform' ? { name: 'platforms' } : { name: 'collections' },
+              )
+            }
             onOpen={(game) => setView({ ...view, game: game.id })}
           />
         </div>
@@ -318,6 +337,7 @@ function Content() {
       <DownloadsSection onOpen={(id) => setView({ name: 'game', id })} />
       <LibrarySection
         onBrowse={() => setView({ name: 'platforms' })}
+        onCollections={() => setView({ name: 'collections' })}
         onSearch={() => setView({ name: 'search', query: '' })}
       />
       <SettingsSection />

@@ -22,7 +22,7 @@ func TestDisabledFeatures(t *testing.T) {
 		t.Fatalf("unknown scopes disabled %+v", got)
 	}
 
-	got := DisabledFeatures([]string{"me.read", "platforms.read", "roms.read", "assets.read"})
+	got := DisabledFeatures([]string{"me.read", "platforms.read", "roms.read", "collections.read", "assets.read"})
 	want := []DisabledFeature{
 		{Feature: FeatureBIOS, MissingScopes: []string{"firmware.read"}},
 		{Feature: FeatureSaveSync, MissingScopes: []string{"assets.write", "devices.read", "devices.write"}},

@@ -105,6 +105,54 @@ func TestFullThenDeltaSync(t *testing.T) {
 	}
 }
 
+func TestCollections(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
+	fav := domain.CollectionRef{Kind: domain.CollectionRegular, ID: 1}
+	smart := domain.CollectionRef{Kind: domain.CollectionSmart, ID: 1}
+	sync := domain.CatalogSync{
+		Platforms: platforms,
+		ROMs:      []domain.ROM{rom(1, 1, "zelda"), rom(2, 2, "Advance Wars"), rom(3, 1, "metroid")},
+		Collections: []domain.Collection{
+			{CollectionRef: smart, Name: "Adventure", ROMIDs: []int{1}},
+			// 99 isn't in the library.
+			{CollectionRef: fav, Name: "Favorites", Favorite: true, ROMIDs: []int{1, 2, 99}},
+		},
+		Full: true,
+	}
+	if err := s.Apply(ctx, sync); err != nil {
+		t.Fatal(err)
+	}
+
+	cols, err := s.Collections(ctx)
+	if err != nil || len(cols) != 2 {
+		t.Fatalf("collections %+v, %v", cols, err)
+	}
+	// Favorites first; ROMs by name, across platforms, only those the library holds.
+	if cols[0].CollectionRef != fav || !cols[0].Favorite || len(cols[0].ROMIDs) != 2 || cols[0].ROMIDs[0] != 2 || cols[0].ROMIDs[1] != 1 {
+		t.Fatalf("favorites %+v", cols[0])
+	}
+	if c, ok, err := s.Collection(ctx, smart); err != nil || !ok || c.Name != "Adventure" || len(c.ROMIDs) != 1 {
+		t.Fatalf("smart %+v %v %v", c, ok, err)
+	}
+	// Platform zero lists every platform.
+	if page, _ := s.ROMs(ctx, 0, &domain.IDFilter{IDs: cols[0].ROMIDs}, 0, 10); page.Total != 2 || page.ROMs[0].Name != "Advance Wars" {
+		t.Fatalf("collection page %+v", page)
+	}
+
+	// Each sync replaces the collections.
+	sync.Collections, sync.Full = nil, false
+	if err := s.Apply(ctx, sync); err != nil {
+		t.Fatal(err)
+	}
+	if cols, _ := s.Collections(ctx); len(cols) != 0 {
+		t.Fatalf("after replace %+v", cols)
+	}
+	if _, ok, _ := s.Collection(ctx, fav); ok {
+		t.Fatal("collection kept")
+	}
+}
+
 func TestSearch(t *testing.T) {
 	ctx := context.Background()
 	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))

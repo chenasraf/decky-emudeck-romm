@@ -33,6 +33,31 @@ func liveServer(t *testing.T) domain.Server {
 	return server
 }
 
+// liveClient is a client for the server in ROMM_URL signed in with the read-only client token in
+// ROMM_TOKEN, skipping the test without one.
+func liveClient(t *testing.T) *romm.Client {
+	t.Helper()
+	server := liveServer(t)
+	token := os.Getenv("ROMM_TOKEN")
+	if token == "" {
+		t.Skip("ROMM_TOKEN not set")
+	}
+	return romm.New(server, token, "test")
+}
+
+func TestLiveCollections(t *testing.T) {
+	cols, err := liveClient(t).Collections(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cols {
+		if c.ID == 0 || c.Name == "" || c.ROMIDs == nil {
+			t.Fatalf("collection %+v", c)
+		}
+		t.Logf("%s %d %q: %d games", c.Kind, c.ID, c.Name, len(c.ROMIDs))
+	}
+}
+
 func TestLiveCheckServer(t *testing.T) {
 	liveServer(t)
 }
