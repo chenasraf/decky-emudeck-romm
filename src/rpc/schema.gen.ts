@@ -617,6 +617,11 @@ export const GameFailed: GameState = "failed";
  * Deck (not managed). download_game refuses it; adopt_game and link_game take it in.
  */
 export const GameOnDeck: GameState = "on_deck";
+/**
+ * GameUpdate is installed, with its files on the server changed since the plugin downloaded
+ * it.
+ */
+export const GameUpdate: GameState = "update_available";
 export interface GameSummary {
   id: number /* int */;
   name: string;
@@ -656,6 +661,12 @@ export interface LibraryShelves {
    */
   installed: GameSummary[];
   installedTotal: number /* int */;
+  /**
+   * Updates are the installed games RomM has an update of, by name, and UpdatesTotal how many
+   * there are.
+   */
+  updates: GameSummary[];
+  updatesTotal: number /* int */;
   /**
    * Platforms are every platform the library holds games for, by name, each with its first
    * games by name.
@@ -887,6 +898,11 @@ export const OwnershipChanged: OwnershipKind = "changed";
  * OwnershipReleased is an installed game the user stopped managing; its files stay, now theirs.
  */
 export const OwnershipReleased: OwnershipKind = "released";
+/**
+ * OwnershipUpdate is an installed game RomM has an update of, now update_available, or one
+ * whose update went away, installed again.
+ */
+export const OwnershipUpdate: OwnershipKind = "update";
 /**
  * OwnershipEvent is a change to a game's ownership, and the state it left the game in.
  */

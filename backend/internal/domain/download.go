@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -23,7 +24,16 @@ const (
 	// StateOnDeck is a game with a User-managed file where its download would go. The plugin never
 	// downloads over it; Adopt or Link to RomM take it in instead.
 	StateOnDeck GameState = "on_deck"
+	// StateUpdate is an installed game whose files on the Server changed since the plugin
+	// downloaded it.
+	StateUpdate GameState = "update_available"
 )
+
+// Installed says whether a game in state s is on this Deck, the plugin's: installed, with an
+// update, or being deleted until its files are gone.
+func (s GameState) Installed() bool {
+	return s == StateInstalled || s == StateUpdate || s == StateDeleting
+}
 
 // QueuedDownload is a download in the queue as state.db keeps it, so the queue outlives the
 // backend.
@@ -106,6 +116,50 @@ func SnapshotOf(f ROMFile) FileSnapshot {
 		s.HashKind, s.Hash = "crc", f.CRC
 	}
 	return s
+}
+
+// UpdateAvailable says whether the Server's files of a game differ from the snapshot taken when the
+// plugin downloaded it: a game file added, removed or re-hashed. Where the snapshot has no hash, a
+// changed size or modification time counts instead. Manuals, DLC and the like never count, and the
+// files on this Deck aren't looked at: extracting or converting a game changes their bytes.
+func UpdateAvailable(snapshot []FileSnapshot, files []ROMFile) bool {
+	game := GameFiles(files)
+	if len(game) != len(snapshot) {
+		return true
+	}
+	byID := make(map[int]FileSnapshot, len(snapshot))
+	for _, s := range snapshot {
+		byID[s.FileID] = s
+	}
+	for _, f := range game {
+		s, ok := byID[f.ID]
+		if !ok {
+			return true
+		}
+		if now := f.hash(s.HashKind); s.Hash != "" && now != "" {
+			if !strings.EqualFold(strings.TrimLeft(now, "0"), strings.TrimLeft(s.Hash, "0")) {
+				return true
+			}
+			continue
+		}
+		if f.SizeBytes != s.SizeBytes || !f.LastModified.Equal(s.LastModified) {
+			return true
+		}
+	}
+	return false
+}
+
+// hash returns f's hash of kind, empty when the Server has none.
+func (f ROMFile) hash(kind string) string {
+	switch kind {
+	case "sha1":
+		return f.SHA1
+	case "md5":
+		return f.MD5
+	case "crc":
+		return f.CRC
+	}
+	return ""
 }
 
 // PlacedFile is a file the plugin put on disk, as it was right after placing it.

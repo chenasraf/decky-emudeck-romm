@@ -166,6 +166,8 @@ func StateOf(states map[int]GameState, id int) GameState {
 type Shelves struct {
 	Recent    []ROM
 	Installed ROMPage
+	// Updates are the installed games with an update on the Server.
+	Updates   ROMPage
 	Platforms []PlatformShelf
 	// PlatformNames names the platform of each ROM, by platform id.
 	PlatformNames map[int]string

@@ -82,6 +82,10 @@ type OwnershipStore interface {
 	DeleteOwned(ctx context.Context, id int) error
 	// MoveOwned replaces the record of the ROM with id from by rom, at once.
 	MoveOwned(ctx context.Context, from int, rom domain.OwnedROM) error
+	// SetUpdateAvailable records whether the Server has an update of the ROM with id. Saving its
+	// record anew clears it.
+	SetUpdateAvailable(ctx context.Context, id int, available bool) error
+	UpdateIDs(ctx context.Context) ([]int, error)
 }
 
 // DownloadStore keeps the records of Plugin-owned ROMs and Linked games, and the download queue.
@@ -93,6 +97,9 @@ type DownloadStore interface {
 	Queued(ctx context.Context) ([]domain.QueuedDownload, error)
 	// ForgetServer drops every record tied to the Server, leaving the files.
 	ForgetServer(ctx context.Context) error
+	// LastSweep and SetLastSweep keep when the last sweep for updates finished.
+	LastSweep(ctx context.Context) (time.Time, error)
+	SetLastSweep(ctx context.Context, at time.Time) error
 }
 
 // Download is a game in the download queue.
@@ -445,6 +452,13 @@ func (d *Downloads) States(ctx context.Context) (map[int]domain.GameState, error
 		}
 		for _, id := range ids {
 			out[id] = domain.StateInstalled
+		}
+		updates, err := d.store.UpdateIDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range updates {
+			out[id] = domain.StateUpdate
 		}
 	}
 	d.mu.Lock()

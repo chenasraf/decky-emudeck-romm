@@ -140,6 +140,8 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			Recent:         summaries(shelves.Recent),
 			Installed:      summaries(shelves.Installed.ROMs),
 			InstalledTotal: shelves.Installed.Total,
+			Updates:        summaries(shelves.Updates.ROMs),
+			UpdatesTotal:   shelves.Updates.Total,
 			Platforms:      []schema.PlatformShelf{},
 		}
 		for _, ps := range shelves.Platforms {
@@ -184,7 +186,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 		}
 		var paths []string
 		var note string
-		if state == domain.StateInstalled {
+		if state == domain.StateInstalled || state == domain.StateUpdate {
 			owned, _, err := downloads.Owned(ctx, p.ID)
 			if err != nil {
 				return schema.Game{}, wireError(err)

@@ -79,11 +79,46 @@ func (m *memGamePrefs) SetWaitForGames(on bool) error {
 
 // memOwnership is a DownloadStore in memory.
 type memOwnership struct {
-	mu      sync.Mutex
-	roms    map[int]domain.OwnedROM
-	links   map[int]domain.LinkedGame
-	queue   []domain.QueuedDownload
-	saveErr error
+	mu        sync.Mutex
+	roms      map[int]domain.OwnedROM
+	links     map[int]domain.LinkedGame
+	queue     []domain.QueuedDownload
+	updates   map[int]bool
+	lastSweep time.Time
+	saveErr   error
+}
+
+func (m *memOwnership) SetUpdateAvailable(_ context.Context, id int, available bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.updates == nil {
+		m.updates = map[int]bool{}
+	}
+	if _, ok := m.roms[id]; ok && available {
+		m.updates[id] = true
+	} else {
+		delete(m.updates, id)
+	}
+	return nil
+}
+
+func (m *memOwnership) UpdateIDs(context.Context) ([]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Sorted(maps.Keys(m.updates)), nil
+}
+
+func (m *memOwnership) LastSweep(context.Context) (time.Time, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastSweep, nil
+}
+
+func (m *memOwnership) SetLastSweep(_ context.Context, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.lastSweep = at
+	return nil
 }
 
 func (m *memOwnership) SaveLinked(_ context.Context, g domain.LinkedGame) error {
@@ -153,6 +188,7 @@ func (m *memOwnership) SaveOwned(_ context.Context, rom domain.OwnedROM) error {
 		return m.saveErr
 	}
 	m.roms[rom.ROMID] = rom
+	delete(m.updates, rom.ROMID)
 	return nil
 }
 
@@ -167,6 +203,7 @@ func (m *memOwnership) DeleteOwned(_ context.Context, id int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.roms, id)
+	delete(m.updates, id)
 	return nil
 }
 

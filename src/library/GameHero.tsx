@@ -118,7 +118,7 @@ export function GameHero({ id }: { id: number }) {
           </div>
         )}
         {state === 'failed' && download?.problem && <ErrorBox>{download.problem.message}</ErrorBox>}
-        {state === 'installed' && game.installNote && (
+        {(state === 'installed' || state === 'update_available') && game.installNote && (
           <ErrorBox>{`Not ready to play: ${game.installNote}`}</ErrorBox>
         )}
         {removed && <ErrorBox>{removed}</ErrorBox>}

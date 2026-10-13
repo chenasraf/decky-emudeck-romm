@@ -87,6 +87,9 @@ function applyOwnership(e: OwnershipEvent) {
     case 'released':
       toaster.toast({ title: 'Stopped managing', body: e.name })
       break
+    case 'update':
+      if (e.state === 'update_available') toaster.toast({ title: 'Update available', body: e.name })
+      break
     case 'changed':
       // The plugin stopped managing a game on its own, so the user hears why.
       toaster.toast({

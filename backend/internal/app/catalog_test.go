@@ -207,6 +207,8 @@ func (f fixedStates) States(context.Context) (map[int]domain.GameState, error) {
 
 func (f fixedStates) CheckOwned(context.Context) error { return nil }
 
+func (f fixedStates) CheckUpdates(context.Context, []int) error { return nil }
+
 // Rematch matches nothing again: each game with a state the Server no longer has is removed.
 func (f fixedStates) Rematch(_ context.Context, present, _ map[int]bool) ([]int, error) {
 	var out []int
@@ -676,5 +678,26 @@ func TestCatalogShelves(t *testing.T) {
 	}
 	if got.PlatformNames[1] != "Game Boy Advance" || domain.StateOf(got.States, 3) != domain.StateInstalled {
 		t.Fatalf("names %v, states %v", got.PlatformNames, got.States)
+	}
+}
+
+func TestCatalogUpdatesFilterAndShelf(t *testing.T) {
+	f := newCatalogFixture(t, newLibrary(5))
+	f.states[2] = domain.StateInstalled
+	f.states[3] = domain.StateUpdate
+	f.refresh(t, false)
+	ctx := context.Background()
+
+	_, page, err := f.catalog.Games(ctx, 1, domain.FilterUpdates, domain.SortName, 0, 10)
+	if err != nil || page.Total != 1 || page.ROMs[0].ID != 3 {
+		t.Fatalf("updates %+v, %v", page, err)
+	}
+	// A game with an update is still installed.
+	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, domain.SortName, 0, 10); page.Total != 2 {
+		t.Fatalf("installed %+v", page)
+	}
+	shelves, err := f.catalog.Shelves(ctx, 8)
+	if err != nil || shelves.Updates.Total != 1 || shelves.Installed.Total != 2 {
+		t.Fatalf("shelves %+v, %v", shelves, err)
 	}
 }

@@ -129,6 +129,7 @@ export function stateLabel(
   if (game.removed) return 'Removed from RomM'
   if (game.state === 'failed') return 'Failed'
   if (game.state === 'installed') return 'Installed'
+  if (game.state === 'update_available') return '⟳ Update'
   if (game.state === 'deleting') return 'Deleting…'
   if (game.state === 'on_deck') return 'On Deck'
   return null
@@ -517,11 +518,11 @@ function InstallToPicker({
 function matchesFilter(state: GameState, filter: GameFilter): boolean {
   switch (filter) {
     case 'installed':
-      return state === 'installed'
+      return state === 'installed' || state === 'update_available'
     case 'not_installed':
-      return state !== 'installed'
+      return state !== 'installed' && state !== 'update_available'
     case 'updates':
-      return false
+      return state === 'update_available'
     default:
       return true
   }
@@ -842,6 +843,7 @@ const STATE_LABELS: Record<string, string> = {
   deleting: 'Deleting…',
   failed: 'Download failed',
   on_deck: 'On Deck (not managed)',
+  update_available: '⟳ Update available',
 }
 
 /** Where ES-DE cleans up the gamelist entries and media of games deleted from disk. */
@@ -1145,7 +1147,7 @@ export function useGameDetail(id: number): GameDetail {
 
   const actions: GameAction[] = []
   if (game?.removed) {
-    if (state === 'installed') actions.push(...ownedActions(game))
+    if (state === 'installed' || state === 'update_available') actions.push(...ownedActions(game))
   } else if (game) {
     switch (state) {
       case 'on_romm':
@@ -1160,6 +1162,7 @@ export function useGameDetail(id: number): GameDetail {
         actions.push({ label: 'Dismiss', run: cancel, disabled: busy })
         break
       case 'installed':
+      case 'update_available':
         actions.push(...ownedActions(game))
         break
       case 'on_deck':
@@ -1183,7 +1186,7 @@ export function useGameDetail(id: number): GameDetail {
 
   let removed: string | undefined
   if (game?.removed) {
-    if (state === 'installed') {
+    if (state === 'installed' || state === 'update_available') {
       removed =
         'RomM no longer has this game. The copy the plugin downloaded stays on this Deck until you delete it, and its saves no longer sync.'
     } else if (game.linkedPath) {
@@ -1248,7 +1251,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
               <Field label="Not downloaded by the plugin" description={notice} />
             </PanelSectionRow>
           )}
-          {state === 'installed' && game.installNote && (
+          {(state === 'installed' || state === 'update_available') && game.installNote && (
             <PanelSectionRow>
               <Field label="⚠ Not ready to play" description={game.installNote} />
             </PanelSectionRow>

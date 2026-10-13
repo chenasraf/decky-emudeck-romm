@@ -85,7 +85,17 @@ CREATE TABLE linked_games (
 	linked_at   INTEGER NOT NULL
 );
 `,
+	`
+ALTER TABLE owned_roms ADD COLUMN update_available INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE meta (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
+`,
 }
+
+// metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
+const metaLastSweep = "last_update_sweep"
 
 // keepBackups is how many state.db.bak-<version> files are kept.
 const keepBackups = 3
@@ -473,9 +483,44 @@ func (s *Store) ForgetServer(ctx context.Context) error {
 	return tx.Commit()
 }
 
+// SetUpdateAvailable records whether the Server has an update of the Plugin-owned ROM with id.
+// Saving its record anew clears it.
+func (s *Store) SetUpdateAvailable(ctx context.Context, id int, available bool) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE owned_roms SET update_available = ? WHERE rom_id = ?", available, id)
+	return err
+}
+
+// UpdateIDs returns the id of every Plugin-owned ROM with an update on the Server.
+func (s *Store) UpdateIDs(ctx context.Context) ([]int, error) {
+	return s.ids(ctx, "SELECT rom_id FROM owned_roms WHERE update_available = 1 ORDER BY rom_id")
+}
+
+// LastSweep returns when the last sweep for updates finished, zero before the first.
+func (s *Store) LastSweep(ctx context.Context) (time.Time, error) {
+	var v int64
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM meta WHERE key = ?", metaLastSweep).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(0, v).UTC(), nil
+}
+
+// SetLastSweep records when a sweep for updates finished.
+func (s *Store) SetLastSweep(ctx context.Context, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", metaLastSweep, at.UnixNano())
+	return err
+}
+
 // OwnedIDs returns the id of every Plugin-owned ROM.
 func (s *Store) OwnedIDs(ctx context.Context) ([]int, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT rom_id FROM owned_roms ORDER BY rom_id")
+	return s.ids(ctx, "SELECT rom_id FROM owned_roms ORDER BY rom_id")
+}
+
+func (s *Store) ids(ctx context.Context, query string) ([]int, error) {
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}

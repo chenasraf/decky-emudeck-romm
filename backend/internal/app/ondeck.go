@@ -45,6 +45,8 @@ const (
 	OwnershipChanged OwnershipKind = "changed"
 	// OwnershipReleased: the user chose Stop managing, so the game's files are User-managed.
 	OwnershipReleased OwnershipKind = "released"
+	// OwnershipUpdate: the Server has an update of the game, or no longer has one.
+	OwnershipUpdate OwnershipKind = "update"
 )
 
 // OwnershipChange is a game whose ownership changed, and the state it's in now.

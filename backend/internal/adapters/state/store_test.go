@@ -298,3 +298,36 @@ func TestForgetServerDropsEveryRecord(t *testing.T) {
 		t.Fatalf("%d rows left, %v", rows, err)
 	}
 }
+
+func TestUpdateFlagAndSweep(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+	rom := domain.OwnedROM{ROMID: 1, Files: []domain.PlacedFile{{Path: "/e/roms/snes/a.sfc"}}}
+	if err := s.SaveOwned(ctx, rom); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetUpdateAvailable(ctx, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if ids, err := s.UpdateIDs(ctx); err != nil || len(ids) != 1 || ids[0] != 1 {
+		t.Fatalf("updates %v, %v", ids, err)
+	}
+	// Saving the record anew, as an update does, clears it.
+	if err := s.SaveOwned(ctx, rom); err != nil {
+		t.Fatal(err)
+	}
+	if ids, _ := s.UpdateIDs(ctx); len(ids) != 0 {
+		t.Fatalf("updates after save %v", ids)
+	}
+
+	if at, err := s.LastSweep(ctx); err != nil || !at.IsZero() {
+		t.Fatalf("first sweep %v, %v", at, err)
+	}
+	at := time.Date(2026, 10, 13, 9, 0, 0, 5, time.UTC)
+	if err := s.SetLastSweep(ctx, at); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.LastSweep(ctx); !got.Equal(at) {
+		t.Fatalf("last sweep %v", got)
+	}
+}

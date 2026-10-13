@@ -72,6 +72,8 @@ type GameStates interface {
 	// CheckOwned stops recording files the plugin placed that the user has since removed or
 	// changed. Each refresh runs it.
 	CheckOwned(ctx context.Context) error
+	// CheckUpdates looks for updates of the Plugin-owned games among ids.
+	CheckUpdates(ctx context.Context, ids []int) error
 	// Rematch moves the records of games re-imported on the Server to their new ids, present
 	// being the ids the Server has and changed the platforms the sync brought new or changed games
 	// of. It returns the ids of the recorded games the Server no longer has.
@@ -279,6 +281,14 @@ func (c *Catalog) sync(ctx context.Context) error {
 	if err := c.store.Apply(ctx, update); err != nil {
 		return fmt.Errorf("save catalog: %w", err)
 	}
+	// Changing a game's files on RomM touches it, so the games received are the ones to check.
+	changedIDs := make([]int, 0, len(roms))
+	for _, r := range roms {
+		changedIDs = append(changedIDs, r.ID)
+	}
+	if err := c.states.CheckUpdates(ctx, changedIDs); err != nil {
+		c.log.Warn("check for updates", "err", err)
+	}
 	c.log.Info("catalog refreshed", "full", full, "platforms", len(platforms), "roms_received", len(roms),
 		"server_roms", len(update.KeepIDs))
 	return nil
@@ -320,8 +330,7 @@ func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFi
 	var only *domain.IDFilter
 	switch filter {
 	case domain.FilterUpdates:
-		// Nothing is ever flagged for an update.
-		return platform, domain.ROMPage{}, nil
+		only = &domain.IDFilter{IDs: updateIDs(states)}
 	case domain.FilterInstalled:
 		only = &domain.IDFilter{IDs: installedIDs(states)}
 	case domain.FilterNotInstalled:
@@ -347,7 +356,7 @@ func (c *Catalog) Collections(ctx context.Context) ([]domain.CollectionSummary, 
 	for _, col := range collections {
 		s := domain.CollectionSummary{Collection: col, Games: len(col.ROMIDs)}
 		for _, id := range col.ROMIDs {
-			if st := states[id]; st == domain.StateInstalled || st == domain.StateDeleting {
+			if states[id].Installed() {
 				s.Installed++
 			}
 		}
@@ -386,7 +395,7 @@ func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef,
 	ids := []int{}
 	for _, id := range col.ROMIDs {
 		switch {
-		case filter == domain.FilterUpdates:
+		case filter == domain.FilterUpdates && states[id] != domain.StateUpdate:
 		case filter == domain.FilterInstalled && !installed[id]:
 		case filter == domain.FilterNotInstalled && installed[id]:
 		default:
@@ -398,8 +407,8 @@ func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef,
 	return col, page, err
 }
 
-// Shelves returns the library home's rows, each up to perShelf games: the newest on the Server,
-// those on this Deck by name, and each platform's first by name.
+// Shelves returns the library home's rows, each up to perShelf games: those with an update and those
+// on this Deck by name, the newest on the Server, and each platform's first by name.
 func (c *Catalog) Shelves(ctx context.Context, perShelf int) (domain.Shelves, error) {
 	var out domain.Shelves
 	states, err := c.states.States(ctx)
@@ -413,6 +422,9 @@ func (c *Catalog) Shelves(ctx context.Context, perShelf int) (domain.Shelves, er
 	}
 	out.Recent = recent.ROMs
 	if out.Installed, err = c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: installedIDs(states)}, domain.SortName, 0, perShelf); err != nil {
+		return out, err
+	}
+	if out.Updates, err = c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: updateIDs(states)}, domain.SortName, 0, perShelf); err != nil {
 		return out, err
 	}
 	platforms, err := c.Platforms(ctx)
@@ -435,7 +447,18 @@ func (c *Catalog) Shelves(ctx context.Context, perShelf int) (domain.Shelves, er
 func installedIDs(states map[int]domain.GameState) []int {
 	var ids []int
 	for id, s := range states {
-		if s == domain.StateInstalled || s == domain.StateDeleting {
+		if s.Installed() {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// updateIDs are the games on this Deck with an update on the Server.
+func updateIDs(states map[int]domain.GameState) []int {
+	ids := []int{}
+	for id, s := range states {
+		if s == domain.StateUpdate {
 			ids = append(ids, id)
 		}
 	}

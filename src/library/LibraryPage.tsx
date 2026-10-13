@@ -140,6 +140,16 @@ function Shelves({
           ))}
         </Shelf>
       )}
+      {shelves && shelves.updates.length > 0 && (
+        <Shelf
+          title="Updates available"
+          detail={shelves.updatesTotal === 1 ? '1 game' : `${shelves.updatesTotal} games`}
+        >
+          {shelves.updates.map((g) => (
+            <GameTile key={g.id} game={g} withPlatform onOpen={() => onGame(g.id)} />
+          ))}
+        </Shelf>
+      )}
       {shelves && shelves.recent.length > 0 && (
         <Shelf title="Recently added">
           {shelves.recent.map((g) => (

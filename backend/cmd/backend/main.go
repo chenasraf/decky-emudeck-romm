@@ -158,6 +158,7 @@ func run(log *slog.Logger) error {
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)
+	go downloads.SweepUpdates(ctx)
 	catalog.Refresh(false)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {
