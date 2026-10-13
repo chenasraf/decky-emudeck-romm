@@ -65,6 +65,18 @@ CREATE TABLE download_queue (
 	file_modified   INTEGER NOT NULL
 );
 `,
+	`
+CREATE TABLE owned_bios (
+	firmware_id  INTEGER PRIMARY KEY,
+	platform_id  INTEGER NOT NULL,
+	path         TEXT NOT NULL UNIQUE,
+	size_bytes   INTEGER NOT NULL,
+	mod_time     INTEGER NOT NULL,
+	sha1         TEXT NOT NULL,
+	installed_at INTEGER NOT NULL
+);
+CREATE INDEX owned_bios_by_platform ON owned_bios (platform_id);
+`,
 }
 
 // keepBackups is how many state.db.bak-<version> files are kept.
@@ -323,6 +335,44 @@ func (s *Store) Queued(ctx context.Context) ([]domain.QueuedDownload, error) {
 			d.Partial.LastModified = time.Unix(0, modified).UTC()
 		}
 		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// SaveOwnedBIOS writes the record of a BIOS file the plugin placed, replacing any earlier one for
+// the same firmware or path.
+func (s *Store) SaveOwnedBIOS(ctx context.Context, b domain.OwnedBIOS) error {
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO owned_bios
+		(firmware_id, platform_id, path, size_bytes, mod_time, sha1, installed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		b.FirmwareID, b.PlatformID, b.File.Path, b.File.SizeBytes, b.File.ModTime.UnixNano(), b.File.SHA1, b.InstalledAt.UnixNano())
+	return err
+}
+
+// DeleteOwnedBIOS drops the record of the BIOS file of the firmware with id, making the file
+// User-managed.
+func (s *Store) DeleteOwnedBIOS(ctx context.Context, id int) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM owned_bios WHERE firmware_id = ?", id)
+	return err
+}
+
+// OwnedBIOS returns the records of a platform's Plugin-owned BIOS files.
+func (s *Store) OwnedBIOS(ctx context.Context, platformID int) ([]domain.OwnedBIOS, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT firmware_id, path, size_bytes, mod_time, sha1, installed_at
+		FROM owned_bios WHERE platform_id = ? ORDER BY path`, platformID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.OwnedBIOS
+	for rows.Next() {
+		b := domain.OwnedBIOS{PlatformID: platformID}
+		var mod, installed int64
+		if err := rows.Scan(&b.FirmwareID, &b.File.Path, &b.File.SizeBytes, &mod, &b.File.SHA1, &installed); err != nil {
+			return nil, err
+		}
+		b.File.ModTime = time.Unix(0, mod).UTC()
+		b.InstalledAt = time.Unix(0, installed).UTC()
+		out = append(out, b)
 	}
 	return out, rows.Err()
 }

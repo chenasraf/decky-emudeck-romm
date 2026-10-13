@@ -112,6 +112,8 @@ type DownloadListeners struct {
 	Change DownloadListener
 	Delete DeleteListener
 	Hold   HoldListener
+	// Queued, when set, hears each game newly added to the queue; a retry isn't one.
+	Queued DownloadListener
 }
 
 type Downloads struct {
@@ -128,6 +130,7 @@ type Downloads struct {
 	onChange  DownloadListener
 	onDelete  DeleteListener
 	onHold    HoldListener
+	onQueued  DownloadListener
 	log       *slog.Logger
 	now       func() time.Time
 	retries   []time.Duration
@@ -164,7 +167,7 @@ func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, c
 ) *Downloads {
 	return &Downloads{
 		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs,
-		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, log: log,
+		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued, log: log,
 		now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx, deleting: map[int]bool{},
 	}
 }
@@ -304,6 +307,7 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 
 	d.mu.Lock()
 	j = d.find(id)
+	added := j == nil
 	switch {
 	case j != nil && j.State != domain.StateFailed:
 		d.mu.Unlock()
@@ -324,6 +328,9 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 
 	d.save(record)
 	d.onChange(queued)
+	if added && d.onQueued != nil {
+		d.onQueued(queued)
+	}
 	d.pump()
 	return queued, nil
 }

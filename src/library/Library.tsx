@@ -21,6 +21,7 @@ import {
 } from 'react'
 
 import { call } from '../backend'
+import { usePlatformBios } from '../bios'
 import { formatSize, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
 import { type Downloads, percent, useDownloads } from '../downloads'
@@ -290,6 +291,85 @@ function KeepArchivesToggle({
   )
 }
 
+/**
+ * A platform's BIOS files: what's missing, with a way to download it, and files of the same name
+ * that differ from RomM's, which the plugin leaves alone. With nudge, only what needs the user's
+ * attention shows.
+ */
+function BiosSection({ platformId, nudge }: { platformId: number; nudge?: boolean }) {
+  const { bios } = usePlatformBios(platformId)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<RpcError | null>(null)
+  // A platform RomM has no BIOS for, or a status that didn't load (offline, no permission), shows
+  // nothing: the QAM home says why the server or the feature is off.
+  if (!bios || bios.files.length === 0) return null
+
+  if (bios.inEmulator) {
+    if (nudge) return null
+    return (
+      <PanelSectionRow>
+        <Field
+          label="BIOS"
+          description="EmuDeck keeps this platform's firmware inside its emulator. Install it from there."
+        >
+          {bios.files.length} on RomM
+        </Field>
+      </PanelSectionRow>
+    )
+  }
+
+  const missing = bios.files.filter((f) => f.status === 'missing')
+  const different = bios.files.filter((f) => f.status === 'different')
+  const names = (fs: typeof missing) => fs.map((f) => f.fileName).join(', ')
+  const download = async () => {
+    setBusy(true)
+    try {
+      await call('download_bios', { platformId })
+      setError(null)
+    } catch (err) {
+      setError(asRpcError(err))
+    }
+    setBusy(false)
+  }
+
+  return (
+    <>
+      <Problem error={error} />
+      {missing.length > 0 && (
+        <>
+          <PanelSectionRow>
+            <Field label="⚠ BIOS missing" description={names(missing)} />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={busy || bios.downloading}
+              onClick={() => void download()}
+            >
+              {bios.downloading
+                ? 'Downloading BIOS…'
+                : `Download BIOS (${formatSize(missing.reduce((n, f) => n + f.sizeBytes, 0))})`}
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
+      )}
+      {different.length > 0 && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ Different BIOS"
+            description={`A different file is already there: ${names(different)}. The plugin leaves it as it is.`}
+          />
+        </PanelSectionRow>
+      )}
+      {!nudge && missing.length === 0 && different.length === 0 && (
+        <PanelSectionRow>
+          <Field label="BIOS">All {bios.files.length} present</Field>
+        </PanelSectionRow>
+      )}
+    </>
+  )
+}
+
 /** Whether a game in state belongs under filter, for narrowing search results like the list. */
 function matchesFilter(state: GameState, filter: GameFilter): boolean {
   switch (filter) {
@@ -371,6 +451,7 @@ export function GamesView({
         }}
       />
       <KeepArchivesToggle platformId={platform.id} result={listing} onError={setError} />
+      <BiosSection platformId={platform.id} />
       <PanelSectionRow>
         <TextField
           label={`Search ${platform.name}`}
@@ -713,6 +794,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
               <Field label="⚠ Not ready to play" description={game.installNote} />
             </PanelSectionRow>
           )}
+          <BiosSection platformId={game.platformId} nudge />
           {download?.state === 'downloading' && !download.converting && (
             <PanelSectionRow>
               <ProgressBarWithInfo

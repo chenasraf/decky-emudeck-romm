@@ -120,6 +120,36 @@ func TestQueueRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOwnedBIOSRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+
+	at := time.Date(2026, 10, 13, 8, 0, 0, 456, time.UTC)
+	b := domain.OwnedBIOS{
+		FirmwareID:  31,
+		PlatformID:  3,
+		File:        domain.PlacedFile{Path: "/e/bios/scph5501.bin", SizeBytes: 512 << 10, ModTime: at, SHA1: "abc"},
+		InstalledAt: at,
+	}
+	if err := s.SaveOwnedBIOS(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveOwnedBIOS(ctx, domain.OwnedBIOS{FirmwareID: 51, PlatformID: 5, File: domain.PlacedFile{Path: "/e/bios/dc/dc_boot.bin"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.OwnedBIOS(ctx, 3)
+	if err != nil || len(got) != 1 || got[0].FirmwareID != 31 || got[0].File != b.File || !got[0].InstalledAt.Equal(at) {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+
+	if err := s.DeleteOwnedBIOS(ctx, 31); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.OwnedBIOS(ctx, 3); len(got) != 0 {
+		t.Fatalf("after delete %+v", got)
+	}
+}
+
 func TestReopenKeepsRecords(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")

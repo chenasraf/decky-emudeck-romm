@@ -103,6 +103,10 @@ export interface Methods {
   list_downloads: Method<ListDownloadsParams, ListDownloadsResult>;
   delete_games: Method<DeleteGamesParams, DeleteGamesResult>;
   set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
+  platform_bios: Method<PlatformBIOSParams, PlatformBIOS>;
+  download_bios: Method<DownloadBIOSParams, DownloadBIOSResult>;
+  get_preferences: Method<GetPreferencesParams, Preferences>;
+  set_preferences: Method<SetPreferencesParams, Preferences>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -131,6 +135,10 @@ export interface Events {
    * DownloadHold fires when the download queue goes on hold for space, and when it comes off.
    */
   download_hold: DownloadHoldEvent;
+  /**
+   * BIOS fires when a platform's BIOS download starts and when it ends.
+   */
+  bios: BIOSEvent;
 }
 /**
  * Method pairs a method's params with its result.
@@ -631,4 +639,96 @@ export interface DeleteEvent {
   name: string;
   state: GameState;
   problem?: Error;
+}
+export interface PlatformBIOSParams {
+  platformId: number /* int */;
+}
+/**
+ * PlatformBIOS is the BIOS and firmware files RomM has for a platform, and how each stands in
+ * EmuDeck's BIOS folder.
+ */
+export interface PlatformBIOS {
+  platformId: number /* int */;
+  /**
+   * InEmulator is set when EmuDeck keeps the platform's firmware inside its emulator, where the
+   * plugin doesn't place it. Files then have no path or status.
+   */
+  inEmulator: boolean;
+  files: BIOSFile[];
+  /**
+   * Downloading is set while the plugin downloads the platform's missing files.
+   */
+  downloading: boolean;
+}
+export type BIOSStatus = string;
+export const BIOSPresent: BIOSStatus = "present";
+export const BIOSMissing: BIOSStatus = "missing";
+/**
+ * BIOSDifferent is a file of the same name with other content, which the plugin leaves alone.
+ */
+export const BIOSDifferent: BIOSStatus = "different";
+export interface BIOSFile {
+  fileName: string;
+  sizeBytes: number /* int64 */;
+  path?: string;
+  status?: BIOSStatus;
+  /**
+   * Verified is set when RomM knows the file as a good dump.
+   */
+  verified: boolean;
+  /**
+   * Owned is set when the plugin placed the file.
+   */
+  owned: boolean;
+}
+/**
+ * DownloadBIOSParams names the platform whose missing BIOS files to download. Files already in the
+ * BIOS folder are never replaced.
+ */
+export interface DownloadBIOSParams {
+  platformId: number /* int */;
+}
+export interface DownloadBIOSResult {
+  /**
+   * Count is how many files will download. How it ends arrives as a bios event.
+   */
+  count: number /* int */;
+}
+/**
+ * BIOSEvent is a platform's BIOS download starting, or ending when Done.
+ */
+export interface BIOSEvent {
+  platformId: number /* int */;
+  platformName: string;
+  /**
+   * Auto is set when downloading a game started it.
+   */
+  auto: boolean;
+  done: boolean;
+  /**
+   * Files is how many files the download fetches, and Downloaded how many it placed.
+   */
+  files: number /* int */;
+  downloaded: number /* int */;
+  /**
+   * Problem says why a file didn't download, set when done.
+   */
+  problem?: Error;
+}
+export interface GetPreferencesParams {
+}
+/**
+ * Preferences are the plugin's settings.
+ */
+export interface Preferences {
+  /**
+   * AutoBIOS downloads a platform's missing BIOS files with its first game download.
+   */
+  autoBios: boolean;
+}
+/**
+ * SetPreferencesParams changes the preferences it sets, leaving the rest.
+ */
+export interface SetPreferencesParams {
+  autoBios?: boolean;
 }

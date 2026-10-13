@@ -85,6 +85,10 @@ type Methods struct {
 	ListDownloads       Method[ListDownloadsParams, ListDownloadsResult]             `json:"list_downloads"`
 	DeleteGames         Method[DeleteGamesParams, DeleteGamesResult]                 `json:"delete_games"`
 	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
+	PlatformBIOS        Method[PlatformBIOSParams, PlatformBIOS]                     `json:"platform_bios"`
+	DownloadBIOS        Method[DownloadBIOSParams, DownloadBIOSResult]               `json:"download_bios"`
+	GetPreferences      Method[GetPreferencesParams, Preferences]                    `json:"get_preferences"`
+	SetPreferences      Method[SetPreferencesParams, Preferences]                    `json:"set_preferences"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -102,6 +106,8 @@ type Events struct {
 	Delete DeleteEvent `json:"delete"`
 	// DownloadHold fires when the download queue goes on hold for space, and when it comes off.
 	DownloadHold DownloadHoldEvent `json:"download_hold"`
+	// BIOS fires when a platform's BIOS download starts and when it ends.
+	BIOS BIOSEvent `json:"bios"`
 }
 
 // Method pairs a method's params with its result.
@@ -524,4 +530,78 @@ type DeleteEvent struct {
 	Name    string    `json:"name"`
 	State   GameState `json:"state"`
 	Problem *Error    `json:"problem,omitempty"`
+}
+
+type PlatformBIOSParams struct {
+	PlatformID int `json:"platformId"`
+}
+
+// PlatformBIOS is the BIOS and firmware files RomM has for a platform, and how each stands in
+// EmuDeck's BIOS folder.
+type PlatformBIOS struct {
+	PlatformID int `json:"platformId"`
+	// InEmulator is set when EmuDeck keeps the platform's firmware inside its emulator, where the
+	// plugin doesn't place it. Files then have no path or status.
+	InEmulator bool       `json:"inEmulator"`
+	Files      []BIOSFile `json:"files"`
+	// Downloading is set while the plugin downloads the platform's missing files.
+	Downloading bool `json:"downloading"`
+}
+
+type BIOSStatus string
+
+const (
+	BIOSPresent BIOSStatus = "present"
+	BIOSMissing BIOSStatus = "missing"
+	// BIOSDifferent is a file of the same name with other content, which the plugin leaves alone.
+	BIOSDifferent BIOSStatus = "different"
+)
+
+type BIOSFile struct {
+	FileName  string     `json:"fileName"`
+	SizeBytes int64      `json:"sizeBytes"`
+	Path      string     `json:"path,omitempty"`
+	Status    BIOSStatus `json:"status,omitempty"`
+	// Verified is set when RomM knows the file as a good dump.
+	Verified bool `json:"verified"`
+	// Owned is set when the plugin placed the file.
+	Owned bool `json:"owned"`
+}
+
+// DownloadBIOSParams names the platform whose missing BIOS files to download. Files already in the
+// BIOS folder are never replaced.
+type DownloadBIOSParams struct {
+	PlatformID int `json:"platformId"`
+}
+
+type DownloadBIOSResult struct {
+	// Count is how many files will download. How it ends arrives as a bios event.
+	Count int `json:"count"`
+}
+
+// BIOSEvent is a platform's BIOS download starting, or ending when Done.
+type BIOSEvent struct {
+	PlatformID   int    `json:"platformId"`
+	PlatformName string `json:"platformName"`
+	// Auto is set when downloading a game started it.
+	Auto bool `json:"auto"`
+	Done bool `json:"done"`
+	// Files is how many files the download fetches, and Downloaded how many it placed.
+	Files      int `json:"files"`
+	Downloaded int `json:"downloaded"`
+	// Problem says why a file didn't download, set when done.
+	Problem *Error `json:"problem,omitempty"`
+}
+
+type GetPreferencesParams struct{}
+
+// Preferences are the plugin's settings.
+type Preferences struct {
+	// AutoBIOS downloads a platform's missing BIOS files with its first game download.
+	AutoBIOS bool `json:"autoBios"`
+}
+
+// SetPreferencesParams changes the preferences it sets, leaving the rest.
+type SetPreferencesParams struct {
+	AutoBIOS *bool `json:"autoBios,omitempty"`
 }

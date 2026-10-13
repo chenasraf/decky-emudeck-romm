@@ -37,6 +37,32 @@ type fileSettings struct {
 	// KeepArchives is the Keep archives toggle of each EmuDeck system folder that has one set;
 	// unset means on.
 	KeepArchives map[string]bool `json:"keepArchives,omitempty"`
+	// AutoBIOS downloads a platform's missing BIOS files with its first game download; unset means
+	// on.
+	AutoBIOS *bool `json:"autoBios,omitempty"`
+}
+
+// AutoBIOS says whether queueing a game also downloads its platform's missing BIOS files.
+func (s *Store) AutoBIOS() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil || f.AutoBIOS == nil {
+		return true
+	}
+	return *f.AutoBIOS
+}
+
+// SetAutoBIOS turns downloading BIOS files with games on or off.
+func (s *Store) SetAutoBIOS(on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	f.AutoBIOS = &on
+	return s.save(f)
 }
 
 const (

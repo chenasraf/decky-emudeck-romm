@@ -104,12 +104,22 @@ func run(log *slog.Logger) error {
 		defer func() { _ = owned.Close() }()
 		ownership = owned
 	}
+	firmwareDial := func(server domain.Server, token string) app.FirmwareServer {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
+	var biosStore app.BIOSStore
+	if owned != nil {
+		biosStore = owned
+	}
+	bios := app.NewBIOS(ctx, cache, install, conn, firmwareDial, biosStore, stateErr, store, rpc.BIOSEvents(srv), log.With("component", "bios"))
+	listeners := rpc.DownloadListeners(srv)
+	listeners.Queued = func(d app.Download) { bios.GameQueued(d.PlatformID) }
 	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr, system.FreeBytes, store,
-		store.DownloadConcurrency(), rpc.DownloadListeners(srv), log.With("component", "downloads"))
+		store.DownloadConcurrency(), listeners, log.With("component", "downloads"))
 
 	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))
 	events.catalog = catalog
-	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog, Downloads: downloads})
+	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)
 	catalog.Refresh(false)

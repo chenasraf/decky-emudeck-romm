@@ -60,6 +60,20 @@ func TestKeepArchives(t *testing.T) {
 	}
 }
 
+func TestAutoBIOS(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if !s.AutoBIOS() {
+		t.Fatal("BIOS downloads with games are off before anyone set it")
+	}
+	if err := s.SetAutoBIOS(false); err != nil {
+		t.Fatal(err)
+	}
+	if New(dir).AutoBIOS() {
+		t.Fatal("turning it off didn't stick")
+	}
+}
+
 func TestSignInNeedsToken(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)

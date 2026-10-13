@@ -6,6 +6,7 @@ import {
   PanelSection,
   PanelSectionRow,
   staticClasses,
+  ToggleField,
 } from '@decky/ui'
 import { useEffect, useState } from 'react'
 import { FaCompactDisc } from 'react-icons/fa'
@@ -15,8 +16,10 @@ import {
   type BackendState,
   type BackendStatus,
   backendStatus,
+  call,
   restartBackend,
 } from './backend'
+import { watchBios } from './bios'
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
@@ -29,7 +32,7 @@ import {
   PlatformsView,
   SearchView,
 } from './library/Library'
-import type { GameFilter, PlatformSummary } from './rpc/schema.gen'
+import type { GameFilter, PlatformSummary, Preferences } from './rpc/schema.gen'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
 
@@ -188,6 +191,33 @@ function InstallSection() {
   )
 }
 
+function SettingsSection() {
+  const connection = useConnection()
+  const [prefs, setPrefs] = useState<Preferences | null>(null)
+
+  useEffect(() => {
+    call('get_preferences').then(setPrefs, () => setPrefs(null))
+  }, [])
+
+  if (!prefs || !connection || connection.state === 'not_set_up') return null
+
+  return (
+    <PanelSection title="Settings">
+      <PanelSectionRow>
+        <ToggleField
+          label="Download BIOS with games"
+          description="A platform's first game download also fetches its missing BIOS files. Files already in the BIOS folder are never replaced."
+          checked={prefs.autoBios}
+          onChange={(autoBios) => {
+            setPrefs({ ...prefs, autoBios })
+            call('set_preferences', { autoBios }).then(setPrefs, () => setPrefs(prefs))
+          }}
+        />
+      </PanelSectionRow>
+    </PanelSection>
+  )
+}
+
 function BackendSection() {
   const [status, setStatus] = useState<BackendStatus | null>(null)
 
@@ -290,6 +320,7 @@ function Content() {
         onBrowse={() => setView({ name: 'platforms' })}
         onSearch={() => setView({ name: 'search', query: '' })}
       />
+      <SettingsSection />
       <InstallSection />
       <BackendSection />
     </>
@@ -301,6 +332,7 @@ export default definePlugin(() => {
   routerHook.addRoute(STATUS_ROUTE, StatusPage, { exact: true })
   const stopWatchingConnection = watchConnection()
   const stopWatchingDownloads = watchDownloads()
+  const stopWatchingBios = watchBios()
 
   return {
     name: 'EmuDeck RomM Sync',
@@ -312,6 +344,7 @@ export default definePlugin(() => {
       routerHook.removeRoute(STATUS_ROUTE)
       stopWatchingConnection()
       stopWatchingDownloads()
+      stopWatchingBios()
     },
   }
 })
