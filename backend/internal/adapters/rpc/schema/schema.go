@@ -90,6 +90,8 @@ type Methods struct {
 	CheckOnDeck         Method[CheckOnDeckParams, OnDeckCheck]                       `json:"check_on_deck"`
 	AdoptGame           Method[AdoptGameParams, AdoptGameResult]                     `json:"adopt_game"`
 	LinkGame            Method[LinkGameParams, LinkGameResult]                       `json:"link_game"`
+	FindGames           Method[FindGamesParams, FindGamesStatus]                     `json:"find_games"`
+	FindGamesStatus     Method[FindGamesStatusParams, FindGamesStatus]               `json:"find_games_status"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
 	DownloadAll         Method[DownloadAllParams, DownloadAllResult]                 `json:"download_all"`
 	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
@@ -118,6 +120,8 @@ type Events struct {
 	// Ownership fires when a game is adopted or linked, and when a library refresh finds an
 	// installed game's files gone or changed.
 	Ownership OwnershipEvent `json:"ownership"`
+	// FindGames fires when a platform's Find my games starts, makes progress and ends.
+	FindGames FindGamesStatus `json:"find_games"`
 	// BIOS fires when a platform's BIOS download starts and when it ends.
 	BIOS BIOSEvent `json:"bios"`
 }
@@ -621,6 +625,40 @@ type LinkGameParams struct {
 }
 
 type LinkGameResult struct{}
+
+// FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
+// kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or
+// link_game.
+type FindGamesParams struct {
+	PlatformID int `json:"platformId"`
+}
+
+type FindGamesStatusParams struct {
+	PlatformID int `json:"platformId"`
+}
+
+// FindGamesStatus is how a platform's Find my games stands.
+type FindGamesStatus struct {
+	PlatformID int  `json:"platformId"`
+	Running    bool `json:"running"`
+	// Done is set once a run has finished, so Found is its answer.
+	Done bool `json:"done"`
+	// Hashed and Total count the files a run hashes.
+	Hashed int `json:"hashed"`
+	Total  int `json:"total"`
+	// Found are the games found that are still neither adopted nor linked, by name.
+	Found []FoundGame `json:"found"`
+	// Problem says why the last run stopped short.
+	Problem *Error `json:"problem,omitempty"`
+}
+
+// FoundGame is a game of RomM's that Find my games found under another name.
+type FoundGame struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	// Path is the file or folder holding it.
+	Path string `json:"path"`
+}
 
 // OwnershipKind is what changed a game's ownership.
 type OwnershipKind string

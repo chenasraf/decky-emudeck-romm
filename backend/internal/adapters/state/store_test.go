@@ -167,6 +167,9 @@ func TestLinkedRoundTrip(t *testing.T) {
 	if got, ok, err := s.Linked(ctx, 7); err != nil || !ok || got != g {
 		t.Fatalf("got %+v, %v, %v", got, ok, err)
 	}
+	if all, err := s.LinkedGames(ctx); err != nil || len(all) != 1 || all[0] != g {
+		t.Fatalf("all %+v, %v", all, err)
+	}
 	if err := s.DeleteLinked(ctx, 7); err != nil {
 		t.Fatal(err)
 	}

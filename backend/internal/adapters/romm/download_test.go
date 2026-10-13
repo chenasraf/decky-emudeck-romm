@@ -50,6 +50,37 @@ func TestROMFiles(t *testing.T) {
 	}
 }
 
+func TestPlatformFiles(t *testing.T) {
+	var query map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{{
+				"id": 7, "fs_path": "roms/psx", "fs_name": "FF7",
+				"files": []map[string]any{
+					{"id": 70, "file_name": "FF7 (Disc 1).bin", "file_path": "roms/psx/FF7", "file_size_bytes": 700, "category": nil, "sha1_hash": "aa"},
+				},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	got, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).PlatformFiles(context.Background(), 3, 100, 50)
+	if err != nil || len(got) != 1 || got[0].ROMID != 7 || len(got[0].Files) != 1 {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if f := got[0].Files[0]; f.ID != 70 || f.Path != "FF7 (Disc 1).bin" || f.SHA1 != "aa" || !f.IsGame() {
+		t.Fatalf("file %+v", f)
+	}
+	for key, want := range map[string]string{
+		"platform_ids": "3", "offset": "100", "limit": "50", "order_by": "id", "with_files": "true", "with_rom_id_index": "false",
+	} {
+		if got := query[key]; len(got) != 1 || got[0] != want {
+			t.Errorf("%s = %v, want %s", key, got, want)
+		}
+	}
+}
+
 func TestPathInGame(t *testing.T) {
 	for _, c := range []struct {
 		name                                     string

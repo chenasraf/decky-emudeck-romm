@@ -256,6 +256,26 @@ func (s *Store) Linked(ctx context.Context, id int) (domain.LinkedGame, bool, er
 	return g, true, nil
 }
 
+// LinkedGames returns every Linked game.
+func (s *Store) LinkedGames(ctx context.Context) ([]domain.LinkedGame, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT rom_id, platform_id, path, linked_at FROM linked_games ORDER BY rom_id")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.LinkedGame
+	for rows.Next() {
+		var g domain.LinkedGame
+		var at int64
+		if err := rows.Scan(&g.ROMID, &g.PlatformID, &g.Path, &at); err != nil {
+			return nil, err
+		}
+		g.LinkedAt = time.Unix(0, at).UTC()
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
 // DeleteLinked drops the link of the ROM with id. Its file stays as it is.
 func (s *Store) DeleteLinked(ctx context.Context, id int) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM linked_games WHERE rom_id = ?", id)

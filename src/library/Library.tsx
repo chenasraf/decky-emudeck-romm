@@ -47,6 +47,7 @@ import type {
   SearchHit,
 } from '../rpc/schema.gen'
 import { asRpcError } from '../setup/common'
+import { showFindGames } from './FindGames'
 
 /** How many games each step of a list loads; "Show more" loads the next. */
 const PAGE_SIZE = 50
@@ -628,6 +629,15 @@ export function GamesView({
           <InstallToPicker platformId={platform.id} result={listing} onError={setError} />
           <KeepArchivesToggle platformId={platform.id} result={listing} onError={setError} />
           <BiosSection platformId={platform.id} />
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={downloads.problem !== null}
+              onClick={() => showFindGames(platform)}
+            >
+              Find my games
+            </ButtonItem>
+          </PanelSectionRow>
           <PanelSectionRow>
             <TextField
               label={`Search ${platform.name}`}

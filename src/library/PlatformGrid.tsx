@@ -12,6 +12,7 @@ import type {
   Error as RpcError,
 } from '../rpc/schema.gen'
 import { asRpcError, ErrorBox, muted } from '../setup/common'
+import { showFindGames } from './FindGames'
 import { BiosSection, confirmDownloadAll, FILTERS } from './Library'
 import { ActionTile, GameTile, grid } from './tiles'
 
@@ -123,6 +124,13 @@ export function PlatformGrid({
           Sort: {sortLabel}
         </DialogButton>
         <span style={{ flex: 1 }} />
+        <DialogButton
+          style={{ width: 'auto', minWidth: 0 }}
+          disabled={downloads.problem !== null}
+          onClick={() => showFindGames(platform)}
+        >
+          Find my games
+        </DialogButton>
         {filter !== 'installed' && total !== null && total > 0 && (
           <DialogButton
             style={{ width: 'auto', minWidth: 0 }}

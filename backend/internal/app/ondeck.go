@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -24,6 +25,7 @@ const onDeckWait = 5 * time.Second
 type LinkStore interface {
 	SaveLinked(ctx context.Context, g domain.LinkedGame) error
 	Linked(ctx context.Context, id int) (domain.LinkedGame, bool, error)
+	LinkedGames(ctx context.Context) ([]domain.LinkedGame, error)
 	DeleteLinked(ctx context.Context, id int) error
 }
 
@@ -112,7 +114,10 @@ func (d *Downloads) onDeck(ctx context.Context) (map[int]string, error) {
 		}
 		maps.Copy(out, occupants)
 	}
-	return out, nil
+	if d.store == nil {
+		return out, nil
+	}
+	return out, d.elsewhere(ctx, out)
 }
 
 // scan returns where each of a platform's games has something in its way in the ROM folder its
@@ -171,14 +176,52 @@ func (d *Downloads) scan(ctx context.Context, platform domain.Platform) (map[int
 	return occupants, nil
 }
 
-// occupant returns what sits where a game would go, if anything.
+// occupant returns the User-managed file of a game: what sits where it would go, else where Find my
+// games found it or the file it was linked for, while that's still there.
 func (d *Downloads) occupant(ctx context.Context, rom domain.ROM, platform domain.Platform) (string, bool, error) {
 	occupants, err := d.scan(ctx, platform)
 	if err != nil {
 		return "", false, err
 	}
-	path, ok := occupants[rom.ID]
-	return path, ok, nil
+	if path, ok := occupants[rom.ID]; ok {
+		return path, true, nil
+	}
+	if g, ok := d.foundAt(rom.ID); ok {
+		return g.Path, true, nil
+	}
+	g, linked, err := d.store.Linked(ctx, rom.ID)
+	if err != nil || !linked {
+		return "", false, err
+	}
+	if _, err := os.Stat(g.Path); err != nil {
+		return "", false, nil //nolint:nilerr // a link whose file went has nothing in the way
+	}
+	return g.Path, true, nil
+}
+
+// elsewhere adds to out the User-managed files of games found or linked away from where they'd go.
+func (d *Downloads) elsewhere(ctx context.Context, out map[int]string) error {
+	d.mu.Lock()
+	ids := slices.Collect(maps.Keys(d.found))
+	d.mu.Unlock()
+	for _, id := range ids {
+		if g, ok := d.foundAt(id); ok {
+			out[id] = g.Path
+		}
+	}
+	linked, err := d.store.LinkedGames(ctx)
+	if err != nil {
+		return err
+	}
+	for _, g := range linked {
+		if _, ok := out[g.ROMID]; ok {
+			continue
+		}
+		if _, err := os.Stat(g.Path); err == nil {
+			out[g.ROMID] = g.Path
+		}
+	}
+	return nil
 }
 
 // errNotOnDeck is a game Adopt or Link was asked for that has nothing in its way.
@@ -243,6 +286,15 @@ func (d *Downloads) onDeckJob(ctx context.Context, id int) (*onDeckJob, error) {
 	}
 	j := &onDeckJob{done: make(chan struct{}), path: path}
 	d.checks[id] = j
+	// Find my games compared what it found already, and matched it by hash, wherever it lies.
+	if g, ok := d.found[id]; ok && g.Path == path {
+		j.files, j.matches = g.files, true
+		if !j.stale() {
+			close(j.done)
+			return j, nil
+		}
+		j.files, j.matches = nil, false
+	}
 	go func() {
 		defer close(j.done)
 		j.files, j.matches, j.why, j.err = d.compare(d.base, rom, platform, path)
@@ -461,6 +513,7 @@ func (d *Downloads) Adopt(ctx context.Context, id int) error {
 	}
 	d.mu.Lock()
 	delete(d.checks, id)
+	delete(d.found, id)
 	d.mu.Unlock()
 	d.Cancel(id)
 	d.log.Info("game adopted", "rom_id", id, "path", j.path)

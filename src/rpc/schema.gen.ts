@@ -108,6 +108,8 @@ export interface Methods {
   check_on_deck: Method<CheckOnDeckParams, OnDeckCheck>;
   adopt_game: Method<AdoptGameParams, AdoptGameResult>;
   link_game: Method<LinkGameParams, LinkGameResult>;
+  find_games: Method<FindGamesParams, FindGamesStatus>;
+  find_games_status: Method<FindGamesStatusParams, FindGamesStatus>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
   download_all: Method<DownloadAllParams, DownloadAllResult>;
   set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
@@ -149,6 +151,10 @@ export interface Events {
    * installed game's files gone or changed.
    */
   ownership: OwnershipEvent;
+  /**
+   * FindGames fires when a platform's Find my games starts, makes progress and ends.
+   */
+  find_games: FindGamesStatus;
   /**
    * BIOS fires when a platform's BIOS download starts and when it ends.
    */
@@ -757,6 +763,52 @@ export interface LinkGameParams {
   id: number /* int */;
 }
 export interface LinkGameResult {
+}
+/**
+ * FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
+ * kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or
+ * link_game.
+ */
+export interface FindGamesParams {
+  platformId: number /* int */;
+}
+export interface FindGamesStatusParams {
+  platformId: number /* int */;
+}
+/**
+ * FindGamesStatus is how a platform's Find my games stands.
+ */
+export interface FindGamesStatus {
+  platformId: number /* int */;
+  running: boolean;
+  /**
+   * Done is set once a run has finished, so Found is its answer.
+   */
+  done: boolean;
+  /**
+   * Hashed and Total count the files a run hashes.
+   */
+  hashed: number /* int */;
+  total: number /* int */;
+  /**
+   * Found are the games found that are still neither adopted nor linked, by name.
+   */
+  found: FoundGame[];
+  /**
+   * Problem says why the last run stopped short.
+   */
+  problem?: Error;
+}
+/**
+ * FoundGame is a game of RomM's that Find my games found under another name.
+ */
+export interface FoundGame {
+  id: number /* int */;
+  name: string;
+  /**
+   * Path is the file or folder holding it.
+   */
+  path: string;
 }
 /**
  * OwnershipKind is what changed a game's ownership.

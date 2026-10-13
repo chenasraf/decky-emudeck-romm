@@ -51,6 +51,18 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.LinkGameResult{}, nil
 	})
 
+	Register(s, "find_games", func(ctx context.Context, p schema.FindGamesParams) (schema.FindGamesStatus, error) {
+		status, err := downloads.FindGames(ctx, p.PlatformID)
+		if err != nil {
+			return schema.FindGamesStatus{}, wireError(err)
+		}
+		return toWireFind(status), nil
+	})
+
+	Register(s, "find_games_status", func(ctx context.Context, p schema.FindGamesStatusParams) (schema.FindGamesStatus, error) {
+		return toWireFind(downloads.FindStatus(ctx, p.PlatformID)), nil
+	})
+
 	Register(s, "plan_download_all", func(ctx context.Context, p schema.PlanDownloadAllParams) (schema.DownloadAllPlan, error) {
 		plan, err := downloads.PlanAll(ctx, toBatch(p.PlatformID, p.Collection))
 		if err != nil {
@@ -120,9 +132,32 @@ func fromWireCollection(c schema.CollectionRef) domain.CollectionRef {
 }
 
 // DownloadListeners returns the listeners that send what the download queue does as download,
-// delete, download_hold and ownership notifications.
+// delete, download_hold, ownership and find_games notifications.
 func DownloadListeners(s *Server) app.DownloadListeners {
-	return app.DownloadListeners{Change: downloadEvents(s), Delete: deleteEvents(s), Hold: holdEvents(s), Ownership: ownershipEvents(s)}
+	return app.DownloadListeners{
+		Change: downloadEvents(s), Delete: deleteEvents(s), Hold: holdEvents(s), Ownership: ownershipEvents(s), Find: findEvents(s),
+	}
+}
+
+func findEvents(s *Server) app.FindListener {
+	return func(f app.FindStatus) {
+		if err := s.Notify("find_games", toWireFind(f)); err != nil {
+			s.log.Error("send find games", "err", err)
+		}
+	}
+}
+
+func toWireFind(f app.FindStatus) schema.FindGamesStatus {
+	out := schema.FindGamesStatus{
+		PlatformID: f.PlatformID, Running: f.Running, Done: f.Done, Hashed: f.Hashed, Total: f.Total, Found: []schema.FoundGame{},
+	}
+	for _, g := range f.Found {
+		out.Found = append(out.Found, schema.FoundGame{ID: g.ROMID, Name: g.Name, Path: g.Path})
+	}
+	if f.Problem != nil {
+		out.Problem = problemOf(f.Problem)
+	}
+	return out
 }
 
 func ownershipEvents(s *Server) app.OwnershipListener {

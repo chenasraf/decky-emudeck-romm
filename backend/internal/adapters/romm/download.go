@@ -21,24 +21,49 @@ import (
 // takes.
 const stallTimeout = 60 * time.Second
 
+// romWithFiles is a ROM and its files, as RomM describes them.
+type romWithFiles struct {
+	ID     int        `json:"id"`
+	FSPath string     `json:"fs_path"`
+	FSName string     `json:"fs_name"`
+	Files  []wireFile `json:"files"`
+}
+
+type wireFile struct {
+	ID            int     `json:"id"`
+	FileName      string  `json:"file_name"`
+	FilePath      string  `json:"file_path"`
+	FullPath      string  `json:"full_path"`
+	FileSizeBytes int64   `json:"file_size_bytes"`
+	Category      *string `json:"category"`
+	LastModified  string  `json:"last_modified"`
+	CRCHash       *string `json:"crc_hash"`
+	MD5Hash       *string `json:"md5_hash"`
+	SHA1Hash      *string `json:"sha1_hash"`
+}
+
+func (r romWithFiles) files() []domain.ROMFile {
+	out := make([]domain.ROMFile, 0, len(r.Files))
+	for _, f := range r.Files {
+		modified, _ := time.Parse(time.RFC3339Nano, f.LastModified)
+		out = append(out, domain.ROMFile{
+			ID:           f.ID,
+			Name:         f.FileName,
+			Path:         pathInGame(r.FSPath, r.FSName, f.FilePath, f.FileName, f.FullPath),
+			SizeBytes:    f.FileSizeBytes,
+			Category:     deref(f.Category),
+			LastModified: modified.UTC(),
+			CRC:          deref(f.CRCHash),
+			MD5:          deref(f.MD5Hash),
+			SHA1:         deref(f.SHA1Hash),
+		})
+	}
+	return out
+}
+
 // ROMFiles returns the files of the ROM with id.
 func (c *Client) ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error) {
-	var body struct {
-		FSPath string `json:"fs_path"`
-		FSName string `json:"fs_name"`
-		Files  []struct {
-			ID            int     `json:"id"`
-			FileName      string  `json:"file_name"`
-			FilePath      string  `json:"file_path"`
-			FullPath      string  `json:"full_path"`
-			FileSizeBytes int64   `json:"file_size_bytes"`
-			Category      *string `json:"category"`
-			LastModified  string  `json:"last_modified"`
-			CRCHash       *string `json:"crc_hash"`
-			MD5Hash       *string `json:"md5_hash"`
-			SHA1Hash      *string `json:"sha1_hash"`
-		} `json:"files"`
-	}
+	var body romWithFiles
 	// A ROM's details carry its full metadata, which can outgrow maxBody.
 	status, err := c.exchange(ctx, c.http, bulkMaxBody, http.MethodGet, "/api/roms/"+strconv.Itoa(id), nil, &body)
 	if status == http.StatusNotFound {
@@ -47,20 +72,30 @@ func (c *Client) ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error)
 	if err := statusError("read the game", status, err); err != nil {
 		return nil, err
 	}
-	out := make([]domain.ROMFile, 0, len(body.Files))
-	for _, f := range body.Files {
-		modified, _ := time.Parse(time.RFC3339Nano, f.LastModified)
-		out = append(out, domain.ROMFile{
-			ID:           f.ID,
-			Name:         f.FileName,
-			Path:         pathInGame(body.FSPath, body.FSName, f.FilePath, f.FileName, f.FullPath),
-			SizeBytes:    f.FileSizeBytes,
-			Category:     deref(f.Category),
-			LastModified: modified.UTC(),
-			CRC:          deref(f.CRCHash),
-			MD5:          deref(f.MD5Hash),
-			SHA1:         deref(f.SHA1Hash),
-		})
+	return body.files(), nil
+}
+
+// PlatformFiles returns the files of up to limit of a platform's ROMs from offset, ordered by id.
+func (c *Client) PlatformFiles(ctx context.Context, platformID, offset, limit int) ([]domain.ROMWithFiles, error) {
+	q := url.Values{
+		"platform_ids":      {strconv.Itoa(platformID)},
+		"limit":             {strconv.Itoa(limit)},
+		"offset":            {strconv.Itoa(offset)},
+		"order_by":          {"id"},
+		"order_dir":         {"asc"},
+		"with_files":        {"true"},
+		"with_rom_id_index": {"false"},
+	}
+	var body struct {
+		Items []romWithFiles `json:"items"`
+	}
+	status, err := c.getBulk(ctx, "/api/roms?"+romQuery+"&"+q.Encode(), &body)
+	if err := statusError("list the platform's files", status, err); err != nil {
+		return nil, err
+	}
+	out := make([]domain.ROMWithFiles, 0, len(body.Items))
+	for _, r := range body.Items {
+		out = append(out, domain.ROMWithFiles{ROMID: r.ID, Files: r.files()})
 	}
 	return out, nil
 }

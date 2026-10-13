@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -100,6 +101,16 @@ func (m *memOwnership) Linked(_ context.Context, id int) (domain.LinkedGame, boo
 	defer m.mu.Unlock()
 	g, ok := m.links[id]
 	return g, ok, nil
+}
+
+func (m *memOwnership) LinkedGames(context.Context) ([]domain.LinkedGame, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.LinkedGame
+	for _, g := range m.links {
+		out = append(out, g)
+	}
+	return out, nil
 }
 
 func (m *memOwnership) DeleteLinked(_ context.Context, id int) error {
@@ -199,6 +210,23 @@ func (c *fakeContent) ROMFiles(_ context.Context, id int) ([]domain.ROMFile, err
 		return nil, c.err
 	}
 	return c.files[id], nil
+}
+
+// PlatformFiles pages through every ROM the server has files for, whatever the platform.
+func (c *fakeContent) PlatformFiles(_ context.Context, _, offset, limit int) ([]domain.ROMWithFiles, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err != nil {
+		return nil, c.err
+	}
+	ids := slices.Sorted(maps.Keys(c.files))
+	ids = ids[min(offset, len(ids)):]
+	ids = ids[:min(limit, len(ids))]
+	out := make([]domain.ROMWithFiles, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, domain.ROMWithFiles{ROMID: id, Files: slices.Clone(c.files[id])})
+	}
+	return out, nil
 }
 
 func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, from int64, open func(int64) (io.Writer, error)) error {

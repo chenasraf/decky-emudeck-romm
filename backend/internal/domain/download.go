@@ -58,6 +58,15 @@ type ROMFile struct {
 	SHA1         string
 }
 
+// ROMWithFiles is a ROM on the Server and its files.
+type ROMWithFiles struct {
+	ROMID int
+	Files []ROMFile
+}
+
+// Hashed says whether the Server has any hash for f, without which f can't be matched.
+func (f ROMFile) Hashed() bool { return f.SHA1 != "" || f.MD5 != "" || f.CRC != "" }
+
 // IsGame says whether the file is part of the game itself, rather than a manual, DLC, soundtrack
 // or the like.
 func (f ROMFile) IsGame() bool { return f.Category == "" || f.Category == "game" }

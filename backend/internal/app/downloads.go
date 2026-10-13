@@ -59,6 +59,8 @@ type DownloadPrefs interface {
 // DownloadServer is the part of the RomM API downloading needs.
 type DownloadServer interface {
 	ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error)
+	// PlatformFiles returns the files of up to limit of a platform's ROMs from offset, ordered by id.
+	PlatformFiles(ctx context.Context, platformID, offset, limit int) ([]domain.ROMWithFiles, error)
 	// DownloadFile fetches a file from byte offset from onward, calling open with the offset the
 	// server's bytes start at before writing them to the writer it returns.
 	DownloadFile(ctx context.Context, fileID int, name string, from int64, open func(start int64) (io.Writer, error)) error
@@ -124,6 +126,8 @@ type DownloadListeners struct {
 	Queued DownloadListener
 	// Ownership, when set, hears each game adopted or linked.
 	Ownership OwnershipListener
+	// Find, when set, hears Find my games start, make progress and end.
+	Find FindListener
 }
 
 type Downloads struct {
@@ -142,8 +146,9 @@ type Downloads struct {
 	onDelete DeleteListener
 	onHold   HoldListener
 	onQueued DownloadListener
-	// onOwnership is nil when nothing listens.
+	// onOwnership and onFind are nil when nothing listens.
 	onOwnership OwnershipListener
+	onFind      FindListener
 	log         *slog.Logger
 	now         func() time.Time
 	retries     []time.Duration
@@ -162,6 +167,9 @@ type Downloads struct {
 	deleting map[int]bool
 	// checks are the comparisons of User-managed files with RomM's games, by ROM id.
 	checks map[int]*onDeckJob
+	// finds are how Find my games stands, by platform id, and found what it found, by ROM id.
+	finds map[int]*FindStatus
+	found map[int]foundGame
 
 	// scanMu guards scans and sums: what sits where each platform's games would go, by platform
 	// id, and the hashes of files compared with RomM's, by path.
@@ -190,8 +198,9 @@ func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, c
 	return &Downloads{
 		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs, games: games,
 		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued,
-		onOwnership: listen.Ownership, log: log, now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx,
-		deleting: map[int]bool{}, checks: map[int]*onDeckJob{}, scans: map[int]folderScan{}, sums: map[string]cachedSums{},
+		onOwnership: listen.Ownership, onFind: listen.Find, log: log, now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx,
+		deleting: map[int]bool{}, checks: map[int]*onDeckJob{}, finds: map[int]*FindStatus{}, found: map[int]foundGame{},
+		scans: map[int]folderScan{}, sums: map[string]cachedSums{},
 	}
 }
 
