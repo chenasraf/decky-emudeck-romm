@@ -61,9 +61,11 @@ type SaveStatus struct {
 	// Syncs is unset when the plugin doesn't sync the game's saves; Why says why.
 	Syncs bool
 	Why   string
-	// Path is the save file, and Emulator the RetroArch core it's tagged with on RomM.
+	// Path is the save file, Emulator the tag RomM keeps it under (a RetroArch core's name, or the
+	// standalone emulator's), and Saver the name of the emulator that writes it.
 	Path     string
 	Emulator string
+	Saver    string
 	// State is empty until a sync looks at the game.
 	State     domain.SaveState
 	Problem   string
@@ -109,9 +111,9 @@ type SaveSyncEvent struct {
 // SaveListener hears syncs start and end.
 type SaveListener func(SaveSyncEvent)
 
-// Saves syncs the saves of Plugin-owned games RetroArch plays with RomM, one sync at a time. RomM
-// works out what each sync takes; the plugin uploads, downloads, and never resolves a conflict on
-// its own.
+// Saves syncs the saves of Plugin-owned games with RomM, for the emulators domain.SaveRules lists,
+// one sync at a time. RomM works out what each sync takes; the plugin uploads, downloads, and never
+// resolves a conflict on its own.
 type Saves struct {
 	catalog   CatalogStore
 	install   *Install
@@ -121,6 +123,7 @@ type Saves struct {
 	store     SaveStore
 	problem   error
 	launchers Launchers
+	configs   SaveConfigs
 	running   RunningGame
 	backups   string
 	onChange  SaveListener
@@ -147,7 +150,7 @@ type Saves struct {
 	// working is set while a goroutine runs the queued syncs.
 	working bool
 	lastEnd time.Time
-	// waits is set while a game's download may be waiting for RetroArch to close.
+	// waits is set while a game's download may be waiting for its emulator to close.
 	waits bool
 	// wrote is when the plugin last wrote each save, so the watch doesn't take its own writes for
 	// the game's.
@@ -157,10 +160,10 @@ type Saves struct {
 const (
 	// savePullEvery is how often every game's save is synced, to pick up what other devices did.
 	savePullEvery = 15 * time.Minute
-	// saveSettle is how long a save goes unwritten before it uploads: RetroArch writes one in
-	// several steps, and some cores every few seconds while a game runs.
+	// saveSettle is how long a save goes unwritten before it uploads: emulators write one in
+	// several steps, and some every few seconds while a game runs.
 	saveSettle = 10 * time.Second
-	// savePoll is how often a download waiting for RetroArch looks whether it closed.
+	// savePoll is how often a download waiting for its emulator looks whether it closed.
 	savePoll = 5 * time.Second
 	// saveOpenGap is how long after a sync opening the QAM doesn't sync again.
 	saveOpenGap = 2 * time.Minute
@@ -169,22 +172,15 @@ const (
 // NewSaves returns save sync. A nil store turns it off, reporting problem. Overwritten saves are
 // backed up under backups.
 func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial SaveDialer, owned OwnershipStore,
-	store SaveStore, problem error, launchers Launchers, running RunningGame, backups string, onChange SaveListener, log *slog.Logger,
+	store SaveStore, problem error, launchers Launchers, configs SaveConfigs, running RunningGame, backups string, onChange SaveListener,
+	log *slog.Logger,
 ) *Saves {
 	return &Saves{
 		catalog: catalog, install: install, conn: conn, dial: dial, owned: owned, store: store, problem: problem,
-		launchers: launchers, running: running, backups: backups, onChange: onChange, log: log, now: time.Now, base: ctx,
+		launchers: launchers, configs: configs, running: running, backups: backups, onChange: onChange, log: log, now: time.Now, base: ctx,
 		pullEvery: savePullEvery, settle: saveSettle, pollEvery: savePoll, openGap: saveOpenGap,
 		pending: map[int]bool{}, current: map[int]bool{}, wrote: map[string]time.Time{}, waits: true,
 	}
-}
-
-// saveTarget is a game whose save the plugin syncs.
-type saveTarget struct {
-	romID    int
-	name     string
-	path     string
-	emulator string
 }
 
 // Start syncs the saves of the games with ids, or of every game when ids is empty, in the
@@ -294,8 +290,8 @@ type SaveWatch interface {
 }
 
 // Run trims the activity log, then syncs saves on their own until ctx ends: every game's at start
-// and every pullEvery, a game's once its save settles after RetroArch writes it, and a download that
-// waits for RetroArch once it closes. A nil watch leaves out the syncs on writes.
+// and every pullEvery, a game's once its save settles after its emulator writes it, and a download
+// that waits for an emulator once it closes. A nil watch leaves out the syncs on writes.
 func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
 	s.pruneActivity(ctx)
 	s.request(nil, false)
@@ -316,12 +312,12 @@ func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
 	}
 	watched := ""
 	for {
-		if dir, ok := retroArchSaves(s.install.State(false)); watch != nil && ok && dir != watched {
-			if err := watch.Watch(dir); err != nil {
-				s.log.Warn("watch saves", "dir", dir, "err", err)
+		if dirs := saveDirs(s.install.State(false)); watch != nil && len(dirs) > 0 && strings.Join(dirs, "\n") != watched {
+			if err := watch.Watch(dirs...); err != nil {
+				s.log.Warn("watch saves", "dirs", dirs, "err", err)
 			} else {
-				watched = dir
-				s.log.Info("watching saves", "dir", dir)
+				watched = strings.Join(dirs, "\n")
+				s.log.Info("watching saves", "dirs", dirs)
 			}
 		}
 		select {
@@ -379,7 +375,7 @@ func (s *Saves) saveWritten(ctx context.Context, path string) {
 	}
 }
 
-// retryWaiting syncs the games whose downloads wait for RetroArch, once it's closed.
+// retryWaiting syncs the games whose downloads wait for their emulator, once it's closed.
 func (s *Saves) retryWaiting(ctx context.Context) {
 	s.mu.Lock()
 	waits := s.waits
@@ -387,24 +383,27 @@ func (s *Saves) retryWaiting(ctx context.Context) {
 	if !waits || s.store == nil {
 		return
 	}
-	if emu, ok := s.running(); ok && emu.ID == domain.RetroArchID {
-		return
-	}
 	records, err := s.store.SaveRecords(ctx)
 	if err != nil {
 		return
 	}
 	var ids []int
+	still := false
 	for _, r := range records {
-		if r.State == domain.SaveWaiting {
-			ids = append(ids, r.ROMID)
+		if r.State != domain.SaveWaiting {
+			continue
 		}
+		if t, why, err := s.target(ctx, r.ROMID); err == nil && why == "" && s.runs(t.rule.Emulator.ID) {
+			still = true
+			continue
+		}
+		ids = append(ids, r.ROMID)
 	}
 	s.mu.Lock()
-	s.waits = false
+	s.waits = still
 	s.mu.Unlock()
 	if len(ids) > 0 {
-		s.log.Info("RetroArch closed; syncing waiting saves", "games", len(ids))
+		s.log.Info("emulator closed; syncing waiting saves", "games", len(ids))
 		s.request(ids, false)
 	}
 }
@@ -435,22 +434,24 @@ func (s *Saves) ready() (*domain.SignIn, error) {
 			}
 		}
 	}
-	if _, ok := retroArchSaves(s.install.State(false)); !ok {
+	if len(saveDirs(s.install.State(false))) == 0 {
 		return nil, &domain.Error{
 			Kind:    domain.KindInvalidInput,
-			Message: "RetroArch's saves folder wasn't found. Set RetroArch up in EmuDeck, then check Setup status again.",
+			Message: "No emulator's saves folder was found. Set your emulators up in EmuDeck, then check Setup status again.",
 		}
 	}
 	return in, nil
 }
 
-// retroArchSaves is the folder RetroArch keeps its saves in, links followed.
-func retroArchSaves(state domain.InstallState) (string, bool) {
-	i := slices.IndexFunc(state.Emulators, func(e domain.EmulatorState) bool { return e.ID == domain.RetroArchID })
-	if i < 0 || !state.Emulators[i].SaveSyncReady() {
-		return "", false
+// saveDirs are the folders the emulators whose saves sync keep them in.
+func saveDirs(state domain.InstallState) []string {
+	var out []string
+	for _, r := range domain.SaveRules() {
+		if dir, ok := saveDir(state, r.Emulator.ID); ok {
+			out = append(out, dir)
+		}
 	}
-	return state.Emulators[i].Saves[0].Resolved, true
+	return out
 }
 
 // Sync syncs the saves of the games with ids, or of every Plugin-owned game when ids is empty, and
@@ -564,7 +565,7 @@ func (s *Saves) Status(ctx context.Context, id int) (SaveStatus, error) {
 		out.Why = why
 		return out, nil
 	}
-	out.Syncs, out.Path, out.Emulator = true, t.path, t.emulator
+	out.Syncs, out.Path, out.Emulator, out.Saver = true, t.path, t.emulator, t.rule.Emulator.Name
 	records, err := s.records(ctx)
 	if err != nil {
 		return out, err
@@ -612,129 +613,6 @@ func (s *Saves) Summary(ctx context.Context) (SaveSummary, time.Time, bool, erro
 		}
 	}
 	return out, last, syncing, nil
-}
-
-// target finds where a Plugin-owned game's save is and how RomM tags it. why says why the plugin
-// doesn't sync it, empty when it does.
-func (s *Saves) target(ctx context.Context, id int) (saveTarget, string, error) {
-	rec, ok, err := s.owned.Owned(ctx, id)
-	if err != nil {
-		return saveTarget{}, "", err
-	}
-	if !ok || len(rec.Files) == 0 {
-		return saveTarget{}, "Only games the plugin downloaded sync their saves.", nil
-	}
-	rom, ok, err := s.catalog.ROM(ctx, id)
-	if err != nil {
-		return saveTarget{}, "", err
-	}
-	name := "Game " + strconv.Itoa(id)
-	if ok {
-		name = rom.Name
-	}
-	platform, _, err := s.catalog.Platform(ctx, rec.PlatformID)
-	if err != nil {
-		return saveTarget{}, "", err
-	}
-	system, ok := domain.SystemForSlug(platform.Slug)
-	if !ok {
-		return saveTarget{}, "EmuDeck has no folder for this game's platform.", nil
-	}
-	state := s.install.State(false)
-	folder, dir := folderHolding(state, system, rec.Files[0].Path)
-	if dir == "" {
-		return saveTarget{}, "The game isn't in one of EmuDeck's ROM folders.", nil
-	}
-	entry, why := gameEntry(rec.Files, dir)
-	if why != "" {
-		return saveTarget{}, why, nil
-	}
-	if domain.IsArchive(entry) {
-		return saveTarget{}, "Saves of games kept as archives don't sync: which name RetroArch gives them isn't known.", nil
-	}
-
-	rel, err := filepath.Rel(filepath.Join(state.EmuDeck.ROMsPath, folder), entry)
-	if err != nil || !filepath.IsLocal(rel) {
-		rel = filepath.Base(entry)
-	}
-	core, why := s.core(folder, filepath.ToSlash(rel), state)
-	if why != "" {
-		return saveTarget{}, why, nil
-	}
-	saves, ok := retroArchSaves(state)
-	if !ok {
-		return saveTarget{}, "RetroArch's saves folder wasn't found.", nil
-	}
-	stem := strings.TrimSuffix(filepath.Base(entry), filepath.Ext(entry))
-	path := filepath.Join(saves, stem+domain.RetroArchSaveExt)
-	return saveTarget{romID: id, name: name, path: path, emulator: core}, "", nil
-}
-
-// core is the RetroArch core ES-DE runs the game at rel in folder with: from ES-DE's own files,
-// else EmuDeck's default for the folder. why says why the game doesn't sync when RetroArch doesn't
-// run it, or which core does can't be told.
-func (s *Saves) core(folder, rel string, state domain.InstallState) (string, string) {
-	launcher, err := s.launchers.Launcher(folder, rel)
-	if err != nil {
-		s.log.Debug("ES-DE launcher", "system", folder, "err", err)
-	}
-	switch {
-	case launcher.Known && launcher.RetroArchCore() != "":
-		return launcher.RetroArchCore(), ""
-	case launcher.Known, launcher.NotRetroArch():
-		return "", fmt.Sprintf("ES-DE runs this game with %s, and only RetroArch saves sync.", launcher.Label)
-	}
-	i := slices.IndexFunc(state.Systems, func(s domain.SystemState) bool { return s.Folder == folder })
-	primary := i >= 0 && state.Systems[i].Emulator == domain.RetroArchID
-	if core, ok := domain.DefaultRetroArchCore(folder); ok && (primary || i < 0) {
-		return core, ""
-	}
-	return "", "This game doesn't run in RetroArch by default, and only RetroArch saves sync."
-}
-
-// folderHolding is the ROM folder of system's that path is in, by its folder name and path.
-func folderHolding(state domain.InstallState, system domain.System, path string) (string, string) {
-	for _, f := range system.Folders() {
-		if dir := folderPath(state, system, f); dir != "" && strings.HasPrefix(path, dir+string(filepath.Separator)) {
-			return f, dir
-		}
-	}
-	return "", ""
-}
-
-// launchExts are the files RetroArch loads a game of several by, in the order the plugin picks
-// them when a game's folder entry holds several files.
-var launchExts = []string{".m3u", ".cue", ".gdi", ".ccd", ".chd"}
-
-// gameEntry is the path of what ES-DE lists for a game whose files are in dir: its file, or the
-// folder holding them. why says why it can't be told.
-func gameEntry(files []domain.PlacedFile, dir string) (string, string) {
-	tops := map[string]bool{}
-	for _, f := range files {
-		rel, err := filepath.Rel(dir, f.Path)
-		if err != nil || !filepath.IsLocal(rel) {
-			return "", "The game's files aren't where the plugin placed them."
-		}
-		top, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
-		tops[top] = true
-	}
-	if len(tops) == 1 {
-		for top := range tops {
-			return filepath.Join(dir, top), ""
-		}
-	}
-	for _, ext := range launchExts {
-		var hits []string
-		for top := range tops {
-			if strings.EqualFold(filepath.Ext(top), ext) {
-				hits = append(hits, top)
-			}
-		}
-		if len(hits) == 1 {
-			return filepath.Join(dir, hits[0]), ""
-		}
-	}
-	return "", "The game is several files, and which one RetroArch loads, and so names its save after, can't be told."
 }
 
 // localSave is a save on the Deck as a sync read it.
@@ -945,11 +823,11 @@ func (p *savePass) upload(ctx context.Context, t saveTarget, local localSave, op
 }
 
 func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOperation, local localSave, session int, r *domain.SaveRecord) error {
-	if !domain.RetroArchReads(op.Emulator) {
-		return fmt.Errorf("RomM's newest save is from %s, which RetroArch can't load", op.Emulator)
+	if !domain.RawBatterySave(op.Emulator) {
+		return fmt.Errorf("RomM's newest save is from %s, which %s can't load", op.Emulator, t.rule.Emulator.Name)
 	}
-	if emu, ok := p.running(); ok && emu.ID == domain.RetroArchID {
-		// RetroArch writes the save it holds when the game closes, which would undo the download.
+	if p.runs(t.rule.Emulator.ID) {
+		// The emulator writes the save it holds when the game closes, which would undo the download.
 		r.State, r.Problem = domain.SaveWaiting, ""
 		p.summary.Waiting++
 		return nil
@@ -1030,8 +908,10 @@ func (s *Saves) backupSave(id int, path string, data []byte) error {
 	return nil
 }
 
+// backupDir holds a game's backups. They're the game's whichever emulator writes its save, which
+// ES-DE may change.
 func (s *Saves) backupDir(id int) string {
-	return filepath.Join(s.backups, domain.RetroArchID, strconv.Itoa(id))
+	return filepath.Join(s.backups, strconv.Itoa(id))
 }
 
 // writeAtomic writes data to path through a file beside it, so path is never half-written.

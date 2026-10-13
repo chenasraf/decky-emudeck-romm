@@ -64,8 +64,8 @@ func (s *Saves) Resolve(ctx context.Context, id int, keep domain.SaveChoice, see
 		return &domain.Error{Kind: domain.KindInvalidInput, Message: why}
 	}
 	if keep == domain.KeepServer {
-		if emu, ok := s.running(); ok && emu.ID == domain.RetroArchID {
-			return &domain.Error{Kind: domain.KindInvalidInput, Message: "Close RetroArch first: it writes the save it holds when the game closes, which would undo this."}
+		if s.runs(t.rule.Emulator.ID) {
+			return closeFirst(t.rule.Emulator)
 		}
 	}
 	records, err := s.records(ctx)

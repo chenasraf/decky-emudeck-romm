@@ -1017,7 +1017,7 @@ const (
 	SaveConflict SaveState = "conflict"
 	// SaveRemovedOnServer means RomM's slot was emptied after this Deck synced it.
 	SaveRemovedOnServer SaveState = "removed_on_server"
-	// SaveWaiting means a newer save from RomM waits for RetroArch to close.
+	// SaveWaiting means a newer save from RomM waits for the game's emulator to close.
 	SaveWaiting SaveState = "waiting"
 	// SaveFailed means the last sync of the game failed; problem says why.
 	SaveFailed SaveState = "failed"
@@ -1029,9 +1029,11 @@ type SaveStatus struct {
 	// Syncs is unset when the plugin doesn't sync the game's saves; why says why.
 	Syncs bool   `json:"syncs"`
 	Why   string `json:"why,omitempty"`
-	// Path is the save file, and emulator the RetroArch core it's tagged with on RomM.
+	// Path is the save file, emulator the tag RomM keeps it under (a RetroArch core's name, or the
+	// standalone emulator's), and saver the name of the emulator that writes it.
 	Path     string `json:"path,omitempty"`
 	Emulator string `json:"emulator,omitempty"`
+	Saver    string `json:"saver,omitempty"`
 	// State is unset until a sync looks at the game.
 	State   SaveState `json:"state,omitempty"`
 	Problem string    `json:"problem,omitempty"`

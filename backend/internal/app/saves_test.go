@@ -321,10 +321,13 @@ type saveFixture struct {
 	romm      *fakeRomMSaves
 	store     *memSaveStore
 	launchers fakeLaunchers
+	configs   fakeConfigs
 	saves     *Saves
 	retroarch atomic.Bool
-	backups   string
-	events    chan SaveSyncEvent
+	// playing is the id of a standalone emulator running a game, if one is.
+	playing atomic.Value
+	backups string
+	events  chan SaveSyncEvent
 }
 
 var snes9x = domain.GameLauncher{ESDECommand: domain.ESDECommand{
@@ -339,6 +342,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 		romm:            newFakeRomMSaves(),
 		store:           &memSaveStore{records: map[int]domain.SaveRecord{}},
 		launchers:       fakeLaunchers{"snes": snes9x},
+		configs:         fakeConfigs{},
 		events:          make(chan SaveSyncEvent, 256),
 	}
 	f.settings.mu.Lock()
@@ -354,14 +358,22 @@ func newSaveFixture(t *testing.T) *saveFixture {
 func (f *saveFixture) newSaves() *Saves {
 	d := f.downloads
 	s := NewSaves(context.Background(), d.catalog, d.install, d.conn, func(domain.Server, string) SaveServer { return f.romm },
-		f.owned, f.store, nil, f.launchers, func() (domain.Emulator, bool) {
+		f.owned, f.store, nil, f.launchers, f.configs, func() (domain.Emulator, bool) {
 			if f.retroarch.Load() {
 				return domain.EmulatorByID(domain.RetroArchID)
+			}
+			if id, _ := f.playing.Load().(string); id != "" {
+				return domain.EmulatorByID(id)
 			}
 			return domain.Emulator{}, false
 		}, f.backups, func(e SaveSyncEvent) { f.events <- e }, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return s
 }
+
+// fakeConfigs reports each emulator's settings problem, by its id.
+type fakeConfigs map[string]string
+
+func (c fakeConfigs) SaveProblem(id string) string { return c[id] }
 
 func (f *saveFixture) chronoSave() string {
 	return filepath.Join(f.raSaves, "Chrono Trigger (USA).srm")
@@ -450,8 +462,8 @@ func TestNewerServerSaveReplacesTheDecksWithABackup(t *testing.T) {
 			if got := readFile(t, f.chronoSave()); got != "newer progress" {
 				t.Fatalf("save holds %q", got)
 			}
-			backups, _ := os.ReadDir(filepath.Join(f.backups, "retroarch", "1"))
-			if len(backups) != 1 || readFile(t, filepath.Join(f.backups, "retroarch", "1", backups[0].Name())) != "old progress" {
+			backups, _ := os.ReadDir(filepath.Join(f.backups, "1"))
+			if len(backups) != 1 || readFile(t, filepath.Join(f.backups, "1", backups[0].Name())) != "old progress" {
 				t.Fatalf("backups %v", backups)
 			}
 		})

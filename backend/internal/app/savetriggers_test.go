@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -63,11 +65,13 @@ func (f *saveFixture) quiet(t *testing.T, d time.Duration) {
 	}
 }
 
-func TestRunWatchesRetroArchSaves(t *testing.T) {
+// Every emulator whose saves sync has its saves folder watched.
+func TestRunWatchesSaveFolders(t *testing.T) {
 	f := newSaveFixture(t)
 	w := newFakeWatch()
 	f.run(t, w)
-	if dirs := <-w.dirs; len(dirs) != 1 || dirs[0] != f.raSaves {
+	want := []string{f.raSaves, filepath.Join(f.root, "saves", "melonds", "saves"), filepath.Join(f.root, "saves", "mgba", "saves")}
+	if dirs := <-w.dirs; !slices.Equal(dirs, want) {
 		t.Fatalf("watching %v", dirs)
 	}
 }

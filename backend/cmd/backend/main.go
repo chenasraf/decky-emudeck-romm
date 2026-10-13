@@ -176,7 +176,8 @@ func run(log *slog.Logger) error {
 	if owned != nil {
 		saveStore = owned
 	}
-	saves := app.NewSaves(ctx, cache, install, conn, saveDial, ownership, saveStore, stateErr, esdecfg.New(userHome(log)), runningGame,
+	saves := app.NewSaves(ctx, cache, install, conn, saveDial, ownership, saveStore, stateErr, esdecfg.New(userHome(log)),
+		emudeck.NewSaveConfigs(userHome(log)), runningGame,
 		filepath.Join(runtimeDir, "backups"), rpc.SaveEvents(srv), log.With("component", "saves"))
 	rpc.Routes(srv, version, rpc.Services{
 		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde, Media: media,

@@ -1279,7 +1279,7 @@ export const SaveConflict: SaveState = "conflict";
  */
 export const SaveRemovedOnServer: SaveState = "removed_on_server";
 /**
- * SaveWaiting means a newer save from RomM waits for RetroArch to close.
+ * SaveWaiting means a newer save from RomM waits for the game's emulator to close.
  */
 export const SaveWaiting: SaveState = "waiting";
 /**
@@ -1297,10 +1297,12 @@ export interface SaveStatus {
   syncs: boolean;
   why?: string;
   /**
-   * Path is the save file, and emulator the RetroArch core it's tagged with on RomM.
+   * Path is the save file, emulator the tag RomM keeps it under (a RetroArch core's name, or the
+   * standalone emulator's), and saver the name of the emulator that writes it.
    */
   path?: string;
   emulator?: string;
+  saver?: string;
   /**
    * State is unset until a sync looks at the game.
    */

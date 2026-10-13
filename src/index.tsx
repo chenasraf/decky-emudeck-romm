@@ -233,7 +233,7 @@ function SaveSyncSection({ onOpen }: { onOpen: (id: number) => void }) {
   return (
     <PanelSection title="Saves">
       <PanelSectionRow>
-        <Field label="RetroArch saves">{status}</Field>
+        <Field label="Saves">{status}</Field>
       </PanelSectionRow>
       {summary.conflicts.length > 0 && (
         <>
@@ -255,8 +255,8 @@ function SaveSyncSection({ onOpen }: { onOpen: (id: number) => void }) {
       {waiting > 0 && (
         <PanelSectionRow>
           <Field
-            label="Waiting for RetroArch"
-            description={`RomM has newer saves for ${waiting === 1 ? '1 game' : `${waiting} games`}. They download once RetroArch closes.`}
+            label="Waiting for emulators"
+            description={`RomM has newer saves for ${waiting === 1 ? '1 game' : `${waiting} games`}. Each downloads once its emulator closes.`}
           />
         </PanelSectionRow>
       )}

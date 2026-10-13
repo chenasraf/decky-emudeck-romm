@@ -587,7 +587,10 @@ export function SavesSection({ id }: { id: number }) {
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <Field label="Save file" description={`RomM slot autosave · ${status.emulator}`}>
+        <Field
+          label="Save file"
+          description={`Written by ${status.saver} · RomM slot autosave · tagged ${status.emulator}`}
+        >
           <span style={{ wordBreak: 'break-all' }}>{status.path}</span>
         </Field>
       </PanelSectionRow>

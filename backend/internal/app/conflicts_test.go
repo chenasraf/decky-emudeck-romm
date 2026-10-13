@@ -56,8 +56,8 @@ func TestKeepRomMsSave(t *testing.T) {
 	if got := readFile(t, f.chronoSave()); got != "handheld went on" {
 		t.Fatalf("save holds %q", got)
 	}
-	backups, _ := os.ReadDir(filepath.Join(f.backups, "retroarch", "1"))
-	if len(backups) != 1 || readFile(t, filepath.Join(f.backups, "retroarch", "1", backups[0].Name())) != "deck went on" {
+	backups, _ := os.ReadDir(filepath.Join(f.backups, "1"))
+	if len(backups) != 1 || readFile(t, filepath.Join(f.backups, "1", backups[0].Name())) != "deck went on" {
 		t.Fatalf("backups %v", backups)
 	}
 	if st := f.status(t); st.State != domain.SaveSynced {

@@ -11,10 +11,6 @@ import (
 // its other clients use, so they all share one timeline.
 const AutosaveSlot = "autosave"
 
-// RetroArchSaveExt is the extension of the battery save RetroArch writes beside nothing but the
-// game's name: <ROM file name without its extension>.srm.
-const RetroArchSaveExt = ".srm"
-
 // SaveState is where a game's save stands after the last sync that looked at it.
 type SaveState string
 
@@ -205,8 +201,8 @@ var otherSaveFormats = func() []string {
 	return out
 }()
 
-// RetroArchReads says whether a RetroArch core can load a save RomM tagged with emulator. Untagged
-// saves, and those tagged with a core or RetroArch, can.
-func RetroArchReads(emulator string) bool {
+// RawBatterySave says whether a save RomM tagged with emulator is the raw battery save RetroArch's
+// cores, mGBA and melonDS all read. Untagged saves, and those tagged with a core, are.
+func RawBatterySave(emulator string) bool {
 	return !slices.Contains(otherSaveFormats, emulator)
 }

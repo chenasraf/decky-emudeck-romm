@@ -24,7 +24,7 @@ export function syncOutcome(c: SaveCounts): string {
   const parts = []
   if (c.uploaded > 0) parts.push(`${c.uploaded} uploaded`)
   if (c.downloaded > 0) parts.push(`${c.downloaded} downloaded`)
-  if (c.waiting > 0) parts.push(`${c.waiting} waiting for RetroArch to close`)
+  if (c.waiting > 0) parts.push(`${c.waiting} waiting for an emulator to close`)
   if (c.failed > 0) parts.push(`${c.failed} failed`)
   return parts.length > 0 ? `${parts.join(', ')}.` : 'Everything is up to date.'
 }
@@ -134,7 +134,7 @@ export function saveStateLabel(s: SaveStatus): string {
     case 'removed_on_server':
       return 'Removed on RomM'
     case 'waiting':
-      return 'Waiting for RetroArch to close'
+      return `Waiting for ${s.saver ?? 'the emulator'} to close`
     case 'failed':
       return '⚠ Sync failed'
     default:
@@ -152,7 +152,7 @@ export function saveStateDetail(s: SaveStatus): string | undefined {
     case 'removed_on_server':
       return "RomM's save of this game was deleted. The save on this Deck stays."
     case 'waiting':
-      return 'RomM has a newer save. It downloads once RetroArch closes: RetroArch writes the save it holds when a game closes, which would undo the download.'
+      return `RomM has a newer save. It downloads once ${s.saver ?? 'the emulator'} closes: an emulator writes the save it holds when a game closes, which would undo the download.`
     case 'failed':
       return s.problem
     default:
