@@ -512,7 +512,8 @@ func (f *downloadFixture) end(t *testing.T, id int) Download {
 	for {
 		select {
 		case u := <-f.updates:
-			if u.ROMID == id && (u.State == domain.StateInstalled || u.State == domain.StateOnRomM || u.State == domain.StateFailed) {
+			if u.ROMID == id && (u.State == domain.StateInstalled || u.State == domain.StateOnRomM || u.State == domain.StateFailed ||
+				u.State == domain.StateUpdate) {
 				return u
 			}
 		case <-time.After(3 * time.Second):

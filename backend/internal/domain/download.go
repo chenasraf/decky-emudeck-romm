@@ -48,6 +48,8 @@ type QueuedDownload struct {
 	// Partial is the file whose bytes are in staging, so a later attempt resumes them only while
 	// the Server still has that same file. Its FileID is zero before the first attempt.
 	Partial FileSnapshot
+	// Update is set on the download of an update of a Plugin-owned game, which replaces its files.
+	Update bool
 }
 
 // ROMFile is one file of a ROM on the Server.

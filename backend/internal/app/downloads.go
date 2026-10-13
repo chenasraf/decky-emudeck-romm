@@ -198,6 +198,8 @@ type job struct {
 	cancel context.CancelFunc
 	// partial is the Server's file whose bytes are in staging.
 	partial domain.FileSnapshot
+	// update is set when the download replaces the files of a Plugin-owned game with its update.
+	update bool
 }
 
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
@@ -243,14 +245,14 @@ func (d *Downloads) Resume(ctx context.Context) {
 	var restored []*job
 	for _, q := range saved {
 		// The backend stopped between recording the game and taking it out of the queue.
-		if _, owned, err := d.store.Owned(ctx, q.ROMID); err == nil && owned {
+		if d.recorded(ctx, q) {
 			d.dequeue(q.ROMID)
 			continue
 		}
 		j := &job{Download: Download{
 			ROMID: q.ROMID, PlatformID: q.PlatformID, PlatformName: q.PlatformName, Name: q.Name,
 			State: domain.StateQueued, Total: q.TotalBytes,
-		}, partial: q.Partial}
+		}, partial: q.Partial, update: q.Update}
 		if q.Problem != nil {
 			j.State, j.Problem = domain.StateFailed, q.Problem
 		}
@@ -322,13 +324,22 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 	if err != nil {
 		return Download{}, err
 	}
+	// A Plugin-owned game downloads again only as its update, which replaces its files.
+	update := false
 	if _, owned, err := d.store.Owned(ctx, id); err != nil || owned {
 		if err != nil {
 			return Download{}, err
 		}
-		return Download{}, &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is already on this Deck."}
+		updates, err := d.store.UpdateIDs(ctx)
+		if err != nil {
+			return Download{}, err
+		}
+		if !slices.Contains(updates, id) {
+			return Download{}, &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is already on this Deck."}
+		}
+		update = true
 	}
-	if path, ok, err := d.occupant(ctx, rom, platform); err != nil || ok {
+	if path, ok, err := d.occupant(ctx, rom, platform); !update && (err != nil || ok) {
 		if err != nil {
 			return Download{}, err
 		}
@@ -369,9 +380,9 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 		j = &job{Download: Download{
 			ROMID: id, PlatformID: rom.PlatformID, PlatformName: platform.Name, Name: rom.Name,
 			State: domain.StateQueued, Total: rom.SizeBytes,
-		}}
+		}, update: update}
 		d.jobs = append(d.jobs, j)
-		d.log.Info("download queued", "rom_id", id, "name", rom.Name)
+		d.log.Info("download queued", "rom_id", id, "name", rom.Name, "update", update)
 	}
 	queued, record := j.Download, j.record()
 	d.mu.Unlock()
@@ -417,6 +428,9 @@ func (d *Downloads) Cancel(id int) bool {
 
 	d.discard(id)
 	ended.State, ended.Problem = domain.StateOnRomM, nil
+	if j.update {
+		ended.State = domain.StateUpdate
+	}
 	d.log.Info("download cancelled", "rom_id", id)
 	d.onChange(ended)
 	d.release()
@@ -530,6 +544,10 @@ func (d *Downloads) run(ctx context.Context, j *job) {
 	case errors.Is(err, context.Canceled):
 		d.discard(j.ROMID)
 		ended.State = domain.StateOnRomM
+		if j.update {
+			// The old version is still in place, its update still to take.
+			ended.State = domain.StateUpdate
+		}
 		d.log.Info("download cancelled", "rom_id", j.ROMID)
 	default:
 		d.save(record)
@@ -608,6 +626,23 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 	if err != nil {
 		return err
 	}
+	// An update replaces the files the plugin placed, in the folder they're in.
+	var old []domain.PlacedFile
+	if j.update {
+		rec, ok, err := d.store.Owned(ctx, j.ROMID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return &domain.Error{Kind: domain.KindInvalidInput, Message: "The plugin no longer manages that game, so it can't update it."}
+		}
+		old = rec.Files
+		if len(old) > 0 {
+			if held := d.dirHolding(ctx, rom.PlatformID, old[0].Path); held != "" {
+				dir = held
+			}
+		}
+	}
 	server := d.dial(in.Server, in.Token)
 	files, err := server.ROMFiles(ctx, j.ROMID)
 	if err != nil {
@@ -628,7 +663,7 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		// The game's entry in the ROM folder is known before it downloads, so one already there
 		// fails it now rather than after the download. A file the Server may convert is checked
 		// once its name is known.
-		if err := checkFree(filepath.Join(dir, layout.Root)); err != nil {
+		if err := checkTarget(filepath.Join(dir, layout.Root), old); err != nil {
 			return err
 		}
 	}
@@ -662,7 +697,7 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 			conversion = &c
 			file := domain.ROMFile{ID: stored.ID, Name: served.Name, Path: served.Name, SizeBytes: served.Size}
 			layout = domain.Layout{Root: served.Name, Files: []domain.PlannedFile{{File: file, Rel: served.Name}}}
-			if err := checkFree(filepath.Join(dir, layout.Root)); err != nil {
+			if err := checkTarget(filepath.Join(dir, layout.Root), old); err != nil {
 				return err
 			}
 		}
@@ -717,7 +752,11 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 	if err != nil {
 		return err
 	}
-	placed, err := d.place(staged, dir)
+	place := d.place
+	if j.update {
+		place = func(staged []stagedFile, dir string) ([]domain.PlacedFile, error) { return d.swap(staged, dir, old) }
+	}
+	placed, err := place(staged, dir)
 	if err != nil {
 		return err
 	}
@@ -1466,7 +1505,7 @@ func (d *Downloads) remove(j *job) {
 func (j *job) record() domain.QueuedDownload {
 	q := domain.QueuedDownload{
 		ROMID: j.ROMID, PlatformID: j.PlatformID, PlatformName: j.PlatformName, Name: j.Name,
-		TotalBytes: j.Total, Partial: j.partial,
+		TotalBytes: j.Total, Partial: j.partial, Update: j.update,
 	}
 	if j.Problem != nil {
 		var de *domain.Error

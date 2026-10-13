@@ -572,10 +572,13 @@ func (d *Downloads) StopManaging(ctx context.Context, id int) error {
 		return &domain.Error{Kind: domain.KindInvalidInput, Message: "The plugin doesn't manage that game."}
 	}
 	d.mu.Lock()
-	deleting := d.deleting[id]
+	deleting, updating := d.deleting[id], d.find(id) != nil
 	d.mu.Unlock()
 	if deleting {
 		return &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is being deleted."}
+	}
+	if updating {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is updating. Cancel the update first."}
 	}
 	if err := d.store.DeleteOwned(ctx, id); err != nil {
 		return fmt.Errorf("drop record: %w", err)

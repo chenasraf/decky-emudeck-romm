@@ -733,7 +733,8 @@ type OwnershipEvent struct {
 }
 
 // DownloadGameParams names the game to download. A failed download is retried, resuming what it
-// downloaded.
+// downloaded. An update_available game downloads its update, which replaces its files once it's
+// all there; cancelling it leaves the old version as it was.
 type DownloadGameParams struct {
 	ID int `json:"id"`
 }

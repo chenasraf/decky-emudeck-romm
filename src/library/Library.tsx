@@ -1161,8 +1161,11 @@ export function useGameDetail(id: number): GameDetail {
         actions.push({ label: 'Retry', run: get, disabled: busy || downloadOff })
         actions.push({ label: 'Dismiss', run: cancel, disabled: busy })
         break
-      case 'installed':
       case 'update_available':
+        actions.push({ label: 'Update', run: get, disabled: busy || downloadOff })
+        actions.push(...ownedActions(game))
+        break
+      case 'installed':
         actions.push(...ownedActions(game))
         break
       case 'on_deck':

@@ -95,7 +95,7 @@ func TestQueueRoundTrip(t *testing.T) {
 
 	at := time.Date(2026, 10, 13, 8, 0, 0, 123, time.UTC)
 	first := domain.QueuedDownload{ROMID: 9, PlatformID: 1, PlatformName: "SNES", Name: "Chrono Trigger", TotalBytes: 100}
-	second := domain.QueuedDownload{ROMID: 3, PlatformID: 1, PlatformName: "SNES", Name: "Super Metroid", TotalBytes: 50}
+	second := domain.QueuedDownload{ROMID: 3, PlatformID: 1, PlatformName: "SNES", Name: "Super Metroid", TotalBytes: 50, Update: true}
 	for _, d := range []domain.QueuedDownload{first, second} {
 		if err := s.SaveQueued(ctx, d); err != nil {
 			t.Fatal(err)

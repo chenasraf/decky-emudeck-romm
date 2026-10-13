@@ -2,8 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -79,6 +83,96 @@ func (d *Downloads) CheckUpdates(ctx context.Context, ids []int) error {
 		d.announceOwnership(OwnershipChange{ROMID: id, Name: d.gameName(ctx, id), State: state, Kind: OwnershipUpdate})
 	}
 	return nil
+}
+
+// recorded says whether a queued download already landed: the backend stopped between recording
+// it and taking it out of the queue. An update has landed once its record no longer has an update.
+func (d *Downloads) recorded(ctx context.Context, q domain.QueuedDownload) bool {
+	if _, owned, err := d.store.Owned(ctx, q.ROMID); err != nil || !owned {
+		return false
+	}
+	if !q.Update {
+		return true
+	}
+	updates, err := d.store.UpdateIDs(ctx)
+	return err == nil && !slices.Contains(updates, q.ROMID)
+}
+
+// checkTarget fails when something other than the files an update replaces is at path.
+func checkTarget(path string, old []domain.PlacedFile) error {
+	if replaces(path, old) {
+		return nil
+	}
+	return checkFree(path)
+}
+
+// replaces says whether path is one of old, or a folder holding one of them.
+func replaces(path string, old []domain.PlacedFile) bool {
+	return slices.ContainsFunc(old, func(f domain.PlacedFile) bool {
+		return f.Path == path || strings.HasPrefix(f.Path, path+string(filepath.Separator))
+	})
+}
+
+// newSuffix marks an update's file beside the one it replaces, until the swap.
+const newSuffix = ".romm-new"
+
+// swap moves an update's staged files into dir in place of old. Each lands beside its target first,
+// copied there when staging is on another drive, so the swap itself is one rename per file and the
+// game is never half-written. Old files the update no longer has go only after. Nothing but old is
+// ever replaced; when anything else is in the way, or a file can't be moved beside its target, the
+// old version stays as it was.
+func (d *Downloads) swap(staged []stagedFile, dir string, old []domain.PlacedFile) ([]domain.PlacedFile, error) {
+	for _, f := range staged {
+		if err := checkTarget(filepath.Join(dir, f.Rel), old); err != nil {
+			return nil, err
+		}
+	}
+	var ready []string
+	unready := func() {
+		for _, p := range ready {
+			_ = os.Remove(p)
+		}
+	}
+	for _, f := range staged {
+		target := filepath.Join(dir, f.Rel)
+		tmp := target + newSuffix
+		err := os.MkdirAll(filepath.Dir(target), 0o755)
+		if err == nil {
+			// One left by an update that stopped partway.
+			err = os.Remove(tmp)
+			if errors.Is(err, os.ErrNotExist) {
+				err = nil
+			}
+		}
+		if err == nil {
+			err = moveFile(f.From, tmp)
+		}
+		if err != nil {
+			unready()
+			return nil, fmt.Errorf("move into %s: %w", dir, err)
+		}
+		ready = append(ready, tmp)
+	}
+
+	placed := make([]domain.PlacedFile, 0, len(staged))
+	kept := map[string]bool{}
+	for _, f := range staged {
+		target := filepath.Join(dir, f.Rel)
+		if err := os.Rename(target+newSuffix, target); err != nil {
+			// The files swapped so far are the update's; the record still lists the old ones, so the
+			// next library refresh finds the game changed and leaves it to the user.
+			return nil, fmt.Errorf("swap in %s: %w", target, err)
+		}
+		info, err := os.Stat(target)
+		if err != nil {
+			return nil, err
+		}
+		kept[target] = true
+		placed = append(placed, domain.PlacedFile{Path: target, SizeBytes: info.Size(), ModTime: info.ModTime().UTC(), SHA1: f.SHA1})
+	}
+	gone := slices.DeleteFunc(slices.Clone(old), func(f domain.PlacedFile) bool { return kept[f.Path] })
+	d.removeFiles(gone, dir)
+	return placed, nil
 }
 
 // SweepUpdates checks every Plugin-owned game for updates once a day, starting right away when

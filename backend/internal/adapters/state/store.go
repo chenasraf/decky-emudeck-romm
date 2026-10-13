@@ -92,6 +92,9 @@ CREATE TABLE meta (
 	value TEXT NOT NULL
 );
 `,
+	`
+ALTER TABLE download_queue ADD COLUMN is_update INTEGER NOT NULL DEFAULT 0;
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -382,15 +385,15 @@ func (s *Store) SaveQueued(ctx context.Context, d domain.QueuedDownload) error {
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO download_queue
 		(rom_id, position, platform_id, platform_name, name, total_bytes, failed, problem_kind, problem_message,
-		 file_id, file_size, file_modified)
-		VALUES (?, (SELECT COALESCE(MAX(position), 0) + 1 FROM download_queue), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 file_id, file_size, file_modified, is_update)
+		VALUES (?, (SELECT COALESCE(MAX(position), 0) + 1 FROM download_queue), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (rom_id) DO UPDATE SET
 			platform_id = excluded.platform_id, platform_name = excluded.platform_name, name = excluded.name,
 			total_bytes = excluded.total_bytes, failed = excluded.failed, problem_kind = excluded.problem_kind,
 			problem_message = excluded.problem_message, file_id = excluded.file_id, file_size = excluded.file_size,
-			file_modified = excluded.file_modified`,
+			file_modified = excluded.file_modified, is_update = excluded.is_update`,
 		d.ROMID, d.PlatformID, d.PlatformName, d.Name, d.TotalBytes, failed, kind, message,
-		d.Partial.FileID, d.Partial.SizeBytes, d.Partial.LastModified.UnixNano())
+		d.Partial.FileID, d.Partial.SizeBytes, d.Partial.LastModified.UnixNano(), d.Update)
 	return err
 }
 
@@ -403,7 +406,7 @@ func (s *Store) DeleteQueued(ctx context.Context, id int) error {
 // Queued returns the downloads in the queue, in queue order.
 func (s *Store) Queued(ctx context.Context) ([]domain.QueuedDownload, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT rom_id, platform_id, platform_name, name, total_bytes, failed,
-		problem_kind, problem_message, file_id, file_size, file_modified FROM download_queue ORDER BY position`)
+		problem_kind, problem_message, file_id, file_size, file_modified, is_update FROM download_queue ORDER BY position`)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +418,7 @@ func (s *Store) Queued(ctx context.Context) ([]domain.QueuedDownload, error) {
 		var kind, message string
 		var modified int64
 		if err := rows.Scan(&d.ROMID, &d.PlatformID, &d.PlatformName, &d.Name, &d.TotalBytes, &failed,
-			&kind, &message, &d.Partial.FileID, &d.Partial.SizeBytes, &modified); err != nil {
+			&kind, &message, &d.Partial.FileID, &d.Partial.SizeBytes, &modified, &d.Update); err != nil {
 			return nil, err
 		}
 		if failed {
