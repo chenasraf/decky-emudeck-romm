@@ -51,7 +51,9 @@ def install_decky_stub() -> types.ModuleType:
         setattr(decky, name, str(path))
         # The loader exports these to the plugin process, so the backend inherits them.
         os.environ[name] = str(path)
-    decky.DECKY_USER_HOME = os.environ["HOME"]
+    # A stand-in Deck home, so the backend looks for EmuDeck and ES-DE there rather than in this
+    # machine's real home. dev/fake-deck.sh fills it.
+    decky.DECKY_USER_HOME = os.environ.get("DEV_USER_HOME", str(DATA / "home"))
     # Every RPC call and RomM request, which the Deck's info level leaves out.
     os.environ.setdefault("BACKEND_LOG_LEVEL", "debug")
     decky.DECKY_PLUGIN_VERSION = json.loads((ROOT / "package.json").read_text())["version"]
