@@ -77,7 +77,8 @@ func (s *memStore) Platform(_ context.Context, id int) (domain.Platform, bool, e
 	return domain.Platform{}, false, nil
 }
 
-func (s *memStore) ROMs(_ context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error) {
+// ROMs sorts by id where the real store sorts by name, which the tests' names follow.
+func (s *memStore) ROMs(_ context.Context, platformID int, only *domain.IDFilter, order domain.ROMSort, offset, limit int) (domain.ROMPage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var all []domain.ROM
@@ -90,7 +91,18 @@ func (s *memStore) ROMs(_ context.Context, platformID int, only *domain.IDFilter
 		}
 		all = append(all, r)
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
+	sort.Slice(all, func(i, j int) bool {
+		a, b := all[i], all[j]
+		switch {
+		case order == domain.SortAdded && !a.CreatedAt.Equal(b.CreatedAt):
+			return a.CreatedAt.After(b.CreatedAt)
+		case order == domain.SortAdded:
+			return a.ID > b.ID
+		case order == domain.SortSize && a.SizeBytes != b.SizeBytes:
+			return a.SizeBytes > b.SizeBytes
+		}
+		return a.ID < b.ID
+	})
 	page := domain.ROMPage{Total: len(all)}
 	if offset < len(all) {
 		page.ROMs = all[offset:min(offset+limit, len(all))]
@@ -164,22 +176,6 @@ func (s *memStore) ROMsByID(_ context.Context, ids []int) ([]domain.ROM, error) 
 		}
 	}
 	return out, nil
-}
-
-func (s *memStore) Recent(_ context.Context, limit int) ([]domain.ROM, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var out []domain.ROM
-	for _, r := range s.roms {
-		out = append(out, r)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
-			return out[i].CreatedAt.After(out[j].CreatedAt)
-		}
-		return out[i].ID > out[j].ID
-	})
-	return out[:min(limit, len(out))], nil
 }
 
 func (s *memStore) CountByPlatform(_ context.Context, ids []int) (map[int]int, error) {
@@ -461,14 +457,14 @@ func TestCatalogCollections(t *testing.T) {
 		t.Fatalf("collections %+v", cols)
 	}
 
-	col, page, err := f.catalog.CollectionGames(ctx, fav, domain.FilterNotInstalled, 0, 10)
+	col, page, err := f.catalog.CollectionGames(ctx, fav, domain.FilterNotInstalled, domain.SortName, 0, 10)
 	if err != nil || col.Name != "Favorites" || page.Total != 1 || page.ROMs[0].ID != 1 {
 		t.Fatalf("not installed: %+v %+v, %v", col, page, err)
 	}
-	if _, page, _ := f.catalog.CollectionGames(ctx, fav, domain.FilterInstalled, 0, 10); page.Total != 1 || page.ROMs[0].ID != 2 {
+	if _, page, _ := f.catalog.CollectionGames(ctx, fav, domain.FilterInstalled, domain.SortName, 0, 10); page.Total != 1 || page.ROMs[0].ID != 2 {
 		t.Fatalf("installed: %+v", page)
 	}
-	if _, _, err := f.catalog.CollectionGames(ctx, domain.CollectionRef{Kind: domain.CollectionSmart, ID: 9}, domain.FilterAll, 0, 10); kindOf(err) != domain.KindNotFound {
+	if _, _, err := f.catalog.CollectionGames(ctx, domain.CollectionRef{Kind: domain.CollectionSmart, ID: 9}, domain.FilterAll, domain.SortName, 0, 10); kindOf(err) != domain.KindNotFound {
 		t.Fatalf("unknown collection: %v", err)
 	}
 }
@@ -491,20 +487,20 @@ func TestCatalogFilters(t *testing.T) {
 	f.refresh(t, false)
 	ctx := context.Background()
 
-	if _, page, err := f.catalog.Games(ctx, 1, domain.FilterAll, 0, 2); err != nil || page.Total != 3 || len(page.ROMs) != 2 {
+	if _, page, err := f.catalog.Games(ctx, 1, domain.FilterAll, domain.SortName, 0, 2); err != nil || page.Total != 3 || len(page.ROMs) != 2 {
 		t.Fatalf("all: %+v, %v", page, err)
 	}
-	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, 0, 2); page.Total != 0 {
+	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, domain.SortName, 0, 2); page.Total != 0 {
 		t.Fatalf("installed: %+v", page)
 	}
 
 	f.states[2] = domain.StateInstalled
 	f.states[3] = domain.StateDownloading
-	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, 0, 10); page.Total != 1 || page.ROMs[0].ID != 2 {
+	if _, page, _ := f.catalog.Games(ctx, 1, domain.FilterInstalled, domain.SortName, 0, 10); page.Total != 1 || page.ROMs[0].ID != 2 {
 		t.Fatalf("installed: %+v", page)
 	}
 	// A game still downloading isn't installed yet.
-	_, page, _ := f.catalog.Games(ctx, 1, domain.FilterNotInstalled, 0, 10)
+	_, page, _ := f.catalog.Games(ctx, 1, domain.FilterNotInstalled, domain.SortName, 0, 10)
 	if page.Total != 2 || domain.StateOf(page.States, 3) != domain.StateDownloading || domain.StateOf(page.States, 1) != domain.StateOnRomM {
 		t.Fatalf("not installed: %+v", page)
 	}
@@ -514,7 +510,7 @@ func TestCatalogFilters(t *testing.T) {
 	if _, _, state, _ := f.catalog.Game(ctx, 2); state != domain.StateInstalled {
 		t.Fatalf("game state %s", state)
 	}
-	if _, _, err := f.catalog.Games(ctx, 99, domain.FilterAll, 0, 2); kindOf(err) != domain.KindNotFound {
+	if _, _, err := f.catalog.Games(ctx, 99, domain.FilterAll, domain.SortName, 0, 2); kindOf(err) != domain.KindNotFound {
 		t.Fatalf("unknown platform: %v", err)
 	}
 }

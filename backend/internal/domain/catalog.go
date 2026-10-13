@@ -103,6 +103,17 @@ const (
 	FilterUpdates      ROMFilter = "updates"
 )
 
+// ROMSort orders a game list. The zero value sorts by name.
+type ROMSort string
+
+const (
+	SortName ROMSort = "name"
+	// SortAdded puts the games added to the Server last first.
+	SortAdded ROMSort = "added"
+	// SortSize puts the largest games first.
+	SortSize ROMSort = "size"
+)
+
 // CatalogSync is what one sync with the Server brings to the Catalog.
 type CatalogSync struct {
 	Platforms []Platform

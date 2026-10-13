@@ -56,23 +56,23 @@ func TestFullThenDeltaSync(t *testing.T) {
 	if err != nil || len(ps) != 1 || ps[0].Games != 3 || ps[0].Name != "Game Boy Advance" {
 		t.Fatalf("platforms %+v, %v", ps, err)
 	}
-	page, err := s.ROMs(ctx, 1, nil, 0, 2)
+	page, err := s.ROMs(ctx, 1, nil, domain.SortName, 0, 2)
 	if err != nil || page.Total != 3 || len(page.ROMs) != 2 || page.ROMs[0].Name != "Advance Wars" || page.ROMs[1].Name != "metroid" {
 		t.Fatalf("first page %+v, %v", page, err)
 	}
-	if page, _ := s.ROMs(ctx, 1, nil, 2, 2); len(page.ROMs) != 1 || page.ROMs[0].Name != "zelda" {
+	if page, _ := s.ROMs(ctx, 1, nil, domain.SortName, 2, 2); len(page.ROMs) != 1 || page.ROMs[0].Name != "zelda" {
 		t.Fatalf("second page %+v", page)
 	}
-	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{IDs: []int{3, 99}}, 0, 10); page.Total != 1 || page.ROMs[0].Name != "metroid" {
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{IDs: []int{3, 99}}, domain.SortName, 0, 10); page.Total != 1 || page.ROMs[0].Name != "metroid" {
 		t.Fatalf("only ids %+v", page)
 	}
-	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{IDs: []int{3}, Exclude: true}, 0, 10); page.Total != 2 {
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{IDs: []int{3}, Exclude: true}, domain.SortName, 0, 10); page.Total != 2 {
 		t.Fatalf("excluding ids %+v", page)
 	}
-	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{Exclude: true}, 0, 10); page.Total != 3 {
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{Exclude: true}, domain.SortName, 0, 10); page.Total != 3 {
 		t.Fatalf("excluding no ids %+v", page)
 	}
-	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{}, 0, 10); page.Total != 0 {
+	if page, _ := s.ROMs(ctx, 1, &domain.IDFilter{}, domain.SortName, 0, 10); page.Total != 0 {
 		t.Fatalf("only no ids %+v", page)
 	}
 	if counts, err := s.CountByPlatform(ctx, []int{1, 3, 99}); err != nil || counts[1] != 2 || len(counts) != 1 {
@@ -136,7 +136,7 @@ func TestCollections(t *testing.T) {
 		t.Fatalf("smart %+v %v %v", c, ok, err)
 	}
 	// Platform zero lists every platform.
-	if page, _ := s.ROMs(ctx, 0, &domain.IDFilter{IDs: cols[0].ROMIDs}, 0, 10); page.Total != 2 || page.ROMs[0].Name != "Advance Wars" {
+	if page, _ := s.ROMs(ctx, 0, &domain.IDFilter{IDs: cols[0].ROMIDs}, domain.SortName, 0, 10); page.Total != 2 || page.ROMs[0].Name != "Advance Wars" {
 		t.Fatalf("collection page %+v", page)
 	}
 
@@ -215,26 +215,47 @@ func TestSearch(t *testing.T) {
 	}
 }
 
-func TestRecent(t *testing.T) {
+func TestSorts(t *testing.T) {
 	ctx := context.Background()
 	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
-	roms := []domain.ROM{rom(1, 1, "a"), rom(2, 1, "b"), rom(3, 1, "c"), rom(4, 1, "d")}
+	roms := []domain.ROM{rom(1, 1, "d"), rom(2, 1, "b"), rom(3, 1, "C"), rom(4, 1, "a")}
 	// 2 was added last; 3 and 4 have no time and come after, highest id first.
 	roms[0].CreatedAt = time.Unix(100, 0).UTC()
 	roms[1].CreatedAt = time.Unix(200, 0).UTC()
+	// 3 is largest; 1 and 2 tie and fall back to name.
+	roms[2].SizeBytes = 4096
 	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms, ROMs: roms, Full: true, At: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Recent(ctx, 3)
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		sort domain.ROMSort
+		want []int
+	}{
+		{"", []int{4, 2, 3, 1}},
+		{domain.SortName, []int{4, 2, 3, 1}},
+		{domain.SortAdded, []int{2, 1, 4, 3}},
+		{domain.SortSize, []int{3, 4, 2, 1}},
+	} {
+		page, err := s.ROMs(ctx, 1, nil, tc.sort, 0, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []int
+		for _, r := range page.ROMs {
+			ids = append(ids, r.ID)
+		}
+		if !slices.Equal(ids, tc.want) {
+			t.Errorf("sort %q: %v, want %v", tc.sort, ids, tc.want)
+		}
 	}
-	var ids []int
-	for _, r := range got {
-		ids = append(ids, r.ID)
+	// Paging a sort with ties never repeats a game.
+	first, _ := s.ROMs(ctx, 1, nil, domain.SortSize, 0, 2)
+	second, _ := s.ROMs(ctx, 1, nil, domain.SortSize, 2, 2)
+	if first.ROMs[1].ID != 4 || second.ROMs[0].ID != 2 {
+		t.Fatalf("pages: %+v %+v", first.ROMs, second.ROMs)
 	}
-	if !slices.Equal(ids, []int{2, 1, 4}) || !got[0].CreatedAt.Equal(roms[1].CreatedAt) || !got[2].CreatedAt.IsZero() {
-		t.Fatalf("recent: %v %+v", ids, got)
+	if !first.ROMs[0].CreatedAt.IsZero() || !second.ROMs[0].CreatedAt.Equal(roms[1].CreatedAt) {
+		t.Fatal("created_at didn't round-trip")
 	}
 }
 

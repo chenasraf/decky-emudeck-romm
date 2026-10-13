@@ -150,7 +150,7 @@ func (d *Downloads) batchROMs(ctx context.Context, b Batch) (string, []domain.RO
 	}
 	var roms []domain.ROM
 	for offset := 0; ; offset += batchPage {
-		page, err := d.catalog.ROMs(ctx, b.PlatformID, nil, offset, batchPage)
+		page, err := d.catalog.ROMs(ctx, b.PlatformID, nil, domain.SortName, offset, batchPage)
 		if err != nil {
 			return "", nil, err
 		}

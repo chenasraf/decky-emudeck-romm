@@ -407,6 +407,16 @@ export const GameFilterAll: GameFilter = "all";
 export const GameFilterInstalled: GameFilter = "installed";
 export const GameFilterNotInstalled: GameFilter = "not_installed";
 export const GameFilterUpdates: GameFilter = "updates";
+export type GameSort = string;
+export const GameSortName: GameSort = "name";
+/**
+ * GameSortAdded puts the games added to RomM last first.
+ */
+export const GameSortAdded: GameSort = "added";
+/**
+ * GameSortSize puts the largest games first.
+ */
+export const GameSortSize: GameSort = "size";
 export type CollectionKind = string;
 /**
  * CollectionRegular is a collection a user put games in by hand.
@@ -450,6 +460,10 @@ export interface ListGamesParams {
   platformId?: number /* int */;
   collection?: CollectionRef;
   filter?: GameFilter;
+  /**
+   * Sort is empty for by name.
+   */
+  sort?: GameSort;
   offset?: number /* int */;
   /**
    * Limit is capped at 200; zero means 50.

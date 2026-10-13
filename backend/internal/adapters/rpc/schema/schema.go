@@ -340,6 +340,16 @@ const (
 	GameFilterUpdates      GameFilter = "updates"
 )
 
+type GameSort string
+
+const (
+	GameSortName GameSort = "name"
+	// GameSortAdded puts the games added to RomM last first.
+	GameSortAdded GameSort = "added"
+	// GameSortSize puts the largest games first.
+	GameSortSize GameSort = "size"
+)
+
 type CollectionKind string
 
 const (
@@ -378,7 +388,9 @@ type ListGamesParams struct {
 	PlatformID int            `json:"platformId,omitempty"`
 	Collection *CollectionRef `json:"collection,omitempty"`
 	Filter     GameFilter     `json:"filter,omitempty"`
-	Offset     int            `json:"offset,omitempty"`
+	// Sort is empty for by name.
+	Sort   GameSort `json:"sort,omitempty"`
+	Offset int      `json:"offset,omitempty"`
 	// Limit is capped at 200; zero means 50.
 	Limit int `json:"limit,omitempty"`
 }

@@ -380,9 +380,17 @@ func (s *Store) Counts(ctx context.Context) (platforms, roms int, err error) {
 
 const romColumns = "id, platform_id, name, file_name, extension, size_bytes, regions, revision, multi_file, created_at, updated_at, cover_small, cover_large"
 
-// ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, by name,
-// narrowed by only when it isn't nil.
-func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error) {
+// romOrder is each sort's ORDER BY, each ending in id so pages never overlap. ROMs the Server gave
+// no added time hold 0, so they come after the rest, highest id first.
+var romOrder = map[domain.ROMSort]string{
+	domain.SortName:  "name COLLATE NOCASE, id",
+	domain.SortAdded: "created_at DESC, id DESC",
+	domain.SortSize:  "size_bytes DESC, name COLLATE NOCASE, id",
+}
+
+// ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, in sort's
+// order, narrowed by only when it isn't nil.
+func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter, sort domain.ROMSort, offset, limit int) (domain.ROMPage, error) {
 	var page domain.ROMPage
 	where := "platform_id = ?"
 	args := []any{platformID}
@@ -405,8 +413,12 @@ func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter,
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM roms WHERE "+where, args...).Scan(&page.Total); err != nil {
 		return page, err
 	}
+	order, ok := romOrder[sort]
+	if !ok {
+		order = romOrder[domain.SortName]
+	}
 	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms WHERE "+where+
-		" ORDER BY name COLLATE NOCASE, id LIMIT ? OFFSET ?", append(args, limit, offset)...)
+		" ORDER BY "+order+" LIMIT ? OFFSET ?", append(args, limit, offset)...)
 	if err != nil {
 		return page, err
 	}
@@ -419,16 +431,6 @@ func (s *Store) ROMs(ctx context.Context, platformID int, only *domain.IDFilter,
 		page.ROMs = append(page.ROMs, r)
 	}
 	return page, rows.Err()
-}
-
-// Recent returns the limit ROMs added to the Server last, newest first. ROMs the Server gave no
-// time for come after, highest id first.
-func (s *Store) Recent(ctx context.Context, limit int) ([]domain.ROM, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+romColumns+" FROM roms ORDER BY created_at DESC, id DESC LIMIT ?", limit)
-	if err != nil {
-		return nil, err
-	}
-	return scanROMs(rows)
 }
 
 // Search returns up to q.Limit ROMs, from q's platform or every platform, whose name or file name

@@ -63,13 +63,13 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 		out := schema.ListGamesResult{Games: []schema.GameSummary{}}
 		var page domain.ROMPage
 		if p.Collection != nil {
-			col, colPage, err := catalog.CollectionGames(ctx, fromWireCollection(*p.Collection), filter, offset, limit)
+			col, colPage, err := catalog.CollectionGames(ctx, fromWireCollection(*p.Collection), filter, domain.ROMSort(p.Sort), offset, limit)
 			if err != nil {
 				return schema.ListGamesResult{}, wireError(err)
 			}
 			out.Name, page = col.Name, colPage
 		} else {
-			platform, platPage, err := catalog.Games(ctx, p.PlatformID, filter, offset, limit)
+			platform, platPage, err := catalog.Games(ctx, p.PlatformID, filter, domain.ROMSort(p.Sort), offset, limit)
 			if err != nil {
 				return schema.ListGamesResult{}, wireError(err)
 			}

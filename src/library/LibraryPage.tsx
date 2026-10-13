@@ -4,37 +4,33 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from 'react'
 import { call } from '../backend'
 import { refreshLibrary, useCatalog } from '../catalog'
 import { SETUP_ROUTE, useConnection } from '../connection'
-import { Cover } from '../covers'
 import { percent, useDownloads } from '../downloads'
 import type {
   GameFilter,
-  GameSummary,
+  GameSort,
   LibraryShelves,
   PlatformSummary,
   Error as RpcError,
 } from '../rpc/schema.gen'
 import { asRpcError, ErrorBox, muted, routeScroll } from '../setup/common'
-import { downloadLabel, GamesView, GameView, OfflineBanner, stateLabel, useSearch } from './Library'
+import { downloadLabel, GameView, OfflineBanner, useSearch } from './Library'
+import { PlatformGrid } from './PlatformGrid'
+import { ActionTile, GameTile, grid, Tile, tileCss } from './tiles'
 
 /** How many games each shelf shows; a platform's shelf ends in a See all tile for the rest. */
 const SHELF_SIZE = 8
 
-/** Where the library is: its home of shelves, a platform's full list, or a game. */
+/** Where the library is: its home of shelves, a platform's grid, or a game. */
 type Place =
   | { name: 'home' }
-  | { name: 'platform'; platform: PlatformSummary; filter: GameFilter; game?: number }
+  | {
+      name: 'platform'
+      platform: PlatformSummary
+      filter: GameFilter
+      sort: GameSort
+      game?: number
+    }
   | { name: 'game'; id: number }
-
-const TILE_WIDTH = 140
-
-// Steam's focus engine marks the focused element with focusClassName; :focus covers a mouse and
-// keyboard in the dev shell.
-const css = `
-.erm-tile { outline: none; transition: transform 0.1s; }
-.erm-tile.erm-focus, .erm-tile:focus-visible { transform: scale(1.05); }
-.erm-tile.erm-focus .erm-art, .erm-tile:focus-visible .erm-art { box-shadow: 0 0 0 3px #fff; }
-.erm-row::-webkit-scrollbar { display: none; }
-`
 
 const pageStyle: CSSProperties = { ...routeScroll, padding: '16px 0 48px', color: '#dcdedf' }
 const header: CSSProperties = {
@@ -59,88 +55,7 @@ const shelfRow: CSSProperties = {
   scrollbarWidth: 'none',
   padding: '10px 32px 14px',
 }
-const tile: CSSProperties = { flex: 'none', width: TILE_WIDTH, cursor: 'pointer' }
-const art: CSSProperties = {
-  position: 'relative',
-  width: TILE_WIDTH,
-  aspectRatio: '3 / 4',
-  borderRadius: 4,
-  overflow: 'hidden',
-}
-const coverFill: CSSProperties = { width: '100%', height: '100%', borderRadius: 0 }
-const tileName: CSSProperties = {
-  marginTop: 6,
-  fontSize: 13,
-  color: '#fff',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-}
-const tileSub: CSSProperties = { ...tileName, marginTop: 2, fontSize: 11, color: '#8b929a' }
-const progressTrack: CSSProperties = {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  bottom: 0,
-  height: 6,
-  background: 'rgba(0, 0, 0, 0.6)',
-}
-const seeAll: CSSProperties = {
-  ...art,
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 6,
-  background: '#1a2029',
-  fontWeight: 600,
-  textAlign: 'center',
-}
-const grid: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 14, padding: '10px 32px' }
 const column: CSSProperties = { maxWidth: 720, padding: '0 16px' }
-
-/** Keeps the focused tile in view as the D-pad moves along a shelf. */
-function reveal(el: Element) {
-  el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
-}
-
-function Tile({
-  name,
-  sub,
-  cover,
-  progress,
-  onOpen,
-}: {
-  name: string
-  sub?: string
-  /** The game whose cover fills the tile. */
-  cover?: { id: number; hasCover: boolean }
-  /** A running download's percentage, drawn over the cover's foot. */
-  progress?: number
-  onOpen: () => void
-}) {
-  return (
-    <Focusable
-      className="erm-tile"
-      focusClassName="erm-focus"
-      style={tile}
-      onActivate={onOpen}
-      onClick={onOpen}
-      onGamepadFocus={(e) => reveal(e.currentTarget as Element)}
-    >
-      <div className="erm-art" style={art}>
-        {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} style={coverFill} />}
-        {progress !== undefined && (
-          <div style={progressTrack}>
-            <div style={{ width: `${progress}%`, height: '100%', background: '#1a9fff' }} />
-          </div>
-        )}
-      </div>
-      <div style={tileName}>{name}</div>
-      {sub && <div style={tileSub}>{sub}</div>}
-    </Focusable>
-  )
-}
 
 function Shelf({
   title,
@@ -194,12 +109,6 @@ function useShelves(): { shelves: LibraryShelves | null; error: RpcError | null 
   return { shelves, error }
 }
 
-/** A game tile's second line: its platform where the shelf mixes them, and its state. */
-function subOf(game: GameSummary, label: string | null, withPlatform: boolean): string | undefined {
-  const parts = [withPlatform ? game.platformName : undefined, label ?? undefined]
-  return parts.filter(Boolean).join(' · ') || undefined
-}
-
 function Shelves({
   onGame,
   onPlatform,
@@ -209,20 +118,6 @@ function Shelves({
 }) {
   const downloads = useDownloads()
   const { shelves, error } = useShelves()
-
-  const gameTile = (g: GameSummary, withPlatform: boolean) => {
-    const d = downloads.items.find((i) => i.id === g.id)
-    return (
-      <Tile
-        key={g.id}
-        name={g.name}
-        sub={subOf(g, stateLabel(g, downloads), withPlatform)}
-        cover={g}
-        progress={d?.state === 'downloading' && !d.converting ? percent(d) : undefined}
-        onOpen={() => onGame(g.id)}
-      />
-    )
-  }
 
   return (
     <>
@@ -246,14 +141,20 @@ function Shelves({
         </Shelf>
       )}
       {shelves && shelves.recent.length > 0 && (
-        <Shelf title="Recently added">{shelves.recent.map((g) => gameTile(g, true))}</Shelf>
+        <Shelf title="Recently added">
+          {shelves.recent.map((g) => (
+            <GameTile key={g.id} game={g} withPlatform onOpen={() => onGame(g.id)} />
+          ))}
+        </Shelf>
       )}
       {shelves && shelves.installed.length > 0 && (
         <Shelf
           title="Installed on this Deck"
           detail={shelves.installedTotal === 1 ? '1 game' : `${shelves.installedTotal} games`}
         >
-          {shelves.installed.map((g) => gameTile(g, true))}
+          {shelves.installed.map((g) => (
+            <GameTile key={g.id} game={g} withPlatform onOpen={() => onGame(g.id)} />
+          ))}
         </Shelf>
       )}
       {shelves?.platforms.map(({ platform, games }) => (
@@ -262,23 +163,15 @@ function Shelves({
           title={platform.name}
           detail={`${platform.installed}/${platform.games} installed`}
         >
-          {games.map((g) => gameTile(g, false))}
+          {games.map((g) => (
+            <GameTile key={g.id} game={g} onOpen={() => onGame(g.id)} />
+          ))}
           {platform.games > games.length && (
-            <Focusable
-              className="erm-tile"
-              focusClassName="erm-focus"
-              style={tile}
-              onActivate={() => onPlatform(platform)}
-              onClick={() => onPlatform(platform)}
-              onGamepadFocus={(e) => reveal(e.currentTarget as Element)}
-            >
-              <div className="erm-art" style={seeAll}>
-                <span>See all {platform.games} →</span>
-                <span style={{ fontSize: 11, fontWeight: 400, color: '#8b929a' }}>
-                  filter · download all
-                </span>
-              </div>
-            </Focusable>
+            <ActionTile
+              label={`See all ${platform.games} →`}
+              detail="filter · sort · download all"
+              onOpen={() => onPlatform(platform)}
+            />
           )}
         </Shelf>
       ))}
@@ -287,7 +180,6 @@ function Shelves({
 }
 
 function SearchResults({ query, onGame }: { query: string; onGame: (id: number) => void }) {
-  const downloads = useDownloads()
   const search = useSearch(query)
   const games = search.result?.games ?? []
 
@@ -308,13 +200,7 @@ function SearchResults({ query, onGame }: { query: string; onGame: (id: number) 
       )}
       <Focusable style={grid}>
         {games.map((g) => (
-          <Tile
-            key={g.id}
-            name={g.name}
-            sub={subOf(g, stateLabel(g, downloads), true)}
-            cover={g}
-            onOpen={() => onGame(g.id)}
-          />
+          <GameTile key={g.id} game={g} withPlatform onOpen={() => onGame(g.id)} />
         ))}
       </Focusable>
     </>
@@ -396,7 +282,9 @@ export function LibraryPage() {
         <div style={{ display: searching && query.trim() !== '' ? 'none' : undefined }}>
           <Shelves
             onGame={(id) => setPlace({ name: 'game', id })}
-            onPlatform={(platform) => setPlace({ name: 'platform', platform, filter: 'all' })}
+            onPlatform={(platform) =>
+              setPlace({ name: 'platform', platform, filter: 'all', sort: 'name' })
+            }
           />
         </div>
         {searching && query.trim() !== '' && (
@@ -414,7 +302,7 @@ export function LibraryPage() {
       onOptionsButton={openSearch}
       onOptionsActionDescription="Search"
     >
-      <style>{css}</style>
+      <style>{tileCss}</style>
       {/* Kept mounted while a platform or game is open, so Back returns to the same shelf. */}
       <div style={{ display: home ? undefined : 'none' }}>
         <Focusable style={header} flow-children="horizontal">
@@ -442,19 +330,24 @@ export function LibraryPage() {
         {body}
       </div>
       {place.name === 'platform' && (
-        <div style={column}>
-          {/* Kept mounted while a game is open, so Back returns to the same place in the list. */}
+        <>
+          {/* Kept mounted while a game is open, so Back returns to the same place in the grid. */}
           <div style={{ display: place.game === undefined ? undefined : 'none' }}>
-            <GamesView
-              source={{ kind: 'platform', platform: place.platform }}
+            <PlatformGrid
+              platform={place.platform}
               filter={place.filter}
-              onFilter={(filter) => setPlace({ ...place, filter })}
-              onBack={back}
-              onOpen={(game) => setPlace({ ...place, game: game.id })}
+              sort={place.sort}
+              onFilter={(filter) => setPlace((p) => ({ ...p, filter }))}
+              onSort={(sort) => setPlace((p) => ({ ...p, sort }))}
+              onGame={(game) => setPlace({ ...place, game: game.id })}
             />
           </div>
-          {place.game !== undefined && <GameView id={place.game} onBack={back} />}
-        </div>
+          {place.game !== undefined && (
+            <div style={column}>
+              <GameView id={place.game} onBack={back} />
+            </div>
+          )}
+        </>
       )}
       {place.name === 'game' && (
         <div style={column}>

@@ -308,7 +308,7 @@ export function CollectionsView({
   )
 }
 
-const FILTERS: { filter: GameFilter; label: string }[] = [
+export const FILTERS: { filter: GameFilter; label: string }[] = [
   { filter: 'all', label: 'All' },
   { filter: 'installed', label: 'Installed' },
   { filter: 'not_installed', label: 'Not installed' },
@@ -389,7 +389,7 @@ function KeepArchivesToggle({
  * that differ from RomM's, which the plugin leaves alone. With nudge, only what needs the user's
  * attention shows.
  */
-function BiosSection({ platformId, nudge }: { platformId: number; nudge?: boolean }) {
+export function BiosSection({ platformId, nudge }: { platformId: number; nudge?: boolean }) {
   const { bios } = usePlatformBios(platformId)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<RpcError | null>(null)
@@ -865,7 +865,7 @@ function games(n: number): string {
  * Asks before queueing every missing game of a platform, with how many and how big. When they don't
  * all fit, offers to queue the ones that do, taken by name.
  */
-async function confirmDownloadAll(
+export async function confirmDownloadAll(
   source: { platformId?: number; collection?: CollectionRef },
   onError: (e: RpcError) => void,
 ) {

@@ -47,9 +47,9 @@ type CatalogStore interface {
 	Apply(ctx context.Context, sync domain.CatalogSync) error
 	Platforms(ctx context.Context) ([]domain.PlatformSummary, error)
 	Platform(ctx context.Context, id int) (domain.Platform, bool, error)
-	// ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, narrowed
-	// by only when it isn't nil.
-	ROMs(ctx context.Context, platformID int, only *domain.IDFilter, offset, limit int) (domain.ROMPage, error)
+	// ROMs returns a page of a platform's ROMs, or every platform's when platformID is zero, in
+	// sort's order, narrowed by only when it isn't nil.
+	ROMs(ctx context.Context, platformID int, only *domain.IDFilter, sort domain.ROMSort, offset, limit int) (domain.ROMPage, error)
 	// Collections lists the collections, each with the ROMIDs the Catalog holds.
 	Collections(ctx context.Context) ([]domain.Collection, error)
 	Collection(ctx context.Context, ref domain.CollectionRef) (domain.Collection, bool, error)
@@ -60,8 +60,6 @@ type CatalogStore interface {
 	Search(ctx context.Context, q domain.SearchQuery) ([]domain.ROM, error)
 	// ROMsByID returns the ROMs with ids in their order, skipping any the Catalog doesn't hold.
 	ROMsByID(ctx context.Context, ids []int) ([]domain.ROM, error)
-	// Recent returns the limit ROMs added to the Server last, newest first.
-	Recent(ctx context.Context, limit int) ([]domain.ROM, error)
 	Counts(ctx context.Context) (platforms, roms int, err error)
 }
 
@@ -282,8 +280,8 @@ func (c *Catalog) Platforms(ctx context.Context) ([]domain.PlatformSummary, erro
 	return platforms, nil
 }
 
-// Games returns a page of a platform's games that match filter.
-func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFilter, offset, limit int) (domain.Platform, domain.ROMPage, error) {
+// Games returns a page of a platform's games that match filter, in sort's order.
+func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFilter, sort domain.ROMSort, offset, limit int) (domain.Platform, domain.ROMPage, error) {
 	platform, ok, err := c.store.Platform(ctx, platformID)
 	if err != nil {
 		return platform, domain.ROMPage{}, err
@@ -305,7 +303,7 @@ func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFi
 	case domain.FilterNotInstalled:
 		only = &domain.IDFilter{IDs: installedIDs(states), Exclude: true}
 	}
-	page, err := c.store.ROMs(ctx, platformID, only, offset, limit)
+	page, err := c.store.ROMs(ctx, platformID, only, sort, offset, limit)
 	page.States = states
 	return platform, page, err
 }
@@ -343,8 +341,9 @@ func (c *Catalog) PlatformName(ctx context.Context, id int) string {
 	return p.Name
 }
 
-// CollectionGames returns a page of a collection's games that match filter, across platforms.
-func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef, filter domain.ROMFilter, offset, limit int) (domain.Collection, domain.ROMPage, error) {
+// CollectionGames returns a page of a collection's games that match filter, across platforms, in
+// sort's order.
+func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef, filter domain.ROMFilter, sort domain.ROMSort, offset, limit int) (domain.Collection, domain.ROMPage, error) {
 	col, ok, err := c.store.Collection(ctx, ref)
 	if err != nil {
 		return col, domain.ROMPage{}, err
@@ -370,7 +369,7 @@ func (c *Catalog) CollectionGames(ctx context.Context, ref domain.CollectionRef,
 			ids = append(ids, id)
 		}
 	}
-	page, err := c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: ids}, offset, limit)
+	page, err := c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: ids}, sort, offset, limit)
 	page.States = states
 	return col, page, err
 }
@@ -384,10 +383,12 @@ func (c *Catalog) Shelves(ctx context.Context, perShelf int) (domain.Shelves, er
 		return out, err
 	}
 	out.States = states
-	if out.Recent, err = c.store.Recent(ctx, perShelf); err != nil {
+	recent, err := c.store.ROMs(ctx, 0, nil, domain.SortAdded, 0, perShelf)
+	if err != nil {
 		return out, err
 	}
-	if out.Installed, err = c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: installedIDs(states)}, 0, perShelf); err != nil {
+	out.Recent = recent.ROMs
+	if out.Installed, err = c.store.ROMs(ctx, 0, &domain.IDFilter{IDs: installedIDs(states)}, domain.SortName, 0, perShelf); err != nil {
 		return out, err
 	}
 	platforms, err := c.Platforms(ctx)
@@ -397,7 +398,7 @@ func (c *Catalog) Shelves(ctx context.Context, perShelf int) (domain.Shelves, er
 	out.PlatformNames = map[int]string{}
 	for _, p := range platforms {
 		out.PlatformNames[p.ID] = p.Name
-		page, err := c.store.ROMs(ctx, p.ID, nil, 0, perShelf)
+		page, err := c.store.ROMs(ctx, p.ID, nil, domain.SortName, 0, perShelf)
 		if err != nil {
 			return out, err
 		}
