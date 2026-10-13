@@ -272,3 +272,29 @@ func TestMigrationBacksUpAndKeepsThree(t *testing.T) {
 		t.Fatal("backup lost the record")
 	}
 }
+
+func TestForgetServerDropsEveryRecord(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+	if err := s.SaveOwned(ctx, domain.OwnedROM{ROMID: 1, Files: []domain.PlacedFile{{Path: "/e/roms/snes/a.sfc"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveLinked(ctx, domain.LinkedGame{ROMID: 2, Path: "/e/roms/snes/b.sfc"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveQueued(ctx, domain.QueuedDownload{ROMID: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveOwnedBIOS(ctx, domain.OwnedBIOS{FirmwareID: 4, PlatformID: 1, File: domain.PlacedFile{Path: "/e/bios/x.bin"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ForgetServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM owned_roms) + (SELECT COUNT(*) FROM owned_files) +
+		(SELECT COUNT(*) FROM linked_games) + (SELECT COUNT(*) FROM download_queue) + (SELECT COUNT(*) FROM owned_bios)`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("%d rows left, %v", rows, err)
+	}
+}

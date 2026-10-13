@@ -219,6 +219,14 @@ func (f fixedStates) Rematch(_ context.Context, present, _ map[int]bool) ([]int,
 	return out, nil
 }
 
+func (s *memStore) Clear(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.platforms, s.collections, s.roms = nil, nil, nil
+	s.cursor, s.syncedAt = time.Time{}, time.Time{}
+	return nil
+}
+
 func (s *memStore) Counts(context.Context) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

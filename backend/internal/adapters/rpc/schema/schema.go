@@ -73,6 +73,8 @@ type Methods struct {
 	SignInWithPassword  Method[SignInWithPasswordParams, ConnectionStatus]           `json:"sign_in_with_password"`
 	StartDevicePairing  Method[StartDevicePairingParams, DevicePairing]              `json:"start_device_pairing"`
 	CancelDevicePairing Method[CancelDevicePairingParams, CancelDevicePairingResult] `json:"cancel_device_pairing"`
+	MoveServer          Method[MoveServerParams, MoveServerResult]                   `json:"move_server"`
+	ForgetServer        Method[ForgetServerParams, ConnectionStatus]                 `json:"forget_server"`
 	InstallState        Method[InstallStateParams, InstallState]                     `json:"install_state"`
 	CatalogStatus       Method[CatalogStatusParams, CatalogStatus]                   `json:"catalog_status"`
 	RefreshCatalog      Method[RefreshCatalogParams, CatalogStatus]                  `json:"refresh_catalog"`
@@ -209,6 +211,26 @@ type SignInWithPasswordParams struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
+
+// MoveServerParams points the plugin at the same RomM at a new address, as check_server found it.
+// The sign-in and every record carry over, once the new address proves to be the same server.
+type MoveServerParams struct {
+	Server Server `json:"server"`
+}
+
+type MoveServerResult struct {
+	// Moved is set when the plugin now talks to the new address. When it isn't, nothing changed.
+	Moved bool `json:"moved"`
+	// Checked is how many of this Deck's games were looked up at the new address.
+	Checked int `json:"checked"`
+	// Why says why the new address looks like a different server, set when it wasn't moved to.
+	Why    string            `json:"why,omitempty"`
+	Status *ConnectionStatus `json:"status,omitempty"`
+}
+
+// ForgetServerParams drops the sign-in, the library and every record tied to the server,
+// cancelling queued downloads. Files on disk stay, User-managed.
+type ForgetServerParams struct{}
 
 type StartDevicePairingParams struct {
 	Server Server `json:"server"`

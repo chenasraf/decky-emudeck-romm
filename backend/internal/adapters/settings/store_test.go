@@ -60,6 +60,33 @@ func TestKeepArchives(t *testing.T) {
 	}
 }
 
+func TestForgetSignInKeepsOtherSettings(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if err := s.SaveSignIn(domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetKeepArchives("snes", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ForgetSignIn(); err != nil {
+		t.Fatal(err)
+	}
+	if in, err := s.SignIn(); in != nil || err != nil {
+		t.Fatalf("sign-in %+v, %v", in, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, tokenFile)); !os.IsNotExist(err) {
+		t.Fatalf("token file: %v", err)
+	}
+	if s.KeepArchives("snes") {
+		t.Fatal("forgetting the server reset Keep archives")
+	}
+	// Forgetting again is fine.
+	if err := s.ForgetSignIn(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInstallTo(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)

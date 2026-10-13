@@ -39,6 +39,8 @@ type Dialer func(server domain.Server, token string) RomM
 type Settings interface {
 	SignIn() (*domain.SignIn, error)
 	SaveSignIn(domain.SignIn) error
+	// ForgetSignIn drops the saved server and its token.
+	ForgetSignIn() error
 }
 
 // Identity says how this Deck introduces itself to RomM.

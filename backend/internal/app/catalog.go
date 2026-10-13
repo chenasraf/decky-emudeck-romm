@@ -61,6 +61,8 @@ type CatalogStore interface {
 	// ROMsByID returns the ROMs with ids in their order, skipping any the Catalog doesn't hold.
 	ROMsByID(ctx context.Context, ids []int) ([]domain.ROM, error)
 	Counts(ctx context.Context) (platforms, roms int, err error)
+	// Clear empties the Catalog, so the next sync is a full one.
+	Clear(ctx context.Context) error
 }
 
 // GameStates says where each game stands on this Deck.

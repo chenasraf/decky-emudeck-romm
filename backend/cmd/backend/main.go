@@ -152,8 +152,9 @@ func run(log *slog.Logger) error {
 		}
 	}, log.With("component", "catalog"))
 	events.catalog = catalog
+	servers := app.NewServerSwitch(conn, downloads, catalog, log.With("component", "servers"))
 	rpc.Routes(srv, version, rpc.Services{
-		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt,
+		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers,
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)

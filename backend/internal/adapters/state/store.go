@@ -457,6 +457,22 @@ func (s *Store) OwnedBIOS(ctx context.Context, platformID int) ([]domain.OwnedBI
 	return out, rows.Err()
 }
 
+// ForgetServer drops every record tied to the Server: Plugin-owned ROMs and BIOS files, Linked
+// games and the download queue. The files stay on disk, User-managed.
+func (s *Store) ForgetServer(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // OwnedIDs returns the id of every Plugin-owned ROM.
 func (s *Store) OwnedIDs(ctx context.Context) ([]int, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT rom_id FROM owned_roms ORDER BY rom_id")

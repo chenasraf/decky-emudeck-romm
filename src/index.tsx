@@ -119,13 +119,11 @@ function ServerSection() {
           </Field>
         </PanelSectionRow>
       ))}
-      {status.problem?.data?.kind === 'untrusted_cert' && (
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={openSetup}>
-            Set up RomM
-          </ButtonItem>
-        </PanelSectionRow>
-      )}
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={openSetup}>
+          Server settings
+        </ButtonItem>
+      </PanelSectionRow>
     </PanelSection>
   )
 }

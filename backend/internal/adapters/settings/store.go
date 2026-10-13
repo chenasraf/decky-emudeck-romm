@@ -219,6 +219,24 @@ func (s *Store) SaveSignIn(in domain.SignIn) error {
 	return s.save(f)
 }
 
+// ForgetSignIn drops the saved server and its token. Every other setting stays.
+func (s *Store) ForgetSignIn() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	f.Server = nil
+	if err := s.save(f); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(s.dir, tokenFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove token: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) save(f fileSettings) error {
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {

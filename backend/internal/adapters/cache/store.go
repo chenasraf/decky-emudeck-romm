@@ -242,6 +242,21 @@ func (s *Store) Apply(ctx context.Context, sync domain.CatalogSync) error {
 	return tx.Commit()
 }
 
+// Clear empties the Catalog, so the next sync is a full one.
+func (s *Store) Clear(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, table := range []string{"roms", "platforms", "collections", "collection_roms", "meta"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func replaceCollections(ctx context.Context, tx *sql.Tx, collections []domain.Collection) error {
 	for _, table := range []string{"collections", "collection_roms"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {

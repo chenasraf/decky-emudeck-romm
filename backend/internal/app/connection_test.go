@@ -33,6 +33,13 @@ func (f *fakeSettings) SaveSignIn(in domain.SignIn) error {
 	return nil
 }
 
+func (f *fakeSettings) ForgetSignIn() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.in = nil
+	return nil
+}
+
 type fakeIdentity struct{}
 
 func (fakeIdentity) Device() (domain.DeviceIdentity, error) {

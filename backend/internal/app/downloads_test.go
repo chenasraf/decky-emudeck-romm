@@ -186,6 +186,15 @@ func (m *memOwnership) MoveLinked(_ context.Context, from int, g domain.LinkedGa
 	return nil
 }
 
+func (m *memOwnership) ForgetServer(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	clear(m.roms)
+	clear(m.links)
+	m.queue = nil
+	return nil
+}
+
 func (m *memOwnership) OwnedIDs(context.Context) ([]int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -346,3 +346,20 @@ func TestDeletedFileIsRecreated(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestClearEmptiesTheCatalog(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t, filepath.Join(t.TempDir(), "cache.db"))
+	if err := s.Apply(ctx, domain.CatalogSync{Platforms: platforms, ROMs: []domain.ROM{rom(1, 1, "zelda")}, Full: true, Cursor: time.Unix(1001, 0), At: time.Unix(5000, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Clear(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if p, r, _ := s.Counts(ctx); p != 0 || r != 0 {
+		t.Fatalf("counts %d %d", p, r)
+	}
+	if c, at, _ := s.SyncState(ctx); !c.IsZero() || !at.IsZero() {
+		t.Fatalf("sync state %v %v", c, at)
+	}
+}

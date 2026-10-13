@@ -91,6 +91,8 @@ export interface Methods {
   sign_in_with_password: Method<SignInWithPasswordParams, ConnectionStatus>;
   start_device_pairing: Method<StartDevicePairingParams, DevicePairing>;
   cancel_device_pairing: Method<CancelDevicePairingParams, CancelDevicePairingResult>;
+  move_server: Method<MoveServerParams, MoveServerResult>;
+  forget_server: Method<ForgetServerParams, ConnectionStatus>;
   install_state: Method<InstallStateParams, InstallState>;
   catalog_status: Method<CatalogStatusParams, CatalogStatus>;
   refresh_catalog: Method<RefreshCatalogParams, CatalogStatus>;
@@ -246,6 +248,34 @@ export interface SignInWithPasswordParams {
   server: Server;
   username: string;
   password: string;
+}
+/**
+ * MoveServerParams points the plugin at the same RomM at a new address, as check_server found it.
+ * The sign-in and every record carry over, once the new address proves to be the same server.
+ */
+export interface MoveServerParams {
+  server: Server;
+}
+export interface MoveServerResult {
+  /**
+   * Moved is set when the plugin now talks to the new address. When it isn't, nothing changed.
+   */
+  moved: boolean;
+  /**
+   * Checked is how many of this Deck's games were looked up at the new address.
+   */
+  checked: number /* int */;
+  /**
+   * Why says why the new address looks like a different server, set when it wasn't moved to.
+   */
+  why?: string;
+  status?: ConnectionStatus;
+}
+/**
+ * ForgetServerParams drops the sign-in, the library and every record tied to the server,
+ * cancelling queued downloads. Files on disk stay, User-managed.
+ */
+export interface ForgetServerParams {
 }
 export interface StartDevicePairingParams {
   server: Server;

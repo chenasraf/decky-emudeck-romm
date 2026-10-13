@@ -91,6 +91,8 @@ type DownloadStore interface {
 	SaveQueued(ctx context.Context, d domain.QueuedDownload) error
 	DeleteQueued(ctx context.Context, id int) error
 	Queued(ctx context.Context) ([]domain.QueuedDownload, error)
+	// ForgetServer drops every record tied to the Server, leaving the files.
+	ForgetServer(ctx context.Context) error
 }
 
 // Download is a game in the download queue.

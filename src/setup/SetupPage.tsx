@@ -1,4 +1,12 @@
-import { DialogButton, Field, Focusable, Navigation, TextField } from '@decky/ui'
+import {
+  ConfirmModal,
+  DialogButton,
+  Field,
+  Focusable,
+  Navigation,
+  showModal,
+  TextField,
+} from '@decky/ui'
 import { useState } from 'react'
 
 import { call } from '../backend'
@@ -17,8 +25,17 @@ type Step =
   | { name: 'server' }
   | { name: 'sign_in'; found: CheckServerResult }
   | { name: 'done'; status: ConnectionStatus }
+  | { name: 'manage' }
+  | { name: 'edit_url' }
+  | { name: 'different'; found: CheckServerResult; why: string }
 
-function ServerStep({ onFound }: { onFound: (found: CheckServerResult) => void }) {
+function ServerStep({
+  onFound,
+  onBack,
+}: {
+  onFound: (found: CheckServerResult) => Promise<void> | void
+  onBack?: () => void
+}) {
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<RpcError | null>(null)
@@ -27,7 +44,7 @@ function ServerStep({ onFound }: { onFound: (found: CheckServerResult) => void }
     setBusy(true)
     setError(null)
     try {
-      onFound(await call('check_server', { url, trustFingerprint }))
+      await onFound(await call('check_server', { url, trustFingerprint }))
     } catch (err) {
       setError(asRpcError(err))
     } finally {
@@ -66,6 +83,11 @@ function ServerStep({ onFound }: { onFound: (found: CheckServerResult) => void }
         </ErrorBox>
       )}
       <Focusable style={{ display: 'flex', gap: 12 }} flow-children="horizontal">
+        {onBack && (
+          <DialogButton disabled={busy} onClick={onBack}>
+            Back
+          </DialogButton>
+        )}
         {fingerprint ? (
           <DialogButton disabled={busy} onClick={() => void check(fingerprint)}>
             Trust this certificate
@@ -205,12 +227,16 @@ function SignInStep({
   found,
   onBack,
   onSignedIn,
+  onForgotten,
 }: {
   found: CheckServerResult
   onBack: () => void
   onSignedIn: (status: ConnectionStatus) => void
+  /** Set while signing in again, to offer forgetting the server instead. */
+  onForgotten?: (status: ConnectionStatus) => void
 }) {
   const [method, setMethod] = useState<Method>('qr')
+  const [error, setError] = useState<RpcError | null>(null)
 
   return (
     <>
@@ -229,7 +255,13 @@ function SignInStep({
               {methodLabels[m]}
             </DialogButton>
           ))}
+        {onForgotten && (
+          <DialogButton onClick={() => confirmForget(onForgotten, setError)}>
+            Forget server
+          </DialogButton>
+        )}
       </Focusable>
+      {error && <ErrorBox>{error.message}</ErrorBox>}
     </>
   )
 }
@@ -254,12 +286,94 @@ function DoneStep({ status }: { status: ConnectionStatus }) {
   )
 }
 
+/** Asks before forgetting the server, then forgets it. */
+function confirmForget(
+  onForgotten: (status: ConnectionStatus) => void,
+  onError: (e: RpcError) => void,
+) {
+  showModal(
+    <ConfirmModal
+      strTitle="Forget this server?"
+      strDescription="The plugin drops its sign-in, its copy of the library and its records of the games it downloaded, and cancels the downloads in the queue. Every file stays on this Deck, yours to manage: the plugin won't update or delete them."
+      strOKButtonText="Forget server"
+      bDestructiveWarning
+      onOK={() => {
+        call('forget_server').then(onForgotten, (err: unknown) => onError(asRpcError(err)))
+      }}
+    />,
+  )
+}
+
+function ManageStep({
+  status,
+  onEditURL,
+  onForgotten,
+}: {
+  status: ConnectionStatus | null
+  onEditURL: () => void
+  onForgotten: (status: ConnectionStatus) => void
+}) {
+  const [error, setError] = useState<RpcError | null>(null)
+  return (
+    <>
+      <Field label="Server" description={status?.version ? `RomM ${status.version}` : undefined}>
+        {status?.serverUrl}
+      </Field>
+      <div style={muted}>
+        Moved RomM to a new address? Change it here: the plugin checks it&apos;s the same server and
+        keeps everything. To use a different RomM server, forget this one first.
+      </div>
+      {error && <ErrorBox>{error.message}</ErrorBox>}
+      <Focusable style={{ display: 'flex', gap: 12 }} flow-children="horizontal">
+        <DialogButton onClick={onEditURL}>Change address</DialogButton>
+        <DialogButton onClick={() => confirmForget(onForgotten, setError)}>
+          Forget server
+        </DialogButton>
+        <DialogButton onClick={() => Navigation.NavigateBack()}>Done</DialogButton>
+      </Focusable>
+    </>
+  )
+}
+
+function DifferentStep({
+  found,
+  why,
+  onBack,
+  onForgotten,
+}: {
+  found: CheckServerResult
+  why: string
+  onBack: () => void
+  onForgotten: (status: ConnectionStatus) => void
+}) {
+  const [error, setError] = useState<RpcError | null>(null)
+  return (
+    <>
+      <Field label="⚠ A different server?" description={why}>
+        {found.server.url}
+      </Field>
+      <div style={muted}>
+        Nothing changed. To use that server, forget this one and sign in there: files stay on this
+        Deck, but the plugin no longer manages them.
+      </div>
+      {error && <ErrorBox>{error.message}</ErrorBox>}
+      <Focusable style={{ display: 'flex', gap: 12 }} flow-children="horizontal">
+        <DialogButton onClick={onBack}>Back</DialogButton>
+        <DialogButton onClick={() => confirmForget(onForgotten, setError)}>
+          Forget server and sign in there
+        </DialogButton>
+      </Focusable>
+    </>
+  )
+}
+
 /**
  * Signed out, the route signs in again on the same server, with its pinned certificate, so the
- * Device and every local record carry over.
+ * Device and every local record carry over. Set up, it manages the server.
  */
 function firstStep(): Step {
   const status = currentConnection()
+  if (status?.state === 'connected' || status?.state === 'offline') return { name: 'manage' }
   if (status?.state !== 'signed_out' || !status.serverUrl) return { name: 'server' }
   return {
     name: 'sign_in',
@@ -272,26 +386,65 @@ function firstStep(): Step {
 
 export function SetupPage() {
   const [step, setStep] = useState<Step>(firstStep)
-  const [reSignIn] = useState(() => step.name === 'sign_in')
+  const [mode, setMode] = useState<'set_up' | 'sign_in_again' | 'manage'>(() =>
+    step.name === 'sign_in' ? 'sign_in_again' : step.name === 'manage' ? 'manage' : 'set_up',
+  )
 
   const signedIn = (status: ConnectionStatus) => {
     publishConnection(status)
     setStep({ name: 'done', status })
   }
+  // Forgotten, the route starts over as setting up, at found's server when there is one.
+  const forgotten = (status: ConnectionStatus, found?: CheckServerResult) => {
+    publishConnection(status)
+    setMode('set_up')
+    setStep(found ? { name: 'sign_in', found } : { name: 'server' })
+  }
+  const move = async (found: CheckServerResult) => {
+    const r = await call('move_server', { server: found.server })
+    if (r.moved && r.status) {
+      publishConnection(r.status)
+      setStep({ name: 'done', status: r.status })
+    } else {
+      setStep({ name: 'different', found, why: r.why ?? '' })
+    }
+  }
 
+  const titles = { set_up: 'Set up RomM', sign_in_again: 'Sign in again', manage: 'RomM server' }
   return (
     <div style={page}>
-      <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>
-        {reSignIn ? 'Sign in again' : 'Set up RomM'}
-      </div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{titles[mode]}</div>
       {step.name === 'server' && (
         <ServerStep onFound={(found) => setStep({ name: 'sign_in', found })} />
       )}
       {step.name === 'sign_in' && (
         <SignInStep
           found={step.found}
-          onBack={reSignIn ? () => Navigation.NavigateBack() : () => setStep({ name: 'server' })}
+          onBack={
+            mode === 'sign_in_again'
+              ? () => Navigation.NavigateBack()
+              : () => setStep({ name: 'server' })
+          }
           onSignedIn={signedIn}
+          onForgotten={mode === 'sign_in_again' ? (status) => forgotten(status) : undefined}
+        />
+      )}
+      {step.name === 'manage' && (
+        <ManageStep
+          status={currentConnection()}
+          onEditURL={() => setStep({ name: 'edit_url' })}
+          onForgotten={(status) => forgotten(status)}
+        />
+      )}
+      {step.name === 'edit_url' && (
+        <ServerStep onFound={move} onBack={() => setStep({ name: 'manage' })} />
+      )}
+      {step.name === 'different' && (
+        <DifferentStep
+          found={step.found}
+          why={step.why}
+          onBack={() => setStep({ name: 'manage' })}
+          onForgotten={(status) => forgotten(status, step.found)}
         />
       )}
       {step.name === 'done' && <DoneStep status={step.status} />}

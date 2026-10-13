@@ -18,6 +18,7 @@ type Services struct {
 	BIOS       *app.BIOS
 	Games      *app.Games
 	Covers     *app.Covers
+	Servers    *app.ServerSwitch
 }
 
 // Routes registers a handler for every method in schema.Methods.
@@ -86,6 +87,28 @@ func Routes(s *Server, version string, svc Services) {
 	Register(s, "cancel_device_pairing", func(_ context.Context, p schema.CancelDevicePairingParams) (schema.CancelDevicePairingResult, error) {
 		conn.CancelDevicePairing(p.UserCode)
 		return schema.CancelDevicePairingResult{}, nil
+	})
+
+	Register(s, "move_server", func(ctx context.Context, p schema.MoveServerParams) (schema.MoveServerResult, error) {
+		server := domain.Server{URL: p.Server.URL, CertFingerprint: p.Server.CertFingerprint}
+		r, err := svc.Servers.Move(ctx, server)
+		if err != nil {
+			return schema.MoveServerResult{}, wireError(err)
+		}
+		out := schema.MoveServerResult{Moved: r.Moved, Checked: r.Checked, Why: r.Why}
+		if r.Moved {
+			status := toWireStatus(r.Status)
+			out.Status = &status
+		}
+		return out, nil
+	})
+
+	Register(s, "forget_server", func(ctx context.Context, _ schema.ForgetServerParams) (schema.ConnectionStatus, error) {
+		status, err := svc.Servers.Forget(ctx)
+		if err != nil {
+			return schema.ConnectionStatus{}, wireError(err)
+		}
+		return toWireStatus(status), nil
 	})
 
 	Register(s, "install_state", func(_ context.Context, p schema.InstallStateParams) (schema.InstallState, error) {
