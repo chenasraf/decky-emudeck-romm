@@ -92,6 +92,7 @@ export interface Methods {
   download_game: Method<DownloadGameParams, DownloadItem>;
   cancel_download: Method<CancelDownloadParams, CancelDownloadResult>;
   list_downloads: Method<ListDownloadsParams, ListDownloadsResult>;
+  delete_games: Method<DeleteGamesParams, DeleteGamesResult>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -112,6 +113,10 @@ export interface Events {
    * Download fires each time a download is queued, makes progress or ends.
    */
   download: DownloadEvent;
+  /**
+   * Delete fires when a game's deletion starts and when it ends.
+   */
+  delete: DeleteEvent;
 }
 /**
  * Method pairs a method's params with its result.
@@ -388,6 +393,10 @@ export const GameDownloading: GameState = "downloading";
  * GameInstalled is on this Deck, downloaded by the plugin.
  */
 export const GameInstalled: GameState = "installed";
+/**
+ * GameDeleting is installed, with its files being checked and deleted.
+ */
+export const GameDeleting: GameState = "deleting";
 export interface GameSummary {
   id: number /* int */;
   name: string;
@@ -499,5 +508,29 @@ export interface DownloadEvent {
   state: GameState;
   receivedBytes: number /* int64 */;
   totalBytes: number /* int64 */;
+  problem?: Error;
+}
+/**
+ * DeleteGamesParams names the games to delete: IDs, or with PlatformID every game the plugin
+ * downloaded for that platform.
+ */
+export interface DeleteGamesParams {
+  ids?: number /* int */[];
+  platformId?: number /* int */;
+}
+export interface DeleteGamesResult {
+  /**
+   * Count is how many games will be deleted. Each one's progress arrives as delete events.
+   */
+  count: number /* int */;
+}
+/**
+ * DeleteEvent is a change to a game being deleted: deleting when it starts, then on_romm once its
+ * files are gone, or when the plugin refused to delete them, with Problem saying why.
+ */
+export interface DeleteEvent {
+  id: number /* int */;
+  name: string;
+  state: GameState;
   problem?: Error;
 }

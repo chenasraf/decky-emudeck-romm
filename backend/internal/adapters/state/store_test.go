@@ -65,6 +65,18 @@ func TestOwnedRoundTrip(t *testing.T) {
 	if _, ok, err := s.Owned(ctx, 8); ok || err != nil {
 		t.Fatalf("missing: %v %v", ok, err)
 	}
+
+	if err := s.DeleteOwned(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Owned(ctx, 7); ok {
+		t.Fatal("record still there")
+	}
+	// Its files and snapshot go with it.
+	var rows int
+	if err := s.db.QueryRow("SELECT (SELECT COUNT(*) FROM owned_files) + (SELECT COUNT(*) FROM server_snapshots)").Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("%d rows left, %v", rows, err)
+	}
 }
 
 func TestReopenKeepsRecords(t *testing.T) {

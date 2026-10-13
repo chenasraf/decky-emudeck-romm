@@ -105,7 +105,7 @@ func run(log *slog.Logger) error {
 		ownership = owned
 	}
 	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr,
-		store.DownloadConcurrency(), rpc.DownloadEvents(srv), log.With("component", "downloads"))
+		store.DownloadConcurrency(), rpc.DownloadEvents(srv), rpc.DeleteEvents(srv), log.With("component", "downloads"))
 
 	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))
 	events.catalog = catalog

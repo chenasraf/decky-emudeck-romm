@@ -1,11 +1,13 @@
 import {
   ButtonItem,
+  ConfirmModal,
   DialogButton,
   Field,
   Focusable,
   PanelSection,
   PanelSectionRow,
   ProgressBarWithInfo,
+  showModal,
   TextField,
 } from '@decky/ui'
 import {
@@ -22,6 +24,7 @@ import { formatSize, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
 import { type Downloads, percent, useDownloads } from '../downloads'
 import type {
+  DeleteGamesParams,
   Game,
   GameFilter,
   GameState,
@@ -85,6 +88,7 @@ function stateLabel(game: { id: number; state: GameState }, downloads: Downloads
   const d = downloads.items.find((i) => i.id === game.id)
   if (d) return d.state === 'queued' ? 'Queued' : `${percent(d)}%`
   if (game.state === 'installed') return 'Installed'
+  if (game.state === 'deleting') return 'Deleting…'
   return null
 }
 
@@ -328,6 +332,23 @@ export function GamesView({
               <Field label={`${total} games`} />
             </PanelSectionRow>
           )}
+          {filter === 'installed' && total !== null && total > 0 && (
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                disabled={downloads.problem !== null}
+                onClick={() =>
+                  confirmDelete(
+                    `all ${total} installed ${platform.name} games`,
+                    { platformId: platform.id },
+                    setError,
+                  )
+                }
+              >
+                Delete all installed
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
           {games.map((g) => (
             <Row
               key={g.id}
@@ -486,6 +507,34 @@ const STATE_LABELS: Record<string, string> = {
   queued: 'Queued',
   downloading: 'Downloading',
   installed: 'Installed',
+  deleting: 'Deleting…',
+}
+
+/** Where ES-DE cleans up the gamelist entries and media of games deleted from disk. */
+const ESDE_CLEANUP_TIP =
+  "ES-DE keeps its gamelist entries for deleted games, with playtime and favorites. To clear them, use ES-DE's Utilities → Orphaned data cleanup."
+
+/** Asks before deleting games, then deletes them. what names them in the question. */
+function confirmDelete(what: string, params: DeleteGamesParams, onError: (e: RpcError) => void) {
+  showModal(
+    <ConfirmModal
+      strTitle={`Delete ${what}?`}
+      strDescription={
+        <>
+          <p>
+            The plugin deletes only files it downloaded and that are unchanged since. Saves are
+            kept.
+          </p>
+          <p>{ESDE_CLEANUP_TIP}</p>
+        </>
+      }
+      strOKButtonText="Delete"
+      bDestructiveWarning
+      onOK={() => {
+        call('delete_games', params).catch((err: unknown) => onError(asRpcError(err)))
+      }}
+    />,
+  )
 }
 
 const downloadName: CSSProperties = { flex: '1 1 auto', minWidth: 0, padding: '8px 12px' }
@@ -608,6 +657,17 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
                 onClick={() => void act(() => call('cancel_download', { id }))}
               >
                 Cancel
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
+          {state === 'installed' && (
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                disabled={downloads.problem !== null}
+                onClick={() => confirmDelete(game.name, { ids: [id] }, setError)}
+              >
+                Delete ROM
               </ButtonItem>
             </PanelSectionRow>
           )}

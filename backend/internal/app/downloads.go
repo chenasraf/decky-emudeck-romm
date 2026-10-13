@@ -41,6 +41,7 @@ type OwnershipStore interface {
 	SaveOwned(ctx context.Context, rom domain.OwnedROM) error
 	Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error)
 	OwnedIDs(ctx context.Context) ([]int, error)
+	DeleteOwned(ctx context.Context, id int) error
 }
 
 // Download is a game in the download queue.
@@ -76,6 +77,7 @@ type Downloads struct {
 	problem  error
 	limit    int
 	onChange DownloadListener
+	onDelete DeleteListener
 	log      *slog.Logger
 	now      func() time.Time
 	// base outlives single calls: downloads run under it after the call that queued them returns.
@@ -85,6 +87,11 @@ type Downloads struct {
 	// jobs are the queued and running downloads, in the order they were queued.
 	jobs    []*job
 	running int
+	// deleting are the games queued for deletion or being deleted.
+	deleting map[int]bool
+
+	// deleteMu is held while deletes run, so they run one at a time.
+	deleteMu sync.Mutex
 }
 
 type job struct {
@@ -94,13 +101,14 @@ type job struct {
 }
 
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
-// turns downloading off, reporting problem.
+// turns downloading and deleting off, reporting problem.
 func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial DownloadDialer,
-	store OwnershipStore, problem error, limit int, onChange DownloadListener, log *slog.Logger,
+	store OwnershipStore, problem error, limit int, onChange DownloadListener, onDelete DeleteListener, log *slog.Logger,
 ) *Downloads {
 	return &Downloads{
 		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem,
-		limit: max(limit, 1), onChange: onChange, log: log, now: time.Now, base: ctx,
+		limit: max(limit, 1), onChange: onChange, onDelete: onDelete, log: log, now: time.Now, base: ctx,
+		deleting: map[int]bool{},
 	}
 }
 
@@ -215,6 +223,9 @@ func (d *Downloads) States(ctx context.Context) (map[int]domain.GameState, error
 	defer d.mu.Unlock()
 	for _, j := range d.jobs {
 		out[j.ROMID] = j.State
+	}
+	for id := range d.deleting {
+		out[id] = domain.StateDeleting
 	}
 	return out, nil
 }

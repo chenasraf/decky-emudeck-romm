@@ -2,7 +2,15 @@
 // outside the Steam client. These render plain HTML in roughly Steam's QAM style: good for layout
 // and state, not pixel-accurate. Add components here as src/ starts using them.
 
-import type { ChangeEventHandler, CSSProperties, HTMLAttributes, ReactNode } from 'react'
+import {
+  type ChangeEventHandler,
+  cloneElement,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
+import { createRoot } from 'react-dom/client'
 
 import { navigate } from './router'
 
@@ -184,5 +192,83 @@ export function TextField({
       />
       {description && <span style={{ color: muted, fontSize: 12 }}>{description}</span>}
     </label>
+  )
+}
+
+/**
+ * Renders modal over the page, the way Steam shows it over the whole UI. The real showModal
+ * passes closeModal to the element; so does this one.
+ */
+export function showModal(modal: ReactElement<{ closeModal?: () => void }>) {
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  const closeModal = () => {
+    root.unmount()
+    host.remove()
+  }
+  root.render(
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+      }}
+    >
+      {cloneElement(modal, { closeModal })}
+    </div>,
+  )
+  return { Close: closeModal }
+}
+
+export function ConfirmModal({
+  strTitle,
+  strDescription,
+  strOKButtonText = 'Confirm',
+  strCancelButtonText = 'Cancel',
+  bDestructiveWarning,
+  onOK,
+  onCancel,
+  closeModal,
+}: {
+  strTitle?: ReactNode
+  strDescription?: ReactNode
+  strOKButtonText?: ReactNode
+  strCancelButtonText?: ReactNode
+  bDestructiveWarning?: boolean
+  onOK?: () => void
+  onCancel?: () => void
+  closeModal?: () => void
+}) {
+  return (
+    <div
+      style={{ background: '#23262e', padding: 24, width: 420, borderRadius: 4, color: '#dcdedf' }}
+    >
+      <div style={{ color: '#fff', fontSize: 18, marginBottom: 12 }}>{strTitle}</div>
+      <div style={{ color: muted, fontSize: 14, marginBottom: 20 }}>{strDescription}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <DialogButton
+          style={bDestructiveWarning ? { background: '#c33' } : undefined}
+          onClick={() => {
+            onOK?.()
+            closeModal?.()
+          }}
+        >
+          {strOKButtonText}
+        </DialogButton>
+        <DialogButton
+          onClick={() => {
+            onCancel?.()
+            closeModal?.()
+          }}
+        >
+          {strCancelButtonText}
+        </DialogButton>
+      </div>
+    </div>
   )
 }

@@ -294,10 +294,11 @@ func (c *Catalog) Games(ctx context.Context, platformID int, filter domain.ROMFi
 	return platform, page, err
 }
 
+// installedIDs are the games on this Deck, counting those being deleted until their files are gone.
 func installedIDs(states map[int]domain.GameState) []int {
 	var ids []int
 	for id, s := range states {
-		if s == domain.StateInstalled {
+		if s == domain.StateInstalled || s == domain.StateDeleting {
 			ids = append(ids, id)
 		}
 	}

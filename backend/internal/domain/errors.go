@@ -27,6 +27,9 @@ const (
 	KindCantDownload Kind = "cant_download"
 	// KindTargetExists means a file the plugin didn't download sits where the game would go.
 	KindTargetExists Kind = "target_exists"
+	// KindChangedOnDisk means a file the plugin placed no longer matches what it recorded, so the
+	// plugin stopped managing it rather than delete or replace it.
+	KindChangedOnDisk Kind = "changed_on_disk"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

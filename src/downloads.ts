@@ -2,14 +2,14 @@ import { addEventListener, removeEventListener, toaster } from '@decky/api'
 import { useSyncExternalStore } from 'react'
 
 import { BACKEND_STATUS_EVENT, type BackendStatus, call, onEvent } from './backend'
-import type { DownloadEvent, DownloadItem, Error as RpcError } from './rpc/schema.gen'
+import type { DeleteEvent, DownloadEvent, DownloadItem, Error as RpcError } from './rpc/schema.gen'
 
 export interface Downloads {
   /** The queued and running downloads, in queue order. */
   items: DownloadItem[]
   /** Why downloading is off, null when it works. */
   problem: RpcError | null
-  /** Goes up each time a download ends, so views listing game states know to reload. */
+  /** Goes up each time a download ends or a delete changes, so views listing states reload. */
   ended: number
   /** Why each game's last download failed, until it's queued again. */
   failures: Record<number, RpcError>
@@ -58,6 +58,12 @@ function apply(e: DownloadEvent) {
   }
 }
 
+function applyDelete(e: DeleteEvent) {
+  // Every change moves the game between Installed and On RomM, so lists reload either way.
+  publish({ ...current, ended: current.ended + 1 })
+  if (e.problem) toaster.toast({ title: `Didn't delete ${e.name}`, body: e.problem.message })
+}
+
 /**
  * Keeps the download queue current from the backend's download events, and reloads it each time
  * the backend becomes ready. Returns a function that stops listening.
@@ -65,11 +71,13 @@ function apply(e: DownloadEvent) {
 export function watchDownloads(): () => void {
   void load()
   const stop = onEvent('download', apply)
+  const stopDeletes = onEvent('delete', applyDelete)
   const listener = addEventListener<[BackendStatus]>(BACKEND_STATUS_EVENT, (backend) => {
     if (backend.state === 'ready') void load()
   })
   return () => {
     stop()
+    stopDeletes()
     removeEventListener(BACKEND_STATUS_EVENT, listener)
   }
 }

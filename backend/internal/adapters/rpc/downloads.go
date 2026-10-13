@@ -20,6 +20,14 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.CancelDownloadResult{Cancelled: downloads.Cancel(p.ID)}, nil
 	})
 
+	Register(s, "delete_games", func(ctx context.Context, p schema.DeleteGamesParams) (schema.DeleteGamesResult, error) {
+		n, err := downloads.Delete(ctx, p.IDs, p.PlatformID)
+		if err != nil {
+			return schema.DeleteGamesResult{}, wireError(err)
+		}
+		return schema.DeleteGamesResult{Count: n}, nil
+	})
+
 	Register(s, "list_downloads", func(context.Context, schema.ListDownloadsParams) (schema.ListDownloadsResult, error) {
 		out := schema.ListDownloadsResult{Downloads: []schema.DownloadItem{}}
 		for _, d := range downloads.List() {
@@ -49,6 +57,20 @@ func DownloadEvents(s *Server) app.DownloadListener {
 		}
 		if err := s.Notify("download", event); err != nil {
 			s.log.Error("send download", "err", err)
+		}
+	}
+}
+
+// DeleteEvents returns a listener that sends each change to a game being deleted as a delete
+// notification.
+func DeleteEvents(s *Server) app.DeleteListener {
+	return func(u app.DeleteUpdate) {
+		event := schema.DeleteEvent{ID: u.ROMID, Name: u.Name, State: schema.GameState(u.State)}
+		if u.Problem != nil {
+			event.Problem = problemOf(u.Problem)
+		}
+		if err := s.Notify("delete", event); err != nil {
+			s.log.Error("send delete", "err", err)
 		}
 	}
 }

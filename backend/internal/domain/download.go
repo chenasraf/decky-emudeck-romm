@@ -13,6 +13,8 @@ const (
 	StateQueued      GameState = "queued"
 	StateDownloading GameState = "downloading"
 	StateInstalled   GameState = "installed"
+	// StateDeleting is an installed game whose files are being checked and deleted.
+	StateDeleting GameState = "deleting"
 )
 
 // ROMFile is one file of a ROM on the Server.

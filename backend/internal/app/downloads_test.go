@@ -49,6 +49,13 @@ func (m *memOwnership) Owned(_ context.Context, id int) (domain.OwnedROM, bool, 
 	return r, ok, nil
 }
 
+func (m *memOwnership) DeleteOwned(_ context.Context, id int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.roms, id)
+	return nil
+}
+
 func (m *memOwnership) OwnedIDs(context.Context) ([]int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -106,6 +113,7 @@ type downloadFixture struct {
 	server    *fakeContent
 	settings  *fakeSettings
 	updates   chan DownloadUpdate
+	deletes   chan DeleteUpdate
 	root      string
 	snes      string
 }
@@ -132,6 +140,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		},
 		settings: &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
 		updates:  make(chan DownloadUpdate, 256),
+		deletes:  make(chan DeleteUpdate, 256),
 		root:     root,
 		snes:     filepath.Join(root, "roms", "snes"),
 	}
@@ -157,7 +166,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) DownloadServer { return f.server }
 	f.downloads = NewDownloads(t.Context(), catalog, install, conn, dial, f.owned, nil, limit,
-		func(u DownloadUpdate) { f.updates <- u }, log)
+		func(u DownloadUpdate) { f.updates <- u }, func(u DeleteUpdate) { f.deletes <- u }, log)
 	return f
 }
 
@@ -349,10 +358,13 @@ func TestDownloadWithoutStateDB(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	problem := &domain.Error{Kind: domain.KindNewerData, Message: "newer"}
 	d := NewDownloads(t.Context(), f.downloads.catalog, f.downloads.install, f.downloads.conn, f.downloads.dial,
-		nil, problem, 2, func(DownloadUpdate) {}, f.downloads.log)
+		nil, problem, 2, func(DownloadUpdate) {}, func(DeleteUpdate) {}, f.downloads.log)
 
 	if _, err := d.Queue(context.Background(), 1); kindOf(err) != domain.KindNewerData {
 		t.Fatalf("queue: %v", err)
+	}
+	if _, err := d.Delete(context.Background(), []int{1}, 0); kindOf(err) != domain.KindNewerData {
+		t.Fatalf("delete: %v", err)
 	}
 	if states, err := d.States(context.Background()); err != nil || len(states) != 0 {
 		t.Fatalf("states %v, %v", states, err)

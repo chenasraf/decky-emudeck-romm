@@ -197,6 +197,13 @@ func (s *Store) SaveOwned(ctx context.Context, rom domain.OwnedROM) error {
 	return tx.Commit()
 }
 
+// DeleteOwned drops the record of the ROM with id, making whatever is left of its files
+// User-managed.
+func (s *Store) DeleteOwned(ctx context.Context, id int) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM owned_roms WHERE rom_id = ?", id)
+	return err
+}
+
 // Owned returns the record of the ROM with id.
 func (s *Store) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, error) {
 	rom := domain.OwnedROM{ROMID: id}

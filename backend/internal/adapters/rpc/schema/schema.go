@@ -78,6 +78,7 @@ type Methods struct {
 	DownloadGame        Method[DownloadGameParams, DownloadItem]                     `json:"download_game"`
 	CancelDownload      Method[CancelDownloadParams, CancelDownloadResult]           `json:"cancel_download"`
 	ListDownloads       Method[ListDownloadsParams, ListDownloadsResult]             `json:"list_downloads"`
+	DeleteGames         Method[DeleteGamesParams, DeleteGamesResult]                 `json:"delete_games"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -91,6 +92,8 @@ type Events struct {
 	Catalog CatalogStatus `json:"catalog"`
 	// Download fires each time a download is queued, makes progress or ends.
 	Download DownloadEvent `json:"download"`
+	// Delete fires when a game's deletion starts and when it ends.
+	Delete DeleteEvent `json:"delete"`
 }
 
 // Method pairs a method's params with its result.
@@ -333,6 +336,8 @@ const (
 	GameDownloading GameState = "downloading"
 	// GameInstalled is on this Deck, downloaded by the plugin.
 	GameInstalled GameState = "installed"
+	// GameDeleting is installed, with its files being checked and deleted.
+	GameDeleting GameState = "deleting"
 )
 
 type GameSummary struct {
@@ -434,4 +439,25 @@ type DownloadEvent struct {
 	ReceivedBytes int64     `json:"receivedBytes"`
 	TotalBytes    int64     `json:"totalBytes"`
 	Problem       *Error    `json:"problem,omitempty"`
+}
+
+// DeleteGamesParams names the games to delete: IDs, or with PlatformID every game the plugin
+// downloaded for that platform.
+type DeleteGamesParams struct {
+	IDs        []int `json:"ids,omitempty"`
+	PlatformID int   `json:"platformId,omitempty"`
+}
+
+type DeleteGamesResult struct {
+	// Count is how many games will be deleted. Each one's progress arrives as delete events.
+	Count int `json:"count"`
+}
+
+// DeleteEvent is a change to a game being deleted: deleting when it starts, then on_romm once its
+// files are gone, or when the plugin refused to delete them, with Problem saying why.
+type DeleteEvent struct {
+	ID      int       `json:"id"`
+	Name    string    `json:"name"`
+	State   GameState `json:"state"`
+	Problem *Error    `json:"problem,omitempty"`
 }
