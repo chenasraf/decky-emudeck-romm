@@ -50,6 +50,30 @@ func TestROMFiles(t *testing.T) {
 	}
 }
 
+func TestPathInGame(t *testing.T) {
+	for _, c := range []struct {
+		name                                     string
+		fsPath, fsName, filePath, fileName, want string
+	}{
+		{"single file, default layout", "roms/psx", "Crash.chd", "roms/psx", "Crash.chd", "Crash.chd"},
+		{"folder game, default layout", "roms/psx", "FF7", "roms/psx/FF7", "FF7 (Disc 1).cue", "FF7 (Disc 1).cue"},
+		{"platform-first layout", "psx/roms", "FF7", "psx/roms/FF7", "FF7 (Disc 1).cue", "FF7 (Disc 1).cue"},
+		{"grouping levels above the game", "library/sony/psx/rpg", "FF7", "library/sony/psx/rpg/FF7", "a.cue", "a.cue"},
+		{"nested inside the game", "roms/ps3", "Demon's Souls", "roms/ps3/Demon's Souls/PS3_GAME/USRDIR", "EBOOT.BIN", "PS3_GAME/USRDIR/EBOOT.BIN"},
+		{"category folder", "roms/switch", "Zelda", "roms/switch/Zelda/dlc", "x.nsp", "dlc/x.nsp"},
+		{"outside the game", "roms/psx", "FF7", "elsewhere", "a.cue", "a.cue"},
+	} {
+		got := pathInGame(c.fsPath, c.fsName, c.filePath, c.fileName, "")
+		if got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+		// full_path, when RomM sends it, says the same.
+		if full := pathInGame(c.fsPath, c.fsName, "", c.fileName, c.filePath+"/"+c.fileName); full != c.want {
+			t.Errorf("%s from full_path: got %q, want %q", c.name, full, c.want)
+		}
+	}
+}
+
 func TestDownloadFile(t *testing.T) {
 	body := bytes.Repeat([]byte("rom!"), 10000)
 	var path string

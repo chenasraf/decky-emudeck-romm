@@ -1,6 +1,7 @@
 package app
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha1" //nolint:gosec // matches files against RomM's SHA-1, not for security
 	"encoding/hex"
@@ -497,9 +498,10 @@ func (d *Downloads) attempts(ctx context.Context, j *job) error {
 	}
 }
 
-// download fetches a single-file game into staging, resuming bytes an earlier attempt left there,
-// extracts it when it's an archive its system extracts, moves the result into its ROM folder,
-// then records it as Plugin-owned. It never replaces a file already at the target.
+// download fetches a game's files into staging, resuming bytes an earlier attempt left there, and
+// lays them out the way its system's ROM folder needs: one file as it is, or extracted when it's
+// an archive its system extracts; several files in the system's layout. It then moves the result
+// into the ROM folder and records it as Plugin-owned. It never replaces anything already there.
 func (d *Downloads) download(ctx context.Context, j *job) error {
 	in, err := d.conn.activeSignIn()
 	if err != nil {
@@ -522,48 +524,72 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return d.conn.observe(*in, err)
 	}
 	game := domain.GameFiles(files)
-	if len(game) != 1 {
-		return &domain.Error{Kind: domain.KindCantDownload, Message: fmt.Sprintf("RomM lists %d game files for this game; the plugin places games that are a single file.", len(game))}
+	name := rom.FileName
+	if name == "" {
+		name = rom.Name
 	}
-	file := game[0]
-	if !domain.IsArchive(file.Name) || system.ArchivePolicy() == domain.ArchivesKeep {
-		// The file is placed as it is, so one already at the target fails it before it downloads.
-		if err := checkFree(filepath.Join(dir, file.Name)); err != nil {
+	layout, err := domain.PlanLayout(system, name, game)
+	if err != nil {
+		return err
+	}
+	whole := len(layout.Files) == 1 && !layout.Zip
+	if !whole || !domain.IsArchive(layout.Root) || system.ArchivePolicy() == domain.ArchivesKeep {
+		// The game's entry in the ROM folder is known before it downloads, so one already there
+		// fails it now rather than after the download.
+		if err := checkFree(filepath.Join(dir, layout.Root)); err != nil {
 			return err
 		}
 	}
 
 	staging := d.staging(j.ROMID)
-	snapshot := domain.SnapshotOf(file)
+	snapshot := domain.SnapshotOfSet(game)
 	d.mu.Lock()
 	same := samePartial(j.partial, snapshot)
 	j.partial = snapshot
 	record := j.record()
 	d.mu.Unlock()
 	if !same {
-		// What staging holds, if anything, is of a file the Server no longer has.
+		// What staging holds, if anything, is of files the Server no longer has.
 		if err := os.RemoveAll(staging); err != nil {
 			return err
 		}
 		d.save(record)
 	}
-	if err := os.MkdirAll(staging, 0o755); err != nil {
-		return fmt.Errorf("create staging folder: %w", err)
-	}
-	partial := filepath.Join(staging, file.Name)
 
+	var total int64
+	for _, f := range layout.Files {
+		total += f.File.SizeBytes
+	}
 	d.mu.Lock()
-	j.State, j.Total = domain.StateDownloading, file.SizeBytes
+	j.State, j.Total = domain.StateDownloading, total
 	started := j.Download
 	d.mu.Unlock()
 	d.onChange(started)
 
-	sum, err := d.fetch(ctx, server, file, partial, j)
-	if err != nil {
-		return d.conn.observe(*in, err)
+	// Each file lands in staging where it sits inside the game, and resumes on its own.
+	sums := make([]string, len(layout.Files))
+	var done int64
+	for i, f := range layout.Files {
+		path := filepath.Join(staging, filepath.FromSlash(f.File.Path))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("create staging folder: %w", err)
+		}
+		sum, err := d.fetch(ctx, server, f.File, path, j, done)
+		if err != nil {
+			return d.conn.observe(*in, err)
+		}
+		sums[i], done = sum, done+f.File.SizeBytes
 	}
 
-	staged, err := d.unpack(system, partial, sum, dir)
+	var staged []stagedFile
+	switch {
+	case layout.Zip:
+		staged, err = zipGame(layout, staging, dir, d.checkSpace)
+	case whole:
+		staged, err = d.unpack(system, filepath.Join(staging, filepath.FromSlash(layout.Files[0].File.Path)), sums[0], dir)
+	default:
+		staged, err = stageSet(layout, staging, sums)
+	}
 	if err != nil {
 		return err
 	}
@@ -571,11 +597,15 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 	if err != nil {
 		return err
 	}
+	snapshots := make([]domain.FileSnapshot, 0, len(game))
+	for _, f := range layout.Files {
+		snapshots = append(snapshots, domain.SnapshotOf(f.File))
+	}
 	owned := domain.OwnedROM{
 		ROMID:       j.ROMID,
 		PlatformID:  rom.PlatformID,
 		Files:       placed,
-		Snapshot:    []domain.FileSnapshot{snapshot},
+		Snapshot:    snapshots,
 		InstalledAt: d.now().UTC(),
 	}
 	// The files are in place, so the record is written even if the download is cancelled now.
@@ -590,6 +620,90 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 
 // extractedDir is where an archive's contents go in its staging folder.
 const extractedDir = ".extracted"
+
+// madeDir is where the files the plugin makes for a game, a playlist or a zip, go in its staging
+// folder.
+const madeDir = ".made"
+
+// stageSet returns the downloaded files of a game of several files, with their sums, and the
+// playlist its layout calls for, written to staging.
+func stageSet(layout domain.Layout, staging string, sums []string) ([]stagedFile, error) {
+	out := make([]stagedFile, 0, len(layout.Files)+1)
+	for i, f := range layout.Files {
+		out = append(out, stagedFile{From: filepath.Join(staging, filepath.FromSlash(f.File.Path)), Rel: f.Rel, SHA1: sums[i]})
+	}
+	if layout.Playlist == nil {
+		return out, nil
+	}
+	content := []byte(strings.Join(layout.Playlist.Lines, "\n") + "\n")
+	path := filepath.Join(staging, madeDir, filepath.Base(layout.Playlist.Rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		return nil, fmt.Errorf("write playlist: %w", err)
+	}
+	sum := sha1.Sum(content) //nolint:gosec // see import
+	return append(out, stagedFile{From: path, Rel: layout.Playlist.Rel, SHA1: hex.EncodeToString(sum[:])}), nil
+}
+
+// zipGame zips the downloaded files of a game into one archive in staging, checking dir's drive
+// has room for it, and returns it to place.
+func zipGame(layout domain.Layout, staging, dir string, checkSpace func(need, ahead int64, dir string) error) ([]stagedFile, error) {
+	var size int64
+	for _, f := range layout.Files {
+		size += f.File.SizeBytes
+	}
+	if err := checkSpace(size, 0, dir); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(staging, madeDir, layout.Root)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	sum, err := writeZip(path, layout, staging)
+	if err != nil {
+		return nil, fmt.Errorf("zip %s: %w", layout.Root, err)
+	}
+	return []stagedFile{{From: path, Rel: layout.Root, SHA1: sum}}, nil
+}
+
+func writeZip(path string, layout domain.Layout, staging string) (string, error) {
+	out, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	h := sha1.New() //nolint:gosec // see import
+	zw := zip.NewWriter(io.MultiWriter(out, h))
+	err = func() error {
+		for _, f := range layout.Files {
+			w, err := zw.Create(filepath.ToSlash(f.Rel))
+			if err != nil {
+				return err
+			}
+			in, err := os.Open(filepath.Join(staging, filepath.FromSlash(f.File.Path)))
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(w, in)
+			_ = in.Close()
+			if err != nil {
+				return err
+			}
+		}
+		return zw.Close()
+	}()
+	if err == nil {
+		err = out.Sync()
+	}
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 // stagedFile is a file in staging waiting to move into its ROM folder.
 type stagedFile struct {
@@ -853,9 +967,10 @@ func samePartial(kept, now domain.FileSnapshot) bool {
 	return kept.FileID == now.FileID && kept.SizeBytes == now.SizeBytes && kept.LastModified.Equal(now.LastModified)
 }
 
-// fetch downloads file to path, resuming from the bytes already there, reporting progress on j,
-// and returns the SHA-1 of the whole file.
-func (d *Downloads) fetch(ctx context.Context, server DownloadServer, file domain.ROMFile, path string, j *job) (string, error) {
+// fetch downloads file to path, resuming from the bytes already there, and returns the SHA-1 of
+// the whole file. It reports progress on j, counting base bytes of the game's other files before
+// this one.
+func (d *Downloads) fetch(ctx context.Context, server DownloadServer, file domain.ROMFile, path string, j *job, base int64) (string, error) {
 	var from int64
 	if info, err := os.Stat(path); err == nil {
 		from = info.Size()
@@ -881,8 +996,8 @@ func (d *Downloads) fetch(ctx context.Context, server DownloadServer, file domai
 		if _, err := io.CopyN(h, f, start); err != nil {
 			return nil, fmt.Errorf("read kept download: %w", err)
 		}
-		w = &progressWriter{w: f, hash: h, n: start, report: func(n int64) { d.progress(j, n) }, every: progressEvery, now: d.now}
-		d.progress(j, start)
+		w = &progressWriter{w: f, hash: h, n: start, report: func(n int64) { d.progress(j, base+n) }, every: progressEvery, now: d.now}
+		d.progress(j, base+start)
 		return w, nil
 	}
 
@@ -985,8 +1100,8 @@ func (d *Downloads) targetDir(rom domain.ROM, platform domain.Platform) (domain.
 	if !ok {
 		return system, "", &domain.Error{Kind: domain.KindCantDownload, Message: "EmuDeck has no folder for " + platform.Name + "."}
 	}
-	if rom.MultiFile {
-		return system, "", &domain.Error{Kind: domain.KindCantDownload, Message: "This game is a folder of several files; the plugin places games that are a single file."}
+	if rom.MultiFile && system.MultiFile == "" {
+		return system, "", &domain.Error{Kind: domain.KindCantDownload, Message: "This game is several files, and the plugin has no way to lay those out in EmuDeck's " + system.Folder + " folder."}
 	}
 	dir := romPath(state, system)
 	if dir == "" {

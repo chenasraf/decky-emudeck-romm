@@ -238,7 +238,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	catalog := &memStore{}
 	if err := catalog.Apply(context.Background(), domain.CatalogSync{
 		Platforms: []domain.Platform{{ID: 1, Slug: "snes", Name: "Super Nintendo"}, {ID: 2, Slug: "unknown-console", Name: "Mystery"},
-			{ID: 3, Slug: "psx", Name: "PlayStation"}, {ID: 4, Slug: "arcade", Name: "Arcade"}},
+			{ID: 3, Slug: "psx", Name: "PlayStation"}, {ID: 4, Slug: "arcade", Name: "Arcade"},
+			{ID: 5, Slug: "dc", Name: "Dreamcast"}, {ID: 6, Slug: "dos", Name: "DOS"}, {ID: 7, Slug: "ps3", Name: "PlayStation 3"}},
 		ROMs: []domain.ROM{
 			{ID: 1, PlatformID: 1, Name: "Chrono Trigger", SizeBytes: int64(len(chrono))},
 			{ID: 2, PlatformID: 1, Name: "Super Metroid", SizeBytes: int64(len(metroid))},
@@ -247,6 +248,10 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			{ID: 5, PlatformID: 3, Name: "Ridge Racer", FileName: "Ridge Racer.zip", SizeBytes: 1000},
 			{ID: 6, PlatformID: 4, Name: "Street Fighter II", FileName: "sf2.zip"},
 			{ID: 7, PlatformID: 1, Name: "Zipped", FileName: "Zipped.zip"},
+			{ID: 8, PlatformID: 3, Name: "Final Fantasy VII", FileName: "Final Fantasy VII (USA)", MultiFile: true},
+			{ID: 9, PlatformID: 5, Name: "Shenmue", FileName: "Shenmue (USA)", MultiFile: true},
+			{ID: 10, PlatformID: 6, Name: "Doom", FileName: "Doom", MultiFile: true},
+			{ID: 11, PlatformID: 7, Name: "Demon's Souls", FileName: "Demon's Souls", MultiFile: true},
 		},
 		Full: true,
 	}); err != nil {
@@ -256,7 +261,10 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	install := NewInstall(fixedProber{domain.InstallState{
 		EmuDeck: domain.EmuDeckState{Root: root, ROMsPath: filepath.Join(root, "roms")},
 		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
-			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")}},
+			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")},
+			{Folder: "dreamcast", ROMPath: filepath.Join(root, "roms", "dreamcast")},
+			{Folder: "dos", ROMPath: filepath.Join(root, "roms", "dos")},
+			{Folder: "ps3", ROMPath: filepath.Join(root, "roms", "ps3")}},
 	}}, log)
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) DownloadServer { return f.server }

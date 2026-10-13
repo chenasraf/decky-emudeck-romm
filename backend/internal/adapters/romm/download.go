@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -22,9 +23,13 @@ const stallTimeout = 60 * time.Second
 // ROMFiles returns the files of the ROM with id.
 func (c *Client) ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error) {
 	var body struct {
-		Files []struct {
+		FSPath string `json:"fs_path"`
+		FSName string `json:"fs_name"`
+		Files  []struct {
 			ID            int     `json:"id"`
 			FileName      string  `json:"file_name"`
+			FilePath      string  `json:"file_path"`
+			FullPath      string  `json:"full_path"`
 			FileSizeBytes int64   `json:"file_size_bytes"`
 			Category      *string `json:"category"`
 			LastModified  string  `json:"last_modified"`
@@ -47,6 +52,7 @@ func (c *Client) ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error)
 		out = append(out, domain.ROMFile{
 			ID:           f.ID,
 			Name:         f.FileName,
+			Path:         pathInGame(body.FSPath, body.FSName, f.FilePath, f.FileName, f.FullPath),
 			SizeBytes:    f.FileSizeBytes,
 			Category:     deref(f.Category),
 			LastModified: modified.UTC(),
@@ -56,6 +62,21 @@ func (c *Client) ROMFiles(ctx context.Context, id int) ([]domain.ROMFile, error)
 		})
 	}
 	return out, nil
+}
+
+// pathInGame is where a file sits inside its game, with / separators. However the Server's library
+// is laid out, a game is the file or folder fs_name in fs_path and its files are under it, so the
+// path inside the game is the file's full path past that prefix; RomM names files in its own
+// downloads the same way. A file outside it, which RomM doesn't produce, falls back to its name.
+func pathInGame(fsPath, fsName, filePath, fileName, fullPath string) string {
+	if fullPath == "" {
+		fullPath = path.Join(filePath, fileName)
+	}
+	game := path.Join(fsPath, fsName)
+	if rel, ok := strings.CutPrefix(path.Clean(fullPath), game+"/"); ok && rel != "" {
+		return rel
+	}
+	return fileName
 }
 
 // DownloadFile fetches the content of the ROM file with id from byte offset from onward. Once the

@@ -39,8 +39,12 @@ type QueuedDownload struct {
 
 // ROMFile is one file of a ROM on the Server.
 type ROMFile struct {
-	ID        int
-	Name      string
+	ID   int
+	Name string
+	// Path is where the file sits inside its game, with / separators: its name for a game that is
+	// one file, or its path under the game's folder. It doesn't depend on how the Server's library
+	// is laid out.
+	Path      string
 	SizeBytes int64
 	// Category is the kind of file: "game" for the game itself, or manual, dlc, update and so on.
 	// Nested files outside a category folder have none.
