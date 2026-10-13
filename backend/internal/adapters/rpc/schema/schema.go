@@ -563,20 +563,24 @@ type DownloadItem struct {
 	Problem *Error `json:"problem,omitempty"`
 	// Converting is set while RomM converts the game to a format its emulator plays.
 	Converting bool `json:"converting,omitempty"`
+	// WaitingForGame is set while the download, transferred, waits for a running game to close
+	// before it's extracted or zipped.
+	WaitingForGame bool `json:"waitingForGame,omitempty"`
 }
 
 // DownloadEvent is a change to a download. One that leaves the queue is installed, or on_romm when
 // it was cancelled or dismissed.
 type DownloadEvent struct {
-	ID            int       `json:"id"`
-	Name          string    `json:"name"`
-	PlatformID    int       `json:"platformId"`
-	PlatformName  string    `json:"platformName"`
-	State         GameState `json:"state"`
-	ReceivedBytes int64     `json:"receivedBytes"`
-	TotalBytes    int64     `json:"totalBytes"`
-	Problem       *Error    `json:"problem,omitempty"`
-	Converting    bool      `json:"converting,omitempty"`
+	ID             int       `json:"id"`
+	Name           string    `json:"name"`
+	PlatformID     int       `json:"platformId"`
+	PlatformName   string    `json:"platformName"`
+	State          GameState `json:"state"`
+	ReceivedBytes  int64     `json:"receivedBytes"`
+	TotalBytes     int64     `json:"totalBytes"`
+	Problem        *Error    `json:"problem,omitempty"`
+	Converting     bool      `json:"converting,omitempty"`
+	WaitingForGame bool      `json:"waitingForGame,omitempty"`
 }
 
 // PlanDownloadAllParams names the platform, or with Collection set the collection, whose missing
@@ -712,9 +716,12 @@ type GetPreferencesParams struct{}
 type Preferences struct {
 	// AutoBIOS downloads a platform's missing BIOS files with its first game download.
 	AutoBIOS bool `json:"autoBios"`
+	// WaitForGames holds extracting and hashing while an emulator runs a game.
+	WaitForGames bool `json:"waitForGames"`
 }
 
 // SetPreferencesParams changes the preferences it sets, leaving the rest.
 type SetPreferencesParams struct {
-	AutoBIOS *bool `json:"autoBios,omitempty"`
+	AutoBIOS     *bool `json:"autoBios,omitempty"`
+	WaitForGames *bool `json:"waitForGames,omitempty"`
 }

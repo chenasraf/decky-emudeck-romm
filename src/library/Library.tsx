@@ -89,11 +89,12 @@ function Problem({ error }: { error: RpcError | null }) {
   )
 }
 
-/** A download's short state: Queued, Converting, its progress, or Failed. */
+/** A download's short state: Queued, Converting, Waiting, its progress, or Failed. */
 function downloadLabel(d: DownloadItem): string {
   if (d.state === 'queued') return 'Queued'
   if (d.state === 'failed') return 'Failed'
   if (d.converting) return 'Converting'
+  if (d.waitingForGame) return 'Waiting'
   return `${percent(d)}%`
 }
 
@@ -914,6 +915,7 @@ function DownloadDetail({ d }: { d: DownloadItem }) {
   let text = `${d.platformName} · ${formatSize(d.receivedBytes)} of ${formatSize(d.totalBytes)}`
   if (d.state === 'queued') text = `${d.platformName} · waiting`
   if (d.converting) text = `${d.platformName} · converting on RomM`
+  if (d.waitingForGame) text = `${d.platformName} · waiting for game to close`
   return (
     <PanelSectionRow>
       <ProgressBarWithInfo
@@ -1010,9 +1012,11 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
             <Field label="State">
               {download?.converting
                 ? 'Converting on RomM…'
-                : download?.state === 'downloading'
-                  ? `Downloading ${percent(download)}%`
-                  : (STATE_LABELS[state] ?? state)}
+                : download?.waitingForGame
+                  ? 'Waiting for game to close'
+                  : download?.state === 'downloading'
+                    ? `Downloading ${percent(download)}%`
+                    : (STATE_LABELS[state] ?? state)}
             </Field>
           </PanelSectionRow>
           {state === 'installed' && game.installNote && (

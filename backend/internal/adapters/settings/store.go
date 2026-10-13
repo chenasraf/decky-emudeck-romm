@@ -43,6 +43,31 @@ type fileSettings struct {
 	// AutoBIOS downloads a platform's missing BIOS files with its first game download; unset means
 	// on.
 	AutoBIOS *bool `json:"autoBios,omitempty"`
+	// WaitForGames holds extracting and hashing while an emulator runs; unset means on.
+	WaitForGames *bool `json:"waitForGames,omitempty"`
+}
+
+// WaitForGames says whether extracting and hashing wait for a running game to close.
+func (s *Store) WaitForGames() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil || f.WaitForGames == nil {
+		return true
+	}
+	return *f.WaitForGames
+}
+
+// SetWaitForGames turns waiting for a running game to close on or off.
+func (s *Store) SetWaitForGames(on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	f.WaitForGames = &on
+	return s.save(f)
 }
 
 // InstallTo returns the ROM folder an EmuDeck system's new downloads go in, empty when it's the

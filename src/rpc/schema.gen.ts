@@ -685,6 +685,11 @@ export interface DownloadItem {
    * Converting is set while RomM converts the game to a format its emulator plays.
    */
   converting?: boolean;
+  /**
+   * WaitingForGame is set while the download, transferred, waits for a running game to close
+   * before it's extracted or zipped.
+   */
+  waitingForGame?: boolean;
 }
 /**
  * DownloadEvent is a change to a download. One that leaves the queue is installed, or on_romm when
@@ -700,6 +705,7 @@ export interface DownloadEvent {
   totalBytes: number /* int64 */;
   problem?: Error;
   converting?: boolean;
+  waitingForGame?: boolean;
 }
 /**
  * PlanDownloadAllParams names the platform, or with Collection set the collection, whose missing
@@ -871,10 +877,15 @@ export interface Preferences {
    * AutoBIOS downloads a platform's missing BIOS files with its first game download.
    */
   autoBios: boolean;
+  /**
+   * WaitForGames holds extracting and hashing while an emulator runs a game.
+   */
+  waitForGames: boolean;
 }
 /**
  * SetPreferencesParams changes the preferences it sets, leaving the rest.
  */
 export interface SetPreferencesParams {
   autoBios?: boolean;
+  waitForGames?: boolean;
 }

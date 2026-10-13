@@ -137,14 +137,15 @@ func deleteEvents(s *Server) app.DeleteListener {
 
 func toWireDownload(d app.Download) schema.DownloadItem {
 	item := schema.DownloadItem{
-		ID:            d.ROMID,
-		Name:          d.Name,
-		PlatformID:    d.PlatformID,
-		PlatformName:  d.PlatformName,
-		State:         schema.GameState(d.State),
-		ReceivedBytes: d.Received,
-		TotalBytes:    d.Total,
-		Converting:    d.Converting,
+		ID:             d.ROMID,
+		Name:           d.Name,
+		PlatformID:     d.PlatformID,
+		PlatformName:   d.PlatformName,
+		State:          schema.GameState(d.State),
+		ReceivedBytes:  d.Received,
+		TotalBytes:     d.Total,
+		Converting:     d.Converting,
+		WaitingForGame: d.WaitingForGame,
 	}
 	if d.Problem != nil {
 		item.Problem = problemOf(d.Problem)

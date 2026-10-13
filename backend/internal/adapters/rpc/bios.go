@@ -34,9 +34,15 @@ func biosRoutes(s *Server, bios *app.BIOS) {
 		}
 		return schema.DownloadBIOSResult{Count: n}, nil
 	})
+}
+
+func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games) {
+	current := func() schema.Preferences {
+		return schema.Preferences{AutoBIOS: bios.AutoDownload(), WaitForGames: games.WaitForGames()}
+	}
 
 	Register(s, "get_preferences", func(context.Context, schema.GetPreferencesParams) (schema.Preferences, error) {
-		return schema.Preferences{AutoBIOS: bios.AutoDownload()}, nil
+		return current(), nil
 	})
 
 	Register(s, "set_preferences", func(_ context.Context, p schema.SetPreferencesParams) (schema.Preferences, error) {
@@ -45,7 +51,12 @@ func biosRoutes(s *Server, bios *app.BIOS) {
 				return schema.Preferences{}, wireError(err)
 			}
 		}
-		return schema.Preferences{AutoBIOS: bios.AutoDownload()}, nil
+		if p.WaitForGames != nil {
+			if err := games.SetWaitForGames(*p.WaitForGames); err != nil {
+				return schema.Preferences{}, wireError(err)
+			}
+		}
+		return current(), nil
 	})
 }
 

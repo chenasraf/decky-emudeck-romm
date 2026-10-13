@@ -95,6 +95,20 @@ func TestAutoBIOS(t *testing.T) {
 	}
 }
 
+func TestWaitForGames(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if !s.WaitForGames() {
+		t.Fatal("waiting for games is off before anyone set it")
+	}
+	if err := s.SetWaitForGames(false); err != nil {
+		t.Fatal(err)
+	}
+	if New(dir).WaitForGames() {
+		t.Fatal("turning it off didn't stick")
+	}
+}
+
 func TestSignInNeedsToken(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)

@@ -102,6 +102,9 @@ type Download struct {
 	Problem error
 	// Converting is set while the Server converts the game to a format its emulator plays.
 	Converting bool
+	// WaitingForGame is set while the download, transferred, waits for a running game to close
+	// before it's extracted or zipped.
+	WaitingForGame bool
 }
 
 // DownloadListener hears each change to a download. A download that leaves the queue is
@@ -130,6 +133,7 @@ type Downloads struct {
 	problem   error
 	free      FreeSpace
 	prefs     DownloadPrefs
+	games     *Games
 	limit     int
 	onChange  DownloadListener
 	onDelete  DeleteListener
@@ -165,12 +169,13 @@ type job struct {
 }
 
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
-// turns downloading and deleting off, reporting problem.
+// turns downloading and deleting off, reporting problem. Extracting and zipping wait for games to
+// close; a nil games never waits.
 func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial DownloadDialer,
-	store DownloadStore, problem error, free FreeSpace, prefs DownloadPrefs, limit int, listen DownloadListeners, log *slog.Logger,
+	store DownloadStore, problem error, free FreeSpace, prefs DownloadPrefs, games *Games, limit int, listen DownloadListeners, log *slog.Logger,
 ) *Downloads {
 	return &Downloads{
-		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs,
+		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs, games: games,
 		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued, log: log,
 		now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx, deleting: map[int]bool{},
 	}
@@ -640,9 +645,11 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 	var staged []stagedFile
 	switch {
 	case layout.Zip:
-		staged, err = zipGame(layout, paths, staging, dir, d.checkSpace)
+		if err = d.waitForGame(ctx, j); err == nil {
+			staged, err = zipGame(layout, paths, staging, dir, d.checkSpace)
+		}
 	case whole:
-		staged, err = d.unpack(system, paths[0], sums[0], dir)
+		staged, err = d.unpack(ctx, j, system, paths[0], sums[0], dir)
 	default:
 		staged, err = stageSet(layout, paths, staging, sums)
 	}
@@ -720,6 +727,26 @@ func (d *Downloads) setConverting(j *job, on bool) {
 	update := j.Download
 	d.mu.Unlock()
 	d.onChange(update)
+}
+
+// waitForGame holds j while a game runs. It gives up j's slot meanwhile, so the downloads behind it
+// keep transferring.
+func (d *Downloads) waitForGame(ctx context.Context, j *job) error {
+	return d.games.Wait(ctx, func(on bool) {
+		d.mu.Lock()
+		j.WaitingForGame = on
+		if on {
+			d.running--
+		} else {
+			d.running++
+		}
+		update := j.Download
+		d.mu.Unlock()
+		d.onChange(update)
+		if on {
+			d.pump()
+		}
+	})
 }
 
 // madeDir is where the files the plugin makes for a game, a playlist or a zip, go in its staging
@@ -816,7 +843,7 @@ type stagedFile struct {
 
 // unpack decides whether the downloaded file at path is placed as it is or extracted into dir,
 // and returns what to place: the file itself, or the archive's contents.
-func (d *Downloads) unpack(system domain.System, path, sum, dir string) ([]stagedFile, error) {
+func (d *Downloads) unpack(ctx context.Context, j *job, system domain.System, path, sum, dir string) ([]stagedFile, error) {
 	whole := []stagedFile{{From: path, Rel: filepath.Base(path), SHA1: sum}}
 	if !domain.IsArchive(path) || system.ArchivePolicy() == domain.ArchivesKeep {
 		return whole, nil
@@ -831,6 +858,9 @@ func (d *Downloads) unpack(system domain.System, path, sum, dir string) ([]stage
 	}
 	if !system.Extracts(len(members), d.prefs.KeepArchives(system.Folder)) {
 		return whole, nil
+	}
+	if err := d.waitForGame(ctx, j); err != nil {
+		return nil, err
 	}
 
 	var size int64

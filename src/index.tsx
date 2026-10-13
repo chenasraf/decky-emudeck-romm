@@ -216,6 +216,17 @@ function SettingsSection() {
           }}
         />
       </PanelSectionRow>
+      <PanelSectionRow>
+        <ToggleField
+          label="Wait for games to close"
+          description="While an emulator is running, downloaded games wait to be extracted until it closes, so the game doesn't stutter. Downloads keep going."
+          checked={prefs.waitForGames}
+          onChange={(waitForGames) => {
+            setPrefs({ ...prefs, waitForGames })
+            call('set_preferences', { waitForGames }).then(setPrefs, () => setPrefs(prefs))
+          }}
+        />
+      </PanelSectionRow>
     </PanelSection>
   )
 }

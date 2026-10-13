@@ -66,6 +66,16 @@ func (m *memPrefs) SetKeepArchives(folder string, keep bool) error {
 	return nil
 }
 
+// memGamePrefs keeps the Wait for games to close setting in memory.
+type memGamePrefs struct{ wait atomic.Bool }
+
+func (m *memGamePrefs) WaitForGames() bool { return m.wait.Load() }
+
+func (m *memGamePrefs) SetWaitForGames(on bool) error {
+	m.wait.Store(on)
+	return nil
+}
+
 // memOwnership is a DownloadStore in memory.
 type memOwnership struct {
 	mu      sync.Mutex
@@ -254,10 +264,14 @@ type downloadFixture struct {
 	server    *fakeContent
 	settings  *fakeSettings
 	// free is what the Emulation drive has free.
-	free    atomic.Int64
-	drives  sync.Map
-	holds   chan error
-	prefs   *memPrefs
+	free   atomic.Int64
+	drives sync.Map
+	holds  chan error
+	prefs  *memPrefs
+	games  *Games
+	// playing is set while an emulator runs a game.
+	playing atomic.Bool
+	gaming  *memGamePrefs
 	updates chan Download
 	deletes chan DeleteUpdate
 	// stop stops the backend the downloads run under.
@@ -338,7 +352,16 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	f.free.Store(1 << 40)
 	f.holds = make(chan error, 16)
 	f.prefs = &memPrefs{keep: map[string]bool{}}
-	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, f.prefs, limit, f.listeners(), log)
+	f.gaming = &memGamePrefs{}
+	f.gaming.wait.Store(true)
+	f.games = NewGames(func() (domain.Emulator, bool) {
+		if f.playing.Load() {
+			return domain.EmulatorByID("pcsx2")
+		}
+		return domain.Emulator{}, false
+	}, f.gaming, log)
+	f.games.poll = time.Millisecond
+	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, f.prefs, f.games, limit, f.listeners(), log)
 	f.downloads.retries = testRetries
 	f.downloads.spacePoll = time.Millisecond
 	return f
@@ -553,7 +576,7 @@ func TestDownloadWithoutStateDB(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	problem := &domain.Error{Kind: domain.KindNewerData, Message: "newer"}
 	d := NewDownloads(t.Context(), f.downloads.catalog, f.downloads.install, f.downloads.conn, f.downloads.dial,
-		nil, problem, f.measure, f.prefs, 2, DownloadListeners{}, f.downloads.log)
+		nil, problem, f.measure, f.prefs, f.games, 2, DownloadListeners{}, f.downloads.log)
 
 	if _, err := d.Queue(context.Background(), 1); kindOf(err) != domain.KindNewerData {
 		t.Fatalf("queue: %v", err)
@@ -735,7 +758,7 @@ func TestDismissFailedDeletesPartial(t *testing.T) {
 func (f *downloadFixture) restart(t *testing.T) *Downloads {
 	t.Helper()
 	old := f.downloads
-	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, f.prefs, 2, f.listeners(), old.log)
+	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, f.prefs, f.games, 2, f.listeners(), old.log)
 	d.retries = testRetries
 	f.downloads = d
 	return d
