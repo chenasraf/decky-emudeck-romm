@@ -80,8 +80,33 @@ func (m *memGamePrefs) SetWaitForGames(on bool) error {
 type memOwnership struct {
 	mu      sync.Mutex
 	roms    map[int]domain.OwnedROM
+	links   map[int]domain.LinkedGame
 	queue   []domain.QueuedDownload
 	saveErr error
+}
+
+func (m *memOwnership) SaveLinked(_ context.Context, g domain.LinkedGame) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.links == nil {
+		m.links = map[int]domain.LinkedGame{}
+	}
+	m.links[g.ROMID] = g
+	return nil
+}
+
+func (m *memOwnership) Linked(_ context.Context, id int) (domain.LinkedGame, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.links[id]
+	return g, ok, nil
+}
+
+func (m *memOwnership) DeleteLinked(_ context.Context, id int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.links, id)
+	return nil
 }
 
 func (m *memOwnership) SaveQueued(_ context.Context, d domain.QueuedDownload) error {

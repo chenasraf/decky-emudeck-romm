@@ -105,6 +105,9 @@ export interface Methods {
   cancel_download: Method<CancelDownloadParams, CancelDownloadResult>;
   list_downloads: Method<ListDownloadsParams, ListDownloadsResult>;
   delete_games: Method<DeleteGamesParams, DeleteGamesResult>;
+  check_on_deck: Method<CheckOnDeckParams, OnDeckCheck>;
+  adopt_game: Method<AdoptGameParams, AdoptGameResult>;
+  link_game: Method<LinkGameParams, LinkGameResult>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
   download_all: Method<DownloadAllParams, DownloadAllResult>;
   set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
@@ -141,6 +144,10 @@ export interface Events {
    * DownloadHold fires when the download queue goes on hold for space, and when it comes off.
    */
   download_hold: DownloadHoldEvent;
+  /**
+   * Ownership fires when a game is adopted or linked.
+   */
+  ownership: OwnershipEvent;
   /**
    * BIOS fires when a platform's BIOS download starts and when it ends.
    */
@@ -567,6 +574,11 @@ export const GameDeleting: GameState = "deleting";
  * downloaded, until download_game retries it or cancel_download dismisses it.
  */
 export const GameFailed: GameState = "failed";
+/**
+ * GameOnDeck is a game with a file the plugin didn't download where its download would go: On
+ * Deck (not managed). download_game refuses it; adopt_game and link_game take it in.
+ */
+export const GameOnDeck: GameState = "on_deck";
 export interface GameSummary {
   id: number /* int */;
   name: string;
@@ -697,6 +709,62 @@ export interface Game {
    * can't use as it is, because RomM couldn't convert it. Set when installed.
    */
   installNote?: string;
+  /**
+   * LinkedPath is the User-managed file of a Linked game, set while it's linked.
+   */
+  linkedPath?: string;
+}
+/**
+ * CheckOnDeckParams names an on_deck game whose file to compare with RomM's.
+ */
+export interface CheckOnDeckParams {
+  id: number /* int */;
+}
+/**
+ * OnDeckCheck is how the file where an on_deck game would go compares with the game on RomM.
+ */
+export interface OnDeckCheck {
+  path: string;
+  /**
+   * Checking is set while the file is still being hashed; call again for the answer.
+   */
+  checking: boolean;
+  /**
+   * Matches is set when the file is RomM's game, so adopt_game can take it.
+   */
+  matches: boolean;
+  /**
+   * Why says why it doesn't match, set once checked when it doesn't.
+   */
+  why?: string;
+  linked: boolean;
+}
+/**
+ * AdoptGameParams names an on_deck game whose matching file the plugin takes over, as if it had
+ * downloaded it.
+ */
+export interface AdoptGameParams {
+  id: number /* int */;
+}
+export interface AdoptGameResult {
+}
+/**
+ * LinkGameParams names an on_deck game to link to RomM, so its saves sync while its file stays
+ * the user's.
+ */
+export interface LinkGameParams {
+  id: number /* int */;
+}
+export interface LinkGameResult {
+}
+/**
+ * OwnershipEvent is a game adopted, now installed, or linked, still on_deck.
+ */
+export interface OwnershipEvent {
+  id: number /* int */;
+  name: string;
+  state: GameState;
+  linked: boolean;
 }
 /**
  * DownloadGameParams names the game to download. A failed download is retried, resuming what it

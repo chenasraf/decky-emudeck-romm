@@ -39,21 +39,28 @@ const (
 // StatusOf compares the file at the firmware's place, of size bytes with sums, to the firmware. It
 // compares the strongest hash the Server has, and the size when it has none.
 func (f Firmware) StatusOf(size int64, sums FileSums) BIOSStatus {
-	var same bool
-	switch {
-	case f.SHA1 != "":
-		same = strings.EqualFold(f.SHA1, sums.SHA1)
-	case f.MD5 != "":
-		same = strings.EqualFold(f.MD5, sums.MD5)
-	case f.CRC != "":
-		same = strings.EqualFold(strings.TrimLeft(f.CRC, "0"), strings.TrimLeft(sums.CRC, "0"))
-	default:
+	same, known := sums.match(f.SHA1, f.MD5, f.CRC)
+	if !known {
 		same = size == f.SizeBytes
 	}
 	if same {
 		return BIOSPresent
 	}
 	return BIOSDifferent
+}
+
+// match compares sums with the strongest of the hashes given, which may be empty. known is false
+// when all are.
+func (s FileSums) match(sha1, md5, crc string) (same, known bool) {
+	switch {
+	case sha1 != "":
+		return strings.EqualFold(sha1, s.SHA1), true
+	case md5 != "":
+		return strings.EqualFold(md5, s.MD5), true
+	case crc != "":
+		return strings.EqualFold(strings.TrimLeft(crc, "0"), strings.TrimLeft(s.CRC, "0")), true
+	}
+	return false, false
 }
 
 // SafeName is the firmware's file name when it names a file and nothing else: a name that would

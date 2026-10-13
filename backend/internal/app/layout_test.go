@@ -179,11 +179,8 @@ func TestSetNeverMergesIntoAFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.serveSet(8, gameFile{"a (Disc 1).chd", "game", "a"}, gameFile{"a (Disc 2).chd", "game", "b"})
-	if _, err := f.downloads.Queue(context.Background(), 8); err != nil {
-		t.Fatal(err)
-	}
-	if u := f.end(t, 8); kindOf(u.Problem) != domain.KindTargetExists {
-		t.Fatalf("end: %+v", u)
+	if _, err := f.downloads.Queue(context.Background(), 8); kindOf(err) != domain.KindTargetExists {
+		t.Fatalf("queue: %v", err)
 	}
 	if len(f.server.froms) != 0 {
 		t.Fatal("downloaded a game it couldn't place")

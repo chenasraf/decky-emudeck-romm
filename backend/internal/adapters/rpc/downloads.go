@@ -29,6 +29,28 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.DeleteGamesResult{Count: n}, nil
 	})
 
+	Register(s, "check_on_deck", func(ctx context.Context, p schema.CheckOnDeckParams) (schema.OnDeckCheck, error) {
+		c, err := downloads.CheckOnDeck(ctx, p.ID)
+		if err != nil {
+			return schema.OnDeckCheck{}, wireError(err)
+		}
+		return schema.OnDeckCheck{Path: c.Path, Checking: c.Checking, Matches: c.Matches, Why: c.Why, Linked: c.Linked}, nil
+	})
+
+	Register(s, "adopt_game", func(ctx context.Context, p schema.AdoptGameParams) (schema.AdoptGameResult, error) {
+		if err := downloads.Adopt(ctx, p.ID); err != nil {
+			return schema.AdoptGameResult{}, wireError(err)
+		}
+		return schema.AdoptGameResult{}, nil
+	})
+
+	Register(s, "link_game", func(ctx context.Context, p schema.LinkGameParams) (schema.LinkGameResult, error) {
+		if err := downloads.Link(ctx, p.ID); err != nil {
+			return schema.LinkGameResult{}, wireError(err)
+		}
+		return schema.LinkGameResult{}, nil
+	})
+
 	Register(s, "plan_download_all", func(ctx context.Context, p schema.PlanDownloadAllParams) (schema.DownloadAllPlan, error) {
 		plan, err := downloads.PlanAll(ctx, toBatch(p.PlatformID, p.Collection))
 		if err != nil {
@@ -98,9 +120,18 @@ func fromWireCollection(c schema.CollectionRef) domain.CollectionRef {
 }
 
 // DownloadListeners returns the listeners that send what the download queue does as download,
-// delete and download_hold notifications.
+// delete, download_hold and ownership notifications.
 func DownloadListeners(s *Server) app.DownloadListeners {
-	return app.DownloadListeners{Change: downloadEvents(s), Delete: deleteEvents(s), Hold: holdEvents(s)}
+	return app.DownloadListeners{Change: downloadEvents(s), Delete: deleteEvents(s), Hold: holdEvents(s), Ownership: ownershipEvents(s)}
+}
+
+func ownershipEvents(s *Server) app.OwnershipListener {
+	return func(c app.OwnershipChange) {
+		event := schema.OwnershipEvent{ID: c.ROMID, Name: c.Name, State: schema.GameState(c.State), Linked: c.Linked}
+		if err := s.Notify("ownership", event); err != nil {
+			s.log.Error("send ownership", "err", err)
+		}
+	}
 }
 
 func holdEvents(s *Server) app.HoldListener {

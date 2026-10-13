@@ -40,6 +40,7 @@ import type {
   GameState,
   GameSummary,
   ListGamesResult,
+  OnDeckCheck,
   PlatformSummary,
   Error as RpcError,
   SearchGamesResult,
@@ -127,6 +128,7 @@ export function stateLabel(
   if (game.state === 'failed') return 'Failed'
   if (game.state === 'installed') return 'Installed'
   if (game.state === 'deleting') return 'Deleting…'
+  if (game.state === 'on_deck') return 'On Deck'
   return null
 }
 
@@ -828,6 +830,7 @@ const STATE_LABELS: Record<string, string> = {
   installed: 'Installed',
   deleting: 'Deleting…',
   failed: 'Download failed',
+  on_deck: 'On Deck (not managed)',
 }
 
 /** Where ES-DE cleans up the gamelist entries and media of games deleted from disk. */
@@ -1028,7 +1031,44 @@ export interface GameDetail {
   stateText: string
   /** What can be done with the game in its state. */
   actions: GameAction[]
+  /** What the page says about the game's file when it's On Deck (not managed). */
+  notice?: string
   error: RpcError | null
+}
+
+/** How often a check of an On Deck file still hashing asks again. */
+const CHECK_POLL_MS = 1500
+
+/** Compares an On Deck game's file with RomM's while state says it's there, asking again while it's hashed. */
+function useOnDeckCheck(id: number, state: GameState | undefined, reload: number) {
+  const [check, setCheck] = useState<{ id: number; result?: OnDeckCheck; error?: RpcError } | null>(
+    null,
+  )
+
+  useEffect(() => {
+    if (state !== 'on_deck') return
+    let current = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const ask = () => {
+      call('check_on_deck', { id }).then(
+        (result) => {
+          if (!current) return
+          setCheck({ id, result })
+          if (result.checking) timer = setTimeout(ask, CHECK_POLL_MS)
+        },
+        (err: unknown) => {
+          if (current) setCheck({ id, error: asRpcError(err) })
+        },
+      )
+    }
+    ask()
+    return () => {
+      current = false
+      clearTimeout(timer)
+    }
+  }, [id, state, reload])
+
+  return check?.id === id && state === 'on_deck' ? check : null
 }
 
 /** A game and what can be done with it, both pages' shared view of it. */
@@ -1045,6 +1085,7 @@ export function useGameDetail(id: number): GameDetail {
 
   const download = downloads.items.find((d) => d.id === id)
   const state = download?.state ?? game?.state
+  const check = useOnDeckCheck(id, state, downloads.ended)
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true)
@@ -1082,6 +1123,39 @@ export function useGameDetail(id: number): GameDetail {
           destructive: true,
         })
         break
+      case 'on_deck':
+        if (check?.result?.matches) {
+          actions.push({
+            label: 'Adopt',
+            run: () => void act(() => call('adopt_game', { id })),
+            disabled: busy,
+          })
+        }
+        if (!game.linkedPath) {
+          actions.push({
+            label: 'Link to RomM',
+            run: () => void act(() => call('link_game', { id })),
+            disabled: busy,
+          })
+        }
+        break
+    }
+  }
+
+  let notice: string | undefined
+  if (state === 'on_deck') {
+    const path = game?.linkedPath ?? check?.result?.path
+    const where = path ? ` at ${path}` : ''
+    if (game?.linkedPath) {
+      notice = `Linked to RomM. The file${where} stays yours: the plugin never deletes or replaces it.`
+    } else if (check?.error) {
+      notice = `There's a copy of this game the plugin didn't download${where}. It couldn't be compared with RomM's: ${check.error.message}`
+    } else if (!check?.result || check.result.checking) {
+      notice = `There's a copy of this game the plugin didn't download${where}. Comparing it with RomM's…`
+    } else if (check.result.matches) {
+      notice = `There's a copy of this game the plugin didn't download${where}. It matches RomM's, so the plugin can adopt it and manage it from now on.`
+    } else {
+      notice = `There's a copy of this game the plugin didn't download${where}. ${check.result.why ?? ''} The plugin won't replace it, but you can link it to RomM.`
     }
   }
 
@@ -1090,11 +1164,11 @@ export function useGameDetail(id: number): GameDetail {
   else if (download?.waitingForGame) stateText = 'Waiting for game to close'
   else if (download?.state === 'downloading') stateText = `Downloading ${percent(download)}%`
 
-  return { game, download, state, stateText, actions, error }
+  return { game, download, state, stateText, actions, notice, error }
 }
 
 export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
-  const { game, download, state, stateText, actions, error } = useGameDetail(id)
+  const { game, download, state, stateText, actions, notice, error } = useGameDetail(id)
 
   return (
     <PanelSection title={game?.name ?? 'Game'}>
@@ -1112,6 +1186,11 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
           <PanelSectionRow>
             <Field label="State">{stateText}</Field>
           </PanelSectionRow>
+          {notice && (
+            <PanelSectionRow>
+              <Field label="Not downloaded by the plugin" description={notice} />
+            </PanelSectionRow>
+          )}
           {state === 'installed' && game.installNote && (
             <PanelSectionRow>
               <Field label="⚠ Not ready to play" description={game.installNote} />

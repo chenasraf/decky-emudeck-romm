@@ -80,9 +80,10 @@ type OwnershipStore interface {
 	DeleteOwned(ctx context.Context, id int) error
 }
 
-// DownloadStore keeps the records of Plugin-owned ROMs and the download queue.
+// DownloadStore keeps the records of Plugin-owned ROMs and Linked games, and the download queue.
 type DownloadStore interface {
 	OwnershipStore
+	LinkStore
 	SaveQueued(ctx context.Context, d domain.QueuedDownload) error
 	DeleteQueued(ctx context.Context, id int) error
 	Queued(ctx context.Context) ([]domain.QueuedDownload, error)
@@ -121,6 +122,8 @@ type DownloadListeners struct {
 	Hold   HoldListener
 	// Queued, when set, hears each game newly added to the queue; a retry isn't one.
 	Queued DownloadListener
+	// Ownership, when set, hears each game adopted or linked.
+	Ownership OwnershipListener
 }
 
 type Downloads struct {
@@ -129,20 +132,22 @@ type Downloads struct {
 	conn    *Connection
 	dial    DownloadDialer
 	// store is nil when state.db couldn't be opened, and problem says why.
-	store     DownloadStore
-	problem   error
-	free      FreeSpace
-	prefs     DownloadPrefs
-	games     *Games
-	limit     int
-	onChange  DownloadListener
-	onDelete  DeleteListener
-	onHold    HoldListener
-	onQueued  DownloadListener
-	log       *slog.Logger
-	now       func() time.Time
-	retries   []time.Duration
-	spacePoll time.Duration
+	store    DownloadStore
+	problem  error
+	free     FreeSpace
+	prefs    DownloadPrefs
+	games    *Games
+	limit    int
+	onChange DownloadListener
+	onDelete DeleteListener
+	onHold   HoldListener
+	onQueued DownloadListener
+	// onOwnership is nil when nothing listens.
+	onOwnership OwnershipListener
+	log         *slog.Logger
+	now         func() time.Time
+	retries     []time.Duration
+	spacePoll   time.Duration
 	// base outlives single calls: downloads run under it after the call that queued them returns.
 	// It ends when the backend stops.
 	base context.Context
@@ -155,6 +160,14 @@ type Downloads struct {
 	held bool
 	// deleting are the games queued for deletion or being deleted.
 	deleting map[int]bool
+	// checks are the comparisons of User-managed files with RomM's games, by ROM id.
+	checks map[int]*onDeckJob
+
+	// scanMu guards scans and sums: what sits where each platform's games would go, by platform
+	// id, and the hashes of files compared with RomM's, by path.
+	scanMu sync.Mutex
+	scans  map[int]folderScan
+	sums   map[string]cachedSums
 
 	// deleteMu is held while deletes run, so they run one at a time.
 	deleteMu sync.Mutex
@@ -176,8 +189,9 @@ func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, c
 ) *Downloads {
 	return &Downloads{
 		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs, games: games,
-		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued, log: log,
-		now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx, deleting: map[int]bool{},
+		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued,
+		onOwnership: listen.Ownership, log: log, now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx,
+		deleting: map[int]bool{}, checks: map[int]*onDeckJob{}, scans: map[int]folderScan{}, sums: map[string]cachedSums{},
 	}
 }
 
@@ -291,6 +305,15 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 		}
 		return Download{}, &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is already on this Deck."}
 	}
+	if path, ok, err := d.occupant(ctx, rom, platform); err != nil || ok {
+		if err != nil {
+			return Download{}, err
+		}
+		return Download{}, &domain.Error{
+			Kind:    domain.KindTargetExists,
+			Message: fmt.Sprintf("%s is already in %s, and the plugin never downloads over it. Adopt it or link it to RomM on the game's page.", filepath.Base(path), filepath.Dir(path)),
+		}
+	}
 
 	d.mu.Lock()
 	j := d.find(id)
@@ -392,6 +415,14 @@ func (d *Downloads) List() []Download {
 func (d *Downloads) States(ctx context.Context) (map[int]domain.GameState, error) {
 	out := map[int]domain.GameState{}
 	if d.store != nil {
+		onDeck, err := d.onDeck(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for id := range onDeck {
+			out[id] = domain.StateOnDeck
+		}
+		// A Plugin-owned game's own file is where it would go, so owning comes after.
 		ids, err := d.store.OwnedIDs(ctx)
 		if err != nil {
 			return nil, err

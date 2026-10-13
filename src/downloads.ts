@@ -7,6 +7,7 @@ import type {
   DownloadEvent,
   DownloadHoldEvent,
   DownloadItem,
+  OwnershipEvent,
   Error as RpcError,
 } from './rpc/schema.gen'
 
@@ -21,8 +22,8 @@ export interface Downloads {
    */
   held: RpcError | null
   /**
-   * Goes up each time a download ends or fails, or a delete changes, so views listing states
-   * reload.
+   * Goes up each time a download ends or fails, a delete changes, or a game is adopted or linked,
+   * so views listing states reload.
    */
   ended: number
 }
@@ -73,6 +74,12 @@ function applyDelete(e: DeleteEvent) {
   if (e.problem) toaster.toast({ title: `Didn't delete ${e.name}`, body: e.problem.message })
 }
 
+function applyOwnership(e: OwnershipEvent) {
+  // Adopting moves the game to Installed; linking changes its page.
+  publish({ ...current, ended: current.ended + 1 })
+  toaster.toast({ title: e.linked ? 'Linked to RomM' : 'Adopted', body: e.name })
+}
+
 function applyHold(e: DownloadHoldEvent) {
   publish({ ...current, held: e.held ?? null })
   if (e.held) toaster.toast({ title: 'Downloads on hold', body: e.held.message })
@@ -87,6 +94,7 @@ export function watchDownloads(): () => void {
   const stop = onEvent('download', apply)
   const stopDeletes = onEvent('delete', applyDelete)
   const stopHolds = onEvent('download_hold', applyHold)
+  const stopOwnership = onEvent('ownership', applyOwnership)
   const listener = addEventListener<[BackendStatus]>(BACKEND_STATUS_EVENT, (backend) => {
     if (backend.state === 'ready') void load()
   })
@@ -94,6 +102,7 @@ export function watchDownloads(): () => void {
     stop()
     stopDeletes()
     stopHolds()
+    stopOwnership()
     removeEventListener(BACKEND_STATUS_EVENT, listener)
   }
 }

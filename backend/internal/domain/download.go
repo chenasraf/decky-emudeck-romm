@@ -20,6 +20,9 @@ const (
 	// StateFailed is a download that stopped on an error. It stays in the queue, keeping what it
 	// downloaded, until it is retried or dismissed.
 	StateFailed GameState = "failed"
+	// StateOnDeck is a game with a User-managed file where its download would go. The plugin never
+	// downloads over it; Adopt or Link to RomM take it in instead.
+	StateOnDeck GameState = "on_deck"
 )
 
 // QueuedDownload is a download in the queue as state.db keeps it, so the queue outlives the

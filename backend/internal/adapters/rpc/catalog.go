@@ -196,6 +196,16 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 				}
 			}
 		}
+		var linked string
+		if state == domain.StateOnDeck {
+			link, ok, err := downloads.Linked(ctx, p.ID)
+			if err != nil {
+				return schema.Game{}, wireError(err)
+			}
+			if ok {
+				linked = link.Path
+			}
+		}
 		return schema.Game{
 			ID:             rom.ID,
 			PlatformID:     rom.PlatformID,
@@ -210,6 +220,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			State:          schema.GameState(state),
 			InstalledPaths: paths,
 			InstallNote:    note,
+			LinkedPath:     linked,
 		}, nil
 	})
 }

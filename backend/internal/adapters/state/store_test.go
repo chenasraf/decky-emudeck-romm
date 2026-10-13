@@ -150,6 +150,31 @@ func TestOwnedBIOSRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLinkedRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+
+	at := time.Date(2026, 10, 13, 9, 0, 0, 789, time.UTC)
+	g := domain.LinkedGame{ROMID: 7, PlatformID: 2, Path: "/e/roms/gba/Golden Sun.gba", LinkedAt: at}
+	if err := s.SaveLinked(ctx, g); err != nil {
+		t.Fatal(err)
+	}
+	// Linking again replaces the link.
+	g.Path = "/e/roms/gba/Golden Sun (USA).gba"
+	if err := s.SaveLinked(ctx, g); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, err := s.Linked(ctx, 7); err != nil || !ok || got != g {
+		t.Fatalf("got %+v, %v, %v", got, ok, err)
+	}
+	if err := s.DeleteLinked(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Linked(ctx, 7); ok {
+		t.Fatal("link kept after delete")
+	}
+}
+
 func TestReopenKeepsRecords(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")

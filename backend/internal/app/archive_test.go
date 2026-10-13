@@ -245,10 +245,12 @@ func TestExtractedFileNeverOverwrites(t *testing.T) {
 	if err := os.MkdirAll(psx, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(psx, "Ridge Racer.bin"), []byte("mine"), 0o644); err != nil {
+	// The archive's files are named unlike the archive, so nothing looks in the way until it's
+	// opened.
+	if err := os.WriteFile(filepath.Join(psx, "RR.bin"), []byte("mine"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.serve(5, "Ridge Racer.zip", zipOf(t, member{"Ridge Racer.cue", "cue"}, member{"Ridge Racer.bin", "bin"}))
+	f.serve(5, "Ridge Racer.zip", zipOf(t, member{"RR.cue", "cue"}, member{"RR.bin", "bin"}))
 	if _, err := f.downloads.Queue(context.Background(), 5); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +261,7 @@ func TestExtractedFileNeverOverwrites(t *testing.T) {
 	if got := listDir(t, psx); len(got) != 1 {
 		t.Fatalf("psx holds %v", got)
 	}
-	if data, _ := os.ReadFile(filepath.Join(psx, "Ridge Racer.bin")); string(data) != "mine" {
+	if data, _ := os.ReadFile(filepath.Join(psx, "RR.bin")); string(data) != "mine" {
 		t.Fatalf("replaced: %q", data)
 	}
 }

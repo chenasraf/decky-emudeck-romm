@@ -87,6 +87,9 @@ type Methods struct {
 	CancelDownload      Method[CancelDownloadParams, CancelDownloadResult]           `json:"cancel_download"`
 	ListDownloads       Method[ListDownloadsParams, ListDownloadsResult]             `json:"list_downloads"`
 	DeleteGames         Method[DeleteGamesParams, DeleteGamesResult]                 `json:"delete_games"`
+	CheckOnDeck         Method[CheckOnDeckParams, OnDeckCheck]                       `json:"check_on_deck"`
+	AdoptGame           Method[AdoptGameParams, AdoptGameResult]                     `json:"adopt_game"`
+	LinkGame            Method[LinkGameParams, LinkGameResult]                       `json:"link_game"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
 	DownloadAll         Method[DownloadAllParams, DownloadAllResult]                 `json:"download_all"`
 	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
@@ -112,6 +115,8 @@ type Events struct {
 	Delete DeleteEvent `json:"delete"`
 	// DownloadHold fires when the download queue goes on hold for space, and when it comes off.
 	DownloadHold DownloadHoldEvent `json:"download_hold"`
+	// Ownership fires when a game is adopted or linked.
+	Ownership OwnershipEvent `json:"ownership"`
 	// BIOS fires when a platform's BIOS download starts and when it ends.
 	BIOS BIOSEvent `json:"bios"`
 }
@@ -468,6 +473,9 @@ const (
 	// GameFailed is a download that stopped on an error. It stays in the queue, keeping what it
 	// downloaded, until download_game retries it or cancel_download dismisses it.
 	GameFailed GameState = "failed"
+	// GameOnDeck is a game with a file the plugin didn't download where its download would go: On
+	// Deck (not managed). download_game refuses it; adopt_game and link_game take it in.
+	GameOnDeck GameState = "on_deck"
 )
 
 type GameSummary struct {
@@ -576,6 +584,49 @@ type Game struct {
 	// InstallNote says what's left before the game plays: it was placed in a format its emulator
 	// can't use as it is, because RomM couldn't convert it. Set when installed.
 	InstallNote string `json:"installNote,omitempty"`
+	// LinkedPath is the User-managed file of a Linked game, set while it's linked.
+	LinkedPath string `json:"linkedPath,omitempty"`
+}
+
+// CheckOnDeckParams names an on_deck game whose file to compare with RomM's.
+type CheckOnDeckParams struct {
+	ID int `json:"id"`
+}
+
+// OnDeckCheck is how the file where an on_deck game would go compares with the game on RomM.
+type OnDeckCheck struct {
+	Path string `json:"path"`
+	// Checking is set while the file is still being hashed; call again for the answer.
+	Checking bool `json:"checking"`
+	// Matches is set when the file is RomM's game, so adopt_game can take it.
+	Matches bool `json:"matches"`
+	// Why says why it doesn't match, set once checked when it doesn't.
+	Why    string `json:"why,omitempty"`
+	Linked bool   `json:"linked"`
+}
+
+// AdoptGameParams names an on_deck game whose matching file the plugin takes over, as if it had
+// downloaded it.
+type AdoptGameParams struct {
+	ID int `json:"id"`
+}
+
+type AdoptGameResult struct{}
+
+// LinkGameParams names an on_deck game to link to RomM, so its saves sync while its file stays
+// the user's.
+type LinkGameParams struct {
+	ID int `json:"id"`
+}
+
+type LinkGameResult struct{}
+
+// OwnershipEvent is a game adopted, now installed, or linked, still on_deck.
+type OwnershipEvent struct {
+	ID     int       `json:"id"`
+	Name   string    `json:"name"`
+	State  GameState `json:"state"`
+	Linked bool      `json:"linked"`
 }
 
 // DownloadGameParams names the game to download. A failed download is retried, resuming what it

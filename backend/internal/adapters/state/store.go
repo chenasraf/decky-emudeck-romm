@@ -77,6 +77,14 @@ CREATE TABLE owned_bios (
 );
 CREATE INDEX owned_bios_by_platform ON owned_bios (platform_id);
 `,
+	`
+CREATE TABLE linked_games (
+	rom_id      INTEGER PRIMARY KEY,
+	platform_id INTEGER NOT NULL,
+	path        TEXT NOT NULL,
+	linked_at   INTEGER NOT NULL
+);
+`,
 }
 
 // keepBackups is how many state.db.bak-<version> files are kept.
@@ -223,6 +231,35 @@ func (s *Store) SaveOwned(ctx context.Context, rom domain.OwnedROM) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// SaveLinked records a Linked game, replacing any earlier link of the same ROM.
+func (s *Store) SaveLinked(ctx context.Context, g domain.LinkedGame) error {
+	_, err := s.db.ExecContext(ctx, "INSERT OR REPLACE INTO linked_games (rom_id, platform_id, path, linked_at) VALUES (?, ?, ?, ?)",
+		g.ROMID, g.PlatformID, g.Path, g.LinkedAt.UnixNano())
+	return err
+}
+
+// Linked returns the link of the ROM with id.
+func (s *Store) Linked(ctx context.Context, id int) (domain.LinkedGame, bool, error) {
+	g := domain.LinkedGame{ROMID: id}
+	var at int64
+	err := s.db.QueryRowContext(ctx, "SELECT platform_id, path, linked_at FROM linked_games WHERE rom_id = ?", id).
+		Scan(&g.PlatformID, &g.Path, &at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return g, false, nil
+	}
+	if err != nil {
+		return g, false, err
+	}
+	g.LinkedAt = time.Unix(0, at).UTC()
+	return g, true, nil
+}
+
+// DeleteLinked drops the link of the ROM with id. Its file stays as it is.
+func (s *Store) DeleteLinked(ctx context.Context, id int) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM linked_games WHERE rom_id = ?", id)
+	return err
 }
 
 // DeleteOwned drops the record of the ROM with id, making whatever is left of its files
