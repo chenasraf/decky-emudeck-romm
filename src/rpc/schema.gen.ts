@@ -77,6 +77,11 @@ export const ErrorSaveConflict: ErrorKind = "save_conflict";
  * ErrorSyncDisabled means RomM has save sync turned off for this Deck's Device.
  */
 export const ErrorSyncDisabled: ErrorKind = "sync_disabled";
+/**
+ * ErrorStaleConflict means RomM's side of a save conflict changed since the user looked at it,
+ * so their choice wasn't applied.
+ */
+export const ErrorStaleConflict: ErrorKind = "stale_conflict";
 export interface ErrorData {
   kind: ErrorKind;
   /**
@@ -135,6 +140,7 @@ export interface Methods {
   sync_saves: Method<SyncSavesParams, SyncSavesResult>;
   save_status: Method<SaveStatusParams, SaveStatus>;
   save_summary: Method<SaveSummaryParams, SaveSummary>;
+  resolve_save_conflict: Method<ResolveSaveConflictParams, SaveStatus>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1302,6 +1308,49 @@ export interface SaveStatus {
    */
   checkedAt?: string;
   syncing: boolean;
+  /**
+   * Conflict is set while the save is in conflict.
+   */
+  conflict?: SaveConflictInfo;
+}
+/**
+ * SaveConflictInfo is what the user compares to settle a conflict.
+ */
+export interface SaveConflictInfo {
+  /**
+   * ServerSaveID is RomM's save the conflict is with, to send back with the choice; 0 when RomM
+   * didn't name it, and a sync shows it.
+   */
+  serverSaveId: number /* int */;
+  /**
+   * ServerAt and DeckAt are when RomM's save and this Deck's were written, as RFC 3339.
+   */
+  serverAt?: string;
+  deckAt?: string;
+  /**
+   * Parked says this Deck's copy is also kept on RomM, outside every slot.
+   */
+  parked: boolean;
+}
+export type SaveChoice = string;
+export const KeepDeck: SaveChoice = "deck";
+export const KeepServer: SaveChoice = "server";
+/**
+ * ResolveSaveConflictParams settles a game's save conflict with the copy to keep. ServerSaveID is
+ * the conflict's serverSaveId as the user saw it; when RomM has a newer save since, the call fails
+ * with stale_conflict and changes nothing.
+ */
+export interface ResolveSaveConflictParams {
+  id: number /* int */;
+  keep: SaveChoice;
+  serverSaveId: number /* int */;
+}
+/**
+ * SaveConflictGame is a game whose save is in conflict.
+ */
+export interface SaveConflictGame {
+  id: number /* int */;
+  name: string;
 }
 export interface SaveSummaryParams {
 }
@@ -1326,6 +1375,10 @@ export interface SaveSummary {
    */
   lastCheckedAt?: string;
   syncing: boolean;
+  /**
+   * Conflicts are the games whose saves are in conflict.
+   */
+  conflicts: SaveConflictGame[];
 }
 export interface SaveSyncEvent {
   syncing: boolean;

@@ -58,6 +58,12 @@ export function watchSaves(): () => void {
   return onEvent('save_sync', apply)
 }
 
+/** Reloads every view of save status. */
+export function refreshSaves() {
+  changes++
+  for (const fn of listeners) fn()
+}
+
 function subscribe(fn: () => void) {
   listeners.add(fn)
   return () => {
@@ -120,7 +126,9 @@ export function saveStateLabel(s: SaveStatus): string {
 export function saveStateDetail(s: SaveStatus): string | undefined {
   switch (s.state) {
     case 'conflict':
-      return 'The save changed both on this Deck and on RomM since they last matched. Neither was overwritten.'
+      return s.conflict && s.conflict.serverSaveId > 0
+        ? 'The save changed both on this Deck and on RomM since they last matched. Neither was overwritten: choose which to keep.'
+        : 'The save changed both on this Deck and on RomM since they last matched. Neither was overwritten. Sync again to compare the two.'
     case 'removed_on_server':
       return "RomM's save of this game was deleted. The save on this Deck stays."
     case 'waiting':

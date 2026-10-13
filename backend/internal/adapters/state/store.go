@@ -132,6 +132,11 @@ CREATE TABLE save_records (
 	checked_at     INTEGER NOT NULL
 );
 `,
+	`
+ALTER TABLE save_records ADD COLUMN conflict_save_id INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE save_records ADD COLUMN conflict_server_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE save_records ADD COLUMN parked_hash TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -593,17 +598,18 @@ func (s *Store) ForgetServer(ctx context.Context) error {
 // PutSaveRecord writes what save sync knows of a game's save, replacing what it knew.
 func (s *Store) PutSaveRecord(ctx context.Context, r domain.SaveRecord) error {
 	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO save_records
-		(rom_id, path, slot, emulator, local_hash, server_save_id, server_hash, synced_at, state, problem, checked_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(rom_id, path, slot, emulator, local_hash, server_save_id, server_hash, synced_at, state, problem, checked_at,
+		 conflict_save_id, conflict_server_at, parked_hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ROMID, r.Path, r.Slot, r.Emulator, r.LocalHash, r.ServerSaveID, r.ServerHash, unixNano(r.SyncedAt),
-		string(r.State), r.Problem, unixNano(r.CheckedAt))
+		string(r.State), r.Problem, unixNano(r.CheckedAt), r.ConflictSaveID, unixNano(r.ConflictServerAt), r.ParkedHash)
 	return err
 }
 
 // SaveRecords returns what save sync knows of every game it looked at.
 func (s *Store) SaveRecords(ctx context.Context) ([]domain.SaveRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT rom_id, path, slot, emulator, local_hash, server_save_id, server_hash,
-		synced_at, state, problem, checked_at FROM save_records ORDER BY rom_id`)
+		synced_at, state, problem, checked_at, conflict_save_id, conflict_server_at, parked_hash FROM save_records ORDER BY rom_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -612,12 +618,13 @@ func (s *Store) SaveRecords(ctx context.Context) ([]domain.SaveRecord, error) {
 	for rows.Next() {
 		var r domain.SaveRecord
 		var state string
-		var synced, checked int64
+		var synced, checked, conflictAt int64
 		if err := rows.Scan(&r.ROMID, &r.Path, &r.Slot, &r.Emulator, &r.LocalHash, &r.ServerSaveID, &r.ServerHash,
-			&synced, &state, &r.Problem, &checked); err != nil {
+			&synced, &state, &r.Problem, &checked, &r.ConflictSaveID, &conflictAt, &r.ParkedHash); err != nil {
 			return nil, err
 		}
 		r.State, r.SyncedAt, r.CheckedAt = domain.SaveState(state), fromUnixNano(synced), fromUnixNano(checked)
+		r.ConflictServerAt = fromUnixNano(conflictAt)
 		out = append(out, r)
 	}
 	return out, rows.Err()

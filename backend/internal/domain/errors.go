@@ -37,6 +37,9 @@ const (
 	KindSaveConflict Kind = "save_conflict"
 	// KindSyncDisabled means RomM has save sync turned off for this Deck's Device.
 	KindSyncDisabled Kind = "sync_disabled"
+	// KindStaleConflict means RomM's side of a save conflict changed since the user looked at it,
+	// so their choice wasn't applied.
+	KindStaleConflict Kind = "stale_conflict"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

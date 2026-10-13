@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -48,7 +50,29 @@ type SaveRecord struct {
 	State     SaveState
 	Problem   string
 	CheckedAt time.Time
+	// ConflictSaveID is RomM's save a conflict is with, and ConflictServerAt when it was written;
+	// zero outside a conflict, or when the conflict surfaced without RomM naming its save.
+	ConflictSaveID   int
+	ConflictServerAt time.Time
+	// ParkedHash is the MD5 of the Deck's save as parked on RomM in a conflict, so the same copy
+	// isn't parked twice.
+	ParkedHash string
 }
+
+// ParkedSaveName is the file name the Deck's save of a conflict is kept under on RomM: outside every
+// slot, so no sync ever pairs it, and named for when it was parked.
+func ParkedSaveName(fileName string, at time.Time) string {
+	ext := filepath.Ext(fileName)
+	return strings.TrimSuffix(fileName, ext) + " [conflict " + at.UTC().Format("2006-01-02_15-04-05") + "]" + ext
+}
+
+// SaveChoice is which copy of a conflicting save the user keeps.
+type SaveChoice string
+
+const (
+	KeepDeck   SaveChoice = "deck"
+	KeepServer SaveChoice = "server"
+)
 
 // ClientSave is a save on the Deck as negotiating a sync describes it to RomM.
 type ClientSave struct {
@@ -114,6 +138,9 @@ type SaveUpload struct {
 	ContentHash string
 	SessionID   int
 	Data        []byte
+	// Overwrite makes the upload the slot's newest even if the slot changed since this Device last
+	// synced it.
+	Overwrite bool
 }
 
 // ServerSave is a save as RomM keeps it.

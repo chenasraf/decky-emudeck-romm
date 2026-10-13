@@ -60,6 +60,20 @@ type SaveStatus struct {
 	Problem   string
 	CheckedAt time.Time
 	Syncing   bool
+	// Conflict is set while the save is in conflict.
+	Conflict *SaveConflict
+}
+
+// SaveConflict is what the user compares to settle a conflict.
+type SaveConflict struct {
+	// ServerSaveID is RomM's save the conflict is with, and ServerAt when it was written; zero when
+	// RomM didn't say, and a sync shows them.
+	ServerSaveID int
+	ServerAt     time.Time
+	// DeckAt is when the save on this Deck was last written.
+	DeckAt time.Time
+	// Parked says the Deck's copy is also kept on RomM, outside every slot.
+	Parked bool
 }
 
 // SaveSummary counts what a sync did, or what save sync stands at overall.
@@ -547,6 +561,13 @@ func (s *Saves) Status(ctx context.Context, id int) (SaveStatus, error) {
 	}
 	if r, ok := records[id]; ok && r.Path == t.path {
 		out.State, out.Problem, out.CheckedAt = r.State, r.Problem, r.CheckedAt
+		if r.State == domain.SaveConflict {
+			c := &SaveConflict{ServerSaveID: r.ConflictSaveID, ServerAt: r.ConflictServerAt, Parked: r.ParkedHash != ""}
+			if info, err := os.Stat(t.path); err == nil {
+				c.DeckAt = info.ModTime().UTC()
+			}
+			out.Conflict = c
+		}
 	}
 	out.Syncing = s.syncing(id)
 	return out, nil
@@ -747,10 +768,53 @@ type savePass struct {
 }
 
 func (p *savePass) run(ctx context.Context, targets []saveTarget) (SaveSummary, error) {
-	req := domain.SyncRequest{DeviceID: p.in.DeviceID, RestoreUnlisted: true}
-	byID := map[int]saveTarget{}
+	plan, err := p.plan(ctx, targets)
+	if err != nil {
+		return p.summary, err
+	}
+	acted := map[int]bool{}
 	for _, t := range targets {
-		byID[t.romID] = t
+		if op, ok := ownOperation(plan, t.romID); ok {
+			acted[t.romID] = true
+			p.step(ctx, t, op, plan.SessionID)
+		}
+	}
+	// Games RomM planned nothing for have no save on either side.
+	for _, t := range targets {
+		if _, read := p.local[t.romID]; read && !acted[t.romID] {
+			r := p.record(p.records, t)
+			r.State, r.Problem = domain.SaveSynced, ""
+			clearConflict(&r)
+			p.put(ctx, r)
+		}
+	}
+	p.complete(ctx, plan.SessionID)
+	p.log.Info("save sync done", "session", plan.SessionID, "uploaded", p.summary.Uploaded, "downloaded", p.summary.Downloaded,
+		"conflicts", p.summary.Conflicts, "waiting", p.summary.Waiting, "failed", p.summary.Failed)
+	return p.summary, nil
+}
+
+// ownOperation is the step RomM planned for the save the plugin syncs of the ROM with id. Other
+// slots, and saves in none, are other timelines: the plugin leaves them to their owners.
+func ownOperation(plan domain.SyncPlan, id int) (domain.SyncOperation, bool) {
+	for _, op := range plan.Operations {
+		if op.ROMID == id && op.Slot == domain.AutosaveSlot {
+			return op, true
+		}
+	}
+	return domain.SyncOperation{}, false
+}
+
+func (p *savePass) complete(ctx context.Context, session int) {
+	if err := p.server.CompleteSync(context.WithoutCancel(ctx), session, p.done, p.failed); err != nil {
+		p.log.Warn("complete save sync", "session", session, "err", p.conn.observe(p.in, err))
+	}
+}
+
+// plan reads the saves of targets and asks RomM what syncing them takes.
+func (p *savePass) plan(ctx context.Context, targets []saveTarget) (domain.SyncPlan, error) {
+	req := domain.SyncRequest{DeviceID: p.in.DeviceID, RestoreUnlisted: true}
+	for _, t := range targets {
 		req.ROMIDs = append(req.ROMIDs, t.romID)
 		local, err := readLocal(t.path)
 		if err != nil {
@@ -779,34 +843,10 @@ func (p *savePass) run(ctx context.Context, targets []saveTarget) (SaveSummary, 
 
 	plan, err := p.server.NegotiateSync(ctx, req)
 	if err != nil {
-		return p.summary, p.conn.observe(p.in, err)
+		return plan, p.conn.observe(p.in, err)
 	}
 	p.log.Info("save sync planned", "session", plan.SessionID, "games", len(targets), "operations", len(plan.Operations))
-
-	acted := map[int]bool{}
-	for _, op := range plan.Operations {
-		t, ok := byID[op.ROMID]
-		// Other slots are other timelines: the plugin syncs one, and leaves the rest to their owners.
-		if !ok || (op.Slot != "" && op.Slot != domain.AutosaveSlot) || acted[op.ROMID] {
-			continue
-		}
-		acted[op.ROMID] = true
-		p.step(ctx, t, op, plan.SessionID)
-	}
-	// Games RomM planned nothing for have no save on either side.
-	for _, t := range targets {
-		if _, read := p.local[t.romID]; read && !acted[t.romID] {
-			r := p.record(p.records, t)
-			r.State, r.Problem = domain.SaveSynced, ""
-			p.put(ctx, r)
-		}
-	}
-	if err := p.server.CompleteSync(context.WithoutCancel(ctx), plan.SessionID, p.done, p.failed); err != nil {
-		p.log.Warn("complete save sync", "session", plan.SessionID, "err", p.conn.observe(p.in, err))
-	}
-	p.log.Info("save sync done", "session", plan.SessionID, "uploaded", p.summary.Uploaded, "downloaded", p.summary.Downloaded,
-		"conflicts", p.summary.Conflicts, "waiting", p.summary.Waiting, "failed", p.summary.Failed)
-	return p.summary, nil
+	return plan, nil
 }
 
 // step carries out what RomM planned for one game, and records where its save stands after.
@@ -816,13 +856,11 @@ func (p *savePass) step(ctx context.Context, t saveTarget, op domain.SyncOperati
 	var err error
 	switch op.Action {
 	case domain.SyncUpload:
-		err = p.upload(ctx, t, local, session, &r)
+		err = p.upload(ctx, t, local, op, session, false, &r)
 	case domain.SyncDownload:
 		err = p.download(ctx, t, op, local, session, &r)
 	case domain.SyncConflict:
-		r.State, r.Problem = domain.SaveConflict, ""
-		p.summary.Conflicts++
-		p.log.Info("save conflict", "rom_id", t.romID, "save_id", op.SaveID, "reason", op.Reason)
+		p.conflict(ctx, t, op, local, &r)
 	case domain.SyncDelete:
 		r.State, r.Problem = domain.SaveRemovedOnServer, ""
 		p.log.Info("save removed on server", "rom_id", t.romID)
@@ -842,21 +880,31 @@ func (p *savePass) step(ctx context.Context, t saveTarget, op domain.SyncOperati
 		p.failed++
 		p.log.Warn("save sync failed", "rom_id", t.romID, "action", op.Action, "err", err)
 	}
+	if r.State != domain.SaveConflict {
+		clearConflict(&r)
+	}
 	p.put(ctx, r)
 }
 
-func (p *savePass) upload(ctx context.Context, t saveTarget, local localSave, session int, r *domain.SaveRecord) error {
+func clearConflict(r *domain.SaveRecord) {
+	r.ConflictSaveID, r.ConflictServerAt, r.ParkedHash = 0, time.Time{}, ""
+}
+
+// upload adds the Deck's save to its slot, op being what RomM planned for it. With overwrite it does
+// so even when the slot moved on since this Deck last synced: the user chose the Deck's copy.
+func (p *savePass) upload(ctx context.Context, t saveTarget, local localSave, op domain.SyncOperation, session int, overwrite bool, r *domain.SaveRecord) error {
 	if !local.exists {
 		return errors.New("the save to upload is gone")
 	}
 	saved, err := p.server.UploadSave(ctx, domain.SaveUpload{
 		ROMID: t.romID, FileName: filepath.Base(t.path), Slot: domain.AutosaveSlot, Emulator: t.emulator,
-		DeviceID: p.in.DeviceID, ContentHash: local.hash, SessionID: session, Data: local.data,
+		DeviceID: p.in.DeviceID, ContentHash: local.hash, SessionID: session, Data: local.data, Overwrite: overwrite,
 	})
 	if kindOf(err) == domain.KindSaveConflict {
-		// Another device uploaded between the plan and the upload.
-		r.State, r.Problem = domain.SaveConflict, ""
-		p.summary.Conflicts++
+		// The slot's newest save is one this Deck never synced: another device's. RomM keeps a
+		// Device's sync per version, so it plans an upload by time and refuses it here, rather than
+		// planning a conflict. The plan names that save.
+		p.conflict(ctx, t, op, local, r)
 		return nil
 	}
 	if err != nil {

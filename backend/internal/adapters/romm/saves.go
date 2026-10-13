@@ -138,14 +138,20 @@ func (c *Client) UploadSave(ctx context.Context, u domain.SaveUpload) (domain.Se
 	}
 	q := url.Values{
 		"rom_id":            {strconv.Itoa(u.ROMID)},
-		"slot":              {u.Slot},
 		"device_id":         {u.DeviceID},
 		"content_hash":      {u.ContentHash},
 		"autocleanup":       {"true"},
 		"autocleanup_limit": {strconv.Itoa(saveVersions)},
 	}
+	// Left out, the save is in no slot; sent empty, RomM would store an empty slot name.
+	if u.Slot != "" {
+		q.Set("slot", u.Slot)
+	}
 	if u.Emulator != "" {
 		q.Set("emulator", u.Emulator)
+	}
+	if u.Overwrite {
+		q.Set("overwrite", "true")
 	}
 	if u.SessionID != 0 {
 		q.Set("session_id", strconv.Itoa(u.SessionID))

@@ -205,7 +205,7 @@ function InstallSection() {
   )
 }
 
-function SaveSyncSection() {
+function SaveSyncSection({ onOpen }: { onOpen: (id: number) => void }) {
   const connection = useConnection()
   const summary = useSaveSummary()
   const [busy, setBusy] = useState(false)
@@ -223,7 +223,7 @@ function SaveSyncSection() {
     }
     setBusy(false)
   }
-  const { conflicts, waiting, failed } = summary.counts
+  const { waiting, failed } = summary.counts
   const status = summary.syncing
     ? 'Syncing…'
     : summary.lastCheckedAt
@@ -235,13 +235,22 @@ function SaveSyncSection() {
       <PanelSectionRow>
         <Field label="RetroArch saves">{status}</Field>
       </PanelSectionRow>
-      {conflicts > 0 && (
-        <PanelSectionRow>
-          <Field
-            label="⚠ Save conflicts"
-            description={`${conflicts === 1 ? '1 game' : `${conflicts} games`} changed both on this Deck and on RomM. Neither copy was overwritten.`}
-          />
-        </PanelSectionRow>
+      {summary.conflicts.length > 0 && (
+        <>
+          <PanelSectionRow>
+            <Field
+              label="⚠ Save conflicts"
+              description="These changed both on this Deck and on RomM. Neither copy was overwritten: open one to choose which to keep."
+            />
+          </PanelSectionRow>
+          {summary.conflicts.map((g) => (
+            <PanelSectionRow key={g.id}>
+              <ButtonItem layout="below" onClick={() => onOpen(g.id)}>
+                {g.name}
+              </ButtonItem>
+            </PanelSectionRow>
+          ))}
+        </>
       )}
       {waiting > 0 && (
         <PanelSectionRow>
@@ -451,7 +460,7 @@ function Content() {
         onCollections={() => setView({ name: 'collections' })}
         onSearch={() => setView({ name: 'search', query: '' })}
       />
-      <SaveSyncSection />
+      <SaveSyncSection onOpen={(id) => setView({ name: 'game', id })} />
       <SettingsSection />
       <InstallSection />
       <BackendSection />

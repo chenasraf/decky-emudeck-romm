@@ -43,10 +43,11 @@ import type {
   OnDeckCheck,
   PlatformSummary,
   Error as RpcError,
+  SaveChoice,
   SearchGamesResult,
   SearchHit,
 } from '../rpc/schema.gen'
-import { saveStateDetail, saveStateLabel, useSaveStatus } from '../saves'
+import { refreshSaves, saveStateDetail, saveStateLabel, useSaveStatus } from '../saves'
 import { asRpcError } from '../setup/common'
 import { showFindGames } from './FindGames'
 
@@ -497,6 +498,35 @@ export function SavesSection({ id }: { id: number }) {
     setBusy(false)
   }
   const checked = status.checkedAt ? ` · checked ${timeAgo(status.checkedAt)}` : ''
+  const conflict = status.conflict
+  const keep = (choice: SaveChoice) => {
+    if (!conflict) return
+    const deck = choice === 'deck'
+    showModal(
+      <ConfirmModal
+        strTitle={deck ? "Keep this Deck's save?" : "Use RomM's save?"}
+        strDescription={
+          deck
+            ? "This Deck's save becomes RomM's newest, so other devices get it. RomM keeps its other versions."
+            : "RomM's save replaces the one on this Deck. The plugin keeps a backup of this Deck's save first."
+        }
+        strOKButtonText={deck ? "Keep this Deck's" : "Use RomM's"}
+        onOK={() => {
+          setBusy(true)
+          call('resolve_save_conflict', { id, keep: choice, serverSaveId: conflict.serverSaveId })
+            .then(
+              () => setError(null),
+              (err: unknown) => {
+                setError(asRpcError(err))
+                // A stale choice shows RomM's newer save.
+                refreshSaves()
+              },
+            )
+            .finally(() => setBusy(false))
+        }}
+      />,
+    )
+  }
 
   return (
     <>
@@ -507,6 +537,43 @@ export function SavesSection({ id }: { id: number }) {
           {!status.syncing && checked}
         </Field>
       </PanelSectionRow>
+      {conflict && conflict.serverSaveId > 0 && (
+        <>
+          <PanelSectionRow>
+            <Field
+              label="This Deck's save"
+              description={
+                conflict.parked ? 'A copy is also kept on RomM, outside its save slots.' : undefined
+              }
+            >
+              {conflict.deckAt ? `Written ${timeAgo(conflict.deckAt)}` : 'Written'}
+            </Field>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <Field label="RomM's save">
+              {conflict.serverAt ? `Written ${timeAgo(conflict.serverAt)}` : 'Written'}
+            </Field>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={busy || status.syncing}
+              onClick={() => keep('deck')}
+            >
+              {"Keep this Deck's save"}
+            </ButtonItem>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              disabled={busy || status.syncing}
+              onClick={() => keep('server')}
+            >
+              {"Use RomM's save"}
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
+      )}
       <PanelSectionRow>
         <ButtonItem layout="below" disabled={busy || status.syncing} onClick={() => void sync()}>
           {status.syncing ? 'Syncing saves…' : 'Sync saves now'}

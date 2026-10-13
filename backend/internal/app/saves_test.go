@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -160,7 +161,7 @@ func compareSaves(c domain.ClientSave, s domain.ServerSave, sync fakeSync) domai
 func (f *fakeRomMSaves) UploadSave(_ context.Context, u domain.SaveUpload) (domain.ServerSave, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if head, ok := f.heads()[[2]any{u.ROMID, u.Slot}]; ok {
+	if head, ok := f.heads()[[2]any{u.ROMID, u.Slot}]; ok && !u.Overwrite {
 		if s, ok := f.synced[head.ID]; !ok || s.at.Before(head.UpdatedAt) {
 			return domain.ServerSave{}, &domain.Error{Kind: domain.KindSaveConflict, Message: "newer"}
 		}
@@ -212,6 +213,19 @@ func (f *fakeRomMSaves) CompleteSync(_ context.Context, session, completed, fail
 	defer f.mu.Unlock()
 	f.completed[session] = [2]int{completed, failed}
 	return nil
+}
+
+// parked returns a ROM's saves in no slot.
+func (f *fakeRomMSaves) parked(romID int) []fakeVersion {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []fakeVersion
+	for _, v := range f.versions {
+		if v.ROMID == romID && v.Slot == "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // head returns the newest autosave of a ROM.
@@ -403,7 +417,7 @@ func TestBothChangedIsAConflict(t *testing.T) {
 	f.sync(t)
 	f.romm.otherDevice(1, "snes9x", []byte("handheld went on"))
 	f.writeSave(t, "deck went on", time.Now().Add(time.Hour))
-	before := len(f.romm.versions)
+	head, _ := f.romm.head(1)
 
 	if s := f.sync(t); s.Conflicts != 1 || s.Uploaded+s.Downloaded != 0 {
 		t.Fatalf("summary %+v", s)
@@ -411,15 +425,24 @@ func TestBothChangedIsAConflict(t *testing.T) {
 	if got := readFile(t, f.chronoSave()); got != "deck went on" {
 		t.Fatalf("local save touched: %q", got)
 	}
-	if len(f.romm.versions) != before {
-		t.Fatal("server save touched")
+	if now, _ := f.romm.head(1); now.ID != head.ID {
+		t.Fatal("RomM's save touched")
 	}
-	if st := f.status(t); st.State != domain.SaveConflict {
-		t.Fatalf("status %+v", st)
+	if parked := f.romm.parked(1); len(parked) != 1 || string(parked[0].data) != "deck went on" ||
+		!strings.HasPrefix(parked[0].FileName, "Chrono Trigger (USA) [conflict ") || parked[0].Emulator != "snes9x" {
+		t.Fatalf("parked %+v", parked)
 	}
-	// It stays a conflict until the user resolves it.
+	st := f.status(t)
+	if st.State != domain.SaveConflict || st.Conflict == nil || st.Conflict.ServerSaveID != head.ID || !st.Conflict.Parked ||
+		!st.Conflict.ServerAt.Equal(head.UpdatedAt) || st.Conflict.DeckAt.IsZero() {
+		t.Fatalf("status %+v, conflict %+v", st, st.Conflict)
+	}
+	// It stays a conflict until the user resolves it, and the same copy isn't parked again.
 	if s := f.sync(t); s.Conflicts != 1 {
 		t.Fatalf("second sync %+v", s)
+	}
+	if parked := f.romm.parked(1); len(parked) != 1 {
+		t.Fatalf("parked again: %d", len(parked))
 	}
 }
 

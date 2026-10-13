@@ -58,6 +58,9 @@ const (
 	ErrorSaveConflict ErrorKind = "save_conflict"
 	// ErrorSyncDisabled means RomM has save sync turned off for this Deck's Device.
 	ErrorSyncDisabled ErrorKind = "sync_disabled"
+	// ErrorStaleConflict means RomM's side of a save conflict changed since the user looked at it,
+	// so their choice wasn't applied.
+	ErrorStaleConflict ErrorKind = "stale_conflict"
 )
 
 type ErrorData struct {
@@ -113,6 +116,7 @@ type Methods struct {
 	SyncSaves           Method[SyncSavesParams, SyncSavesResult]                     `json:"sync_saves"`
 	SaveStatus          Method[SaveStatusParams, SaveStatus]                         `json:"save_status"`
 	SaveSummary         Method[SaveSummaryParams, SaveSummary]                       `json:"save_summary"`
+	ResolveSaveConflict Method[ResolveSaveConflictParams, SaveStatus]                `json:"resolve_save_conflict"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1031,6 +1035,42 @@ type SaveStatus struct {
 	// CheckedAt is when a sync last looked at the game, as RFC 3339.
 	CheckedAt string `json:"checkedAt,omitempty"`
 	Syncing   bool   `json:"syncing"`
+	// Conflict is set while the save is in conflict.
+	Conflict *SaveConflictInfo `json:"conflict,omitempty"`
+}
+
+// SaveConflictInfo is what the user compares to settle a conflict.
+type SaveConflictInfo struct {
+	// ServerSaveID is RomM's save the conflict is with, to send back with the choice; 0 when RomM
+	// didn't name it, and a sync shows it.
+	ServerSaveID int `json:"serverSaveId"`
+	// ServerAt and DeckAt are when RomM's save and this Deck's were written, as RFC 3339.
+	ServerAt string `json:"serverAt,omitempty"`
+	DeckAt   string `json:"deckAt,omitempty"`
+	// Parked says this Deck's copy is also kept on RomM, outside every slot.
+	Parked bool `json:"parked"`
+}
+
+type SaveChoice string
+
+const (
+	KeepDeck   SaveChoice = "deck"
+	KeepServer SaveChoice = "server"
+)
+
+// ResolveSaveConflictParams settles a game's save conflict with the copy to keep. ServerSaveID is
+// the conflict's serverSaveId as the user saw it; when RomM has a newer save since, the call fails
+// with stale_conflict and changes nothing.
+type ResolveSaveConflictParams struct {
+	ID           int        `json:"id"`
+	Keep         SaveChoice `json:"keep"`
+	ServerSaveID int        `json:"serverSaveId"`
+}
+
+// SaveConflictGame is a game whose save is in conflict.
+type SaveConflictGame struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 type SaveSummaryParams struct{}
@@ -1051,6 +1091,8 @@ type SaveSummary struct {
 	// LastCheckedAt is when a sync last looked at any game, as RFC 3339.
 	LastCheckedAt string `json:"lastCheckedAt,omitempty"`
 	Syncing       bool   `json:"syncing"`
+	// Conflicts are the games whose saves are in conflict.
+	Conflicts []SaveConflictGame `json:"conflicts"`
 }
 
 type SaveSyncEvent struct {

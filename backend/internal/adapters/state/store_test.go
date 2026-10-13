@@ -312,6 +312,7 @@ func TestSaveRecordRoundTrip(t *testing.T) {
 	r := domain.SaveRecord{
 		ROMID: 7, Path: "/e/saves/retroarch/saves/Chrono.srm", Slot: domain.AutosaveSlot, Emulator: "snes9x",
 		LocalHash: "abc", ServerSaveID: 70, ServerHash: "abc", SyncedAt: at, State: domain.SaveConflict, CheckedAt: at,
+		ConflictSaveID: 71, ConflictServerAt: at.Add(time.Hour), ParkedHash: "def",
 	}
 	if err := s.PutSaveRecord(ctx, r); err != nil {
 		t.Fatal(err)

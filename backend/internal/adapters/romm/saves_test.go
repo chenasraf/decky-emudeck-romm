@@ -99,6 +99,16 @@ func TestUploadSave(t *testing.T) {
 		t.Fatalf("sent %q as %q, query %v", file, name, query)
 	}
 
+	// A save in no slot sends none, and an overwrite says so.
+	parked := u
+	parked.Slot, parked.Overwrite = "", true
+	if _, err := c.UploadSave(context.Background(), parked); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := query["slot"]; ok || query["overwrite"][0] != "true" {
+		t.Fatalf("query %v", query)
+	}
+
 	conflict = true
 	if _, err := c.UploadSave(context.Background(), u); kindOf(err) != domain.KindSaveConflict {
 		t.Fatalf("conflict: %v", err)
