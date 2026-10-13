@@ -31,11 +31,15 @@ lint:
 	$(MAKE) -C backend lint
 
 # Copies a build onto a Steam Deck over SSH and restarts Decky's loader, which reloads the plugin
-# without leaving Gaming Mode. The plugin folder is root's, and sudo needs a terminal for its
-# password, so the files land in a folder of the deck user's first and one ssh -t moves them.
+# without leaving Gaming Mode. The plugin folder is root's, so the files land in a folder of the
+# deck user's first and one sudo moves them. DECK_PWD, when set, is the Deck's sudo password, fed
+# to sudo on stdin; without it, sudo asks in an ssh -t terminal. It goes through the environment so
+# make never prints it.
 DECK ?= deck@deck
 DECK_PLUGIN_DIR := /home/deck/homebrew/plugins/decky-emudeck-romm
 DECK_STAGE := .cache/decky-emudeck-romm-deploy
+DECK_INSTALL := rsync -a $(DECK_STAGE)/ $(DECK_PLUGIN_DIR)/ && systemctl restart plugin_loader
+export DECK_PWD
 
 .PHONY: deploy
 deploy:
@@ -44,7 +48,11 @@ deploy:
 	ssh $(DECK) mkdir -p $(DECK_STAGE)/bin
 	rsync -a main.py plugin.json package.json dist $(DECK):$(DECK_STAGE)/
 	rsync -a backend/out/backend-amd64 $(DECK):$(DECK_STAGE)/bin/
-	ssh -t $(DECK) 'sudo rsync -a $(DECK_STAGE)/ $(DECK_PLUGIN_DIR)/ && sudo systemctl restart plugin_loader'
+	if [ -n "$$DECK_PWD" ]; then \
+		printf '%s\n' "$$DECK_PWD" | ssh $(DECK) 'sudo -S -p "" sh -c "$(DECK_INSTALL)"'; \
+	else \
+		ssh -t $(DECK) 'sudo sh -c "$(DECK_INSTALL)"'; \
+	fi
 
 # Builds the installable zip into out/ the way the plugin store does. Needs Docker and the decky
 # CLI on PATH.
