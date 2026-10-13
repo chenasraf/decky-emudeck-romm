@@ -584,6 +584,11 @@ export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
           <Field label="⚠ Downloads are off" description={downloads.problem.message} />
         </PanelSectionRow>
       )}
+      {downloads.held && (
+        <PanelSectionRow>
+          <Field label="⚠ On hold" description={downloads.held.message} />
+        </PanelSectionRow>
+      )}
       {downloads.items.map((d) => (
         <Fragment key={d.id}>
           <PanelSectionRow>

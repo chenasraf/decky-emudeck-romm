@@ -11,7 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -103,6 +106,9 @@ type fakeContent struct {
 	content map[int][]byte
 	gates   map[int]chan struct{}
 	drops   map[int]int
+	// full fills the disk partway through each download of the file ids it holds, calling onFull.
+	full   map[int]bool
+	onFull func()
 	// started receives a file id each time its download begins, and froms the offset it asked for.
 	started chan int
 	froms   []int64
@@ -122,6 +128,7 @@ func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, from i
 	c.mu.Lock()
 	data, gate := c.content[id], c.gates[id]
 	drop := c.drops[id] > 0
+	full := c.full[id]
 	if drop {
 		c.drops[id]--
 	}
@@ -133,6 +140,13 @@ func (c *fakeContent) DownloadFile(ctx context.Context, id int, _ string, from i
 		return err
 	}
 	data = data[min(from, int64(len(data))):]
+	if full {
+		if _, err := w.Write(data[:len(data)/2]); err != nil {
+			return err
+		}
+		c.onFull()
+		return &os.PathError{Op: "write", Path: "staging", Err: syscall.ENOSPC}
+	}
 	if drop {
 		if _, err := w.Write(data[:len(data)/2]); err != nil {
 			return err
@@ -159,8 +173,11 @@ type downloadFixture struct {
 	owned     *memOwnership
 	server    *fakeContent
 	settings  *fakeSettings
-	updates   chan Download
-	deletes   chan DeleteUpdate
+	// free is what the Emulation drive has free.
+	free    atomic.Int64
+	holds   chan error
+	updates chan Download
+	deletes chan DeleteUpdate
 	// stop stops the backend the downloads run under.
 	stop context.CancelFunc
 	root string
@@ -186,6 +203,7 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			content: map[int][]byte{10: chrono, 20: metroid},
 			gates:   map[int]chan struct{}{},
 			drops:   map[int]int{},
+			full:    map[int]bool{},
 			started: make(chan int, 64),
 		},
 		settings: &fakeSettings{in: &domain.SignIn{Server: domain.Server{URL: "https://romm.lan"}, Token: "rmm_x"}},
@@ -217,10 +235,22 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 	dial := func(domain.Server, string) DownloadServer { return f.server }
 	base, stop := context.WithCancel(t.Context())
 	f.stop = stop
-	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, limit,
-		func(u Download) { f.updates <- u }, func(u DeleteUpdate) { f.deletes <- u }, log)
+	f.free.Store(1 << 40)
+	f.holds = make(chan error, 16)
+	f.downloads = NewDownloads(base, catalog, install, conn, dial, f.owned, nil, f.measure, limit, f.listeners(), log)
 	f.downloads.retries = testRetries
+	f.downloads.spacePoll = time.Millisecond
 	return f
+}
+
+func (f *downloadFixture) measure(string) (int64, error) { return f.free.Load(), nil }
+
+func (f *downloadFixture) listeners() DownloadListeners {
+	return DownloadListeners{
+		Change: func(u Download) { f.updates <- u },
+		Delete: func(u DeleteUpdate) { f.deletes <- u },
+		Hold:   func(err error) { f.holds <- err },
+	}
 }
 
 // testRetries keep retries quick: three, a millisecond apart.
@@ -415,7 +445,7 @@ func TestDownloadWithoutStateDB(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	problem := &domain.Error{Kind: domain.KindNewerData, Message: "newer"}
 	d := NewDownloads(t.Context(), f.downloads.catalog, f.downloads.install, f.downloads.conn, f.downloads.dial,
-		nil, problem, 2, func(Download) {}, func(DeleteUpdate) {}, f.downloads.log)
+		nil, problem, f.measure, 2, DownloadListeners{}, f.downloads.log)
 
 	if _, err := d.Queue(context.Background(), 1); kindOf(err) != domain.KindNewerData {
 		t.Fatalf("queue: %v", err)
@@ -597,8 +627,7 @@ func TestDismissFailedDeletesPartial(t *testing.T) {
 func (f *downloadFixture) restart(t *testing.T) *Downloads {
 	t.Helper()
 	old := f.downloads
-	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, 2,
-		func(u Download) { f.updates <- u }, func(u DeleteUpdate) { f.deletes <- u }, old.log)
+	d := NewDownloads(t.Context(), old.catalog, old.install, old.conn, old.dial, f.owned, nil, f.measure, 2, f.listeners(), old.log)
 	d.retries = testRetries
 	f.downloads = d
 	return d
@@ -662,5 +691,90 @@ func TestResumeAfterRestart(t *testing.T) {
 	}
 	if q, _ := f.owned.Queued(ctx); len(q) != 1 || q[0].ROMID != 2 {
 		t.Fatalf("saved queue %+v", q)
+	}
+}
+
+func TestQueueChecksSpace(t *testing.T) {
+	f := newDownloadFixture(t, 1)
+	ctx := context.Background()
+	// Room for Chrono Trigger and the margin, but not Super Metroid on top.
+	f.free.Store(int64(len(chrono)) + spaceMargin)
+	f.server.gates[10] = make(chan struct{})
+	if _, err := f.downloads.Queue(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	f.started(t)
+
+	_, err := f.downloads.Queue(ctx, 2)
+	var de *domain.Error
+	if !errors.As(err, &de) || de.Kind != domain.KindNoSpace {
+		t.Fatalf("want no_space, got %v", err)
+	}
+	// The download ahead of it counts: half of Chrono Trigger is still to come.
+	if want := "Needs 256 MB with the downloads ahead of it, 256 MB free."; de.Message != want {
+		t.Fatalf("message %q, want %q", de.Message, want)
+	}
+	if len(f.downloads.List()) != 1 {
+		t.Fatalf("queued anyway: %+v", f.downloads.List())
+	}
+	close(f.server.gates[10])
+	f.end(t, 1)
+
+	f.free.Store(10)
+	if _, err := f.downloads.Queue(ctx, 2); kindOf(err) != domain.KindNoSpace || !strings.HasPrefix(err.Error(), "Needs ") {
+		t.Fatalf("alone: %v", err)
+	}
+}
+
+func TestOutOfSpaceHoldsQueue(t *testing.T) {
+	f := newDownloadFixture(t, 1)
+	ctx := context.Background()
+	// The disk fills, and stays full until the user makes room.
+	f.server.full[10] = true
+	f.server.onFull = func() { f.free.Store(0) }
+	for _, id := range []int{1, 2} {
+		if _, err := f.downloads.Queue(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u := f.end(t, 1)
+	if u.State != domain.StateFailed || kindOf(u.Problem) != domain.KindNoSpace {
+		t.Fatalf("end: %+v", u)
+	}
+	// Running out of space isn't retried.
+	if n := len(f.server.froms); n != 1 {
+		t.Fatalf("%d attempts", n)
+	}
+	select {
+	case err := <-f.holds:
+		if kindOf(err) != domain.KindNoSpace {
+			t.Fatalf("hold %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("queue didn't go on hold")
+	}
+	if kindOf(f.downloads.Held()) != domain.KindNoSpace {
+		t.Fatalf("held %v", f.downloads.Held())
+	}
+	// Super Metroid waits rather than failing too.
+	time.Sleep(20 * time.Millisecond)
+	if list := f.downloads.List(); len(list) != 2 || list[1].State != domain.StateQueued {
+		t.Fatalf("list %+v", list)
+	}
+
+	f.free.Store(1 << 40)
+	select {
+	case err := <-f.holds:
+		if err != nil {
+			t.Fatalf("release %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("queue stayed on hold")
+	}
+	if u := f.end(t, 2); u.State != domain.StateInstalled {
+		t.Fatalf("end: %+v", u)
+	}
+	if f.downloads.Held() != nil {
+		t.Fatal("still held")
 	}
 }

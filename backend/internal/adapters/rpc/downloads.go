@@ -36,12 +36,32 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		if err := downloads.Problem(); err != nil {
 			out.Problem = problemOf(err)
 		}
+		if err := downloads.Held(); err != nil {
+			out.Held = problemOf(err)
+		}
 		return out, nil
 	})
 }
 
-// DownloadEvents returns a listener that sends each download change as a download notification.
-func DownloadEvents(s *Server) app.DownloadListener {
+// DownloadListeners returns the listeners that send what the download queue does as download,
+// delete and download_hold notifications.
+func DownloadListeners(s *Server) app.DownloadListeners {
+	return app.DownloadListeners{Change: downloadEvents(s), Delete: deleteEvents(s), Hold: holdEvents(s)}
+}
+
+func holdEvents(s *Server) app.HoldListener {
+	return func(held error) {
+		var event schema.DownloadHoldEvent
+		if held != nil {
+			event.Held = problemOf(held)
+		}
+		if err := s.Notify("download_hold", event); err != nil {
+			s.log.Error("send download hold", "err", err)
+		}
+	}
+}
+
+func downloadEvents(s *Server) app.DownloadListener {
 	return func(d app.Download) {
 		if err := s.Notify("download", schema.DownloadEvent(toWireDownload(d))); err != nil {
 			s.log.Error("send download", "err", err)
@@ -49,9 +69,7 @@ func DownloadEvents(s *Server) app.DownloadListener {
 	}
 }
 
-// DeleteEvents returns a listener that sends each change to a game being deleted as a delete
-// notification.
-func DeleteEvents(s *Server) app.DeleteListener {
+func deleteEvents(s *Server) app.DeleteListener {
 	return func(u app.DeleteUpdate) {
 		event := schema.DeleteEvent{ID: u.ROMID, Name: u.Name, State: schema.GameState(u.State)}
 		if u.Problem != nil {

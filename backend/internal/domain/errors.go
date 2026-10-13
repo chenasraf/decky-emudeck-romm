@@ -30,6 +30,8 @@ const (
 	// KindChangedOnDisk means a file the plugin placed no longer matches what it recorded, so the
 	// plugin stopped managing it rather than delete or replace it.
 	KindChangedOnDisk Kind = "changed_on_disk"
+	// KindNoSpace means the Emulation drive hasn't room for a download.
+	KindNoSpace Kind = "no_space"
 )
 
 // Error is a failure the user can act on. Fingerprint is set for KindUntrustedCert and Version for

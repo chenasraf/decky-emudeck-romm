@@ -48,6 +48,11 @@ const (
 	ErrorCantDownload ErrorKind = "cant_download"
 	// ErrorTargetExists means a file the plugin didn't download sits where the game would go.
 	ErrorTargetExists ErrorKind = "target_exists"
+	// ErrorChangedOnDisk means a file the plugin placed no longer matches what it recorded, so the
+	// plugin stopped managing it rather than delete or replace it.
+	ErrorChangedOnDisk ErrorKind = "changed_on_disk"
+	// ErrorNoSpace means the Emulation drive hasn't room for a download.
+	ErrorNoSpace ErrorKind = "no_space"
 )
 
 type ErrorData struct {
@@ -94,6 +99,8 @@ type Events struct {
 	Download DownloadEvent `json:"download"`
 	// Delete fires when a game's deletion starts and when it ends.
 	Delete DeleteEvent `json:"delete"`
+	// DownloadHold fires when the download queue goes on hold for space, and when it comes off.
+	DownloadHold DownloadHoldEvent `json:"download_hold"`
 }
 
 // Method pairs a method's params with its result.
@@ -422,6 +429,14 @@ type ListDownloadsResult struct {
 	Downloads []DownloadItem `json:"downloads"`
 	// Problem says why downloading is off.
 	Problem *Error `json:"problem,omitempty"`
+	// Held says why the queue is on hold: the drive filled, and no download starts until there's
+	// room for the next one.
+	Held *Error `json:"held,omitempty"`
+}
+
+// DownloadHoldEvent is the download queue going on hold, with Held saying why, or coming off it.
+type DownloadHoldEvent struct {
+	Held *Error `json:"held,omitempty"`
 }
 
 type DownloadItem struct {

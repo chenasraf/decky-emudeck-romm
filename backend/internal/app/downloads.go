@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
@@ -31,6 +32,17 @@ const stagingDir = ".romm-staging"
 // attempt that gets further than any before it starts the count over, so a download fails only
 // once the link stays down for good.
 var downloadRetryDelays = []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute, 2 * time.Minute}
+
+// spaceMargin is the room a download leaves free on the Emulation drive, for saves, logs and the
+// filesystem itself.
+const spaceMargin = 256 << 20
+
+// spacePoll is how often a queue on hold for space looks at the drive again. Deletes and dismissed
+// downloads look right away.
+const spacePoll = 30 * time.Second
+
+// FreeSpace returns how many bytes may still be written to the drive holding path.
+type FreeSpace func(path string) (int64, error)
 
 // DownloadServer is the part of the RomM API downloading needs.
 type DownloadServer interface {
@@ -77,20 +89,33 @@ type Download struct {
 // StateInstalled, or StateOnRomM when it was cancelled.
 type DownloadListener func(Download)
 
+// HoldListener hears the queue going on hold, with why, and coming off it, with nil.
+type HoldListener func(error)
+
+// DownloadListeners hear what the download queue does.
+type DownloadListeners struct {
+	Change DownloadListener
+	Delete DeleteListener
+	Hold   HoldListener
+}
+
 type Downloads struct {
 	catalog CatalogStore
 	install *Install
 	conn    *Connection
 	dial    DownloadDialer
 	// store is nil when state.db couldn't be opened, and problem says why.
-	store    DownloadStore
-	problem  error
-	limit    int
-	onChange DownloadListener
-	onDelete DeleteListener
-	log      *slog.Logger
-	now      func() time.Time
-	retries  []time.Duration
+	store     DownloadStore
+	problem   error
+	free      FreeSpace
+	limit     int
+	onChange  DownloadListener
+	onDelete  DeleteListener
+	onHold    HoldListener
+	log       *slog.Logger
+	now       func() time.Time
+	retries   []time.Duration
+	spacePoll time.Duration
 	// base outlives single calls: downloads run under it after the call that queued them returns.
 	// It ends when the backend stops.
 	base context.Context
@@ -99,6 +124,8 @@ type Downloads struct {
 	// jobs are the queued, running and failed downloads, in the order they were queued.
 	jobs    []*job
 	running int
+	// held is set while the drive is too full to start the next download.
+	held bool
 	// deleting are the games queued for deletion or being deleted.
 	deleting map[int]bool
 
@@ -117,17 +144,27 @@ type job struct {
 // NewDownloads returns the download queue, running up to limit downloads at once. A nil store
 // turns downloading and deleting off, reporting problem.
 func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial DownloadDialer,
-	store DownloadStore, problem error, limit int, onChange DownloadListener, onDelete DeleteListener, log *slog.Logger,
+	store DownloadStore, problem error, free FreeSpace, limit int, listen DownloadListeners, log *slog.Logger,
 ) *Downloads {
 	return &Downloads{
-		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem,
-		limit: max(limit, 1), onChange: onChange, onDelete: onDelete, log: log, now: time.Now,
-		retries: downloadRetryDelays, base: ctx, deleting: map[int]bool{},
+		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free,
+		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, log: log,
+		now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx, deleting: map[int]bool{},
 	}
 }
 
 // Problem says why downloading is off, nil when it works.
 func (d *Downloads) Problem() error { return d.problem }
+
+// Held says why the queue is on hold, nil when it isn't.
+func (d *Downloads) Held() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.held {
+		return errHeld
+	}
+	return nil
+}
 
 // Resume puts back the queue state.db kept from earlier runs and starts it, then deletes what
 // staging holds for downloads no longer in the queue.
@@ -228,6 +265,23 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 
 	d.mu.Lock()
 	j := d.find(id)
+	if j != nil && j.State != domain.StateFailed {
+		d.mu.Unlock()
+		return j.Download, nil
+	}
+	need := rom.SizeBytes
+	if j != nil {
+		// A retry resumes, so only what's left of it needs room.
+		need = j.Total - j.Received
+	}
+	ahead := d.pending()
+	d.mu.Unlock()
+	if err := d.checkSpace(need, ahead); err != nil {
+		return Download{}, err
+	}
+
+	d.mu.Lock()
+	j = d.find(id)
 	switch {
 	case j != nil && j.State != domain.StateFailed:
 		d.mu.Unlock()
@@ -275,6 +329,7 @@ func (d *Downloads) Cancel(id int) bool {
 	ended.State, ended.Problem = domain.StateOnRomM, nil
 	d.log.Info("download cancelled", "rom_id", id)
 	d.onChange(ended)
+	d.release()
 	return true
 }
 
@@ -324,6 +379,9 @@ func (d *Downloads) Owned(ctx context.Context, id int) (domain.OwnedROM, bool, e
 func (d *Downloads) pump() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.held {
+		return
+	}
 	for _, j := range d.jobs {
 		if d.running >= d.limit {
 			return
@@ -373,6 +431,11 @@ func (d *Downloads) run(ctx context.Context, j *job) {
 		d.log.Warn("download failed", "rom_id", j.ROMID, "err", err)
 	}
 	d.onChange(ended)
+	if kindOf(err) == domain.KindNoSpace {
+		d.hold()
+	} else {
+		d.release()
+	}
 	d.pump()
 }
 
@@ -387,6 +450,9 @@ func (d *Downloads) attempts(ctx context.Context, j *job) error {
 			return err
 		}
 		err := d.download(ctx, j)
+		if errors.Is(err, syscall.ENOSPC) {
+			return &domain.Error{Kind: domain.KindNoSpace, Message: "Out of space on the Emulation drive.", Err: err}
+		}
 		switch {
 		case err == nil:
 			return nil
@@ -512,6 +578,98 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return fmt.Errorf("record download: %w", err)
 	}
 	return nil
+}
+
+// pending is how many bytes the queue has still to download, failed downloads aside. d.mu must
+// be held.
+func (d *Downloads) pending() int64 {
+	var n int64
+	for _, j := range d.jobs {
+		if j.State != domain.StateFailed {
+			n += max(j.Total-j.Received, 0)
+		}
+	}
+	return n
+}
+
+// checkSpace fails when the Emulation drive hasn't room for need bytes after the ahead bytes the
+// queue has still to download, keeping spaceMargin free. A drive it can't measure doesn't block:
+// a download that runs out of space still stops cleanly.
+func (d *Downloads) checkSpace(need, ahead int64) error {
+	free, err := d.free(d.install.State(false).EmuDeck.Root)
+	if err != nil {
+		d.log.Warn("measure free space", "err", err)
+		return nil
+	}
+	total := need + ahead + spaceMargin
+	if free >= total {
+		return nil
+	}
+	msg := fmt.Sprintf("Needs %s, %s free.", domain.FormatSize(total), domain.FormatSize(free))
+	if ahead > 0 {
+		msg = fmt.Sprintf("Needs %s with the downloads ahead of it, %s free.", domain.FormatSize(total), domain.FormatSize(free))
+	}
+	return &domain.Error{Kind: domain.KindNoSpace, Message: msg}
+}
+
+// hold stops the queue starting downloads until the drive has room for the next one, so a full
+// drive fails the downloads running when it filled rather than every one queued.
+func (d *Downloads) hold() {
+	d.mu.Lock()
+	if d.held {
+		d.mu.Unlock()
+		return
+	}
+	d.held = true
+	d.mu.Unlock()
+	d.log.Warn("download queue on hold", "reason", "out of space")
+	d.onHold(errHeld)
+	go d.watchSpace()
+}
+
+// watchSpace releases the hold once the drive has room again.
+func (d *Downloads) watchSpace() {
+	t := time.NewTicker(d.spacePoll)
+	defer t.Stop()
+	for !d.release() {
+		select {
+		case <-d.base.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// release takes the queue off hold once the drive has room for the next queued download, and
+// reports whether the queue is off hold.
+func (d *Downloads) release() bool {
+	d.mu.Lock()
+	if !d.held {
+		d.mu.Unlock()
+		return true
+	}
+	next := int64(-1)
+	for _, j := range d.jobs {
+		if j.State == domain.StateQueued && j.cancel == nil {
+			next = max(j.Total-j.Received, 0)
+			break
+		}
+	}
+	d.mu.Unlock()
+	if next >= 0 {
+		free, err := d.free(d.install.State(false).EmuDeck.Root)
+		if err != nil || free < next+spaceMargin {
+			return false
+		}
+	}
+
+	d.mu.Lock()
+	d.held = false
+	d.mu.Unlock()
+	d.log.Info("download queue off hold")
+	d.onHold(nil)
+	d.pump()
+	return true
 }
 
 // samePartial says whether bytes kept for the file kept describes belong to the file now
@@ -706,6 +864,8 @@ func (j *job) record() domain.QueuedDownload {
 	}
 	return q
 }
+
+var errHeld = &domain.Error{Kind: domain.KindNoSpace, Message: "The Emulation drive is full. Downloads wait until there's room for the next one."}
 
 var errNotSignedIn = &domain.Error{Kind: domain.KindSignedOut, Message: "Sign in to RomM to download games."}
 

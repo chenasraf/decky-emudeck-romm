@@ -124,6 +124,8 @@ func (d *Downloads) runDeletes(games []DeleteUpdate) {
 			d.log.Info("deleted", "rom_id", u.ROMID)
 		}
 		d.onDelete(u)
+		// The freed space may be what a held queue waits for.
+		d.release()
 	}
 }
 

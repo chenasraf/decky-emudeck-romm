@@ -2,7 +2,13 @@ import { addEventListener, removeEventListener, toaster } from '@decky/api'
 import { useSyncExternalStore } from 'react'
 
 import { BACKEND_STATUS_EVENT, type BackendStatus, call, onEvent } from './backend'
-import type { DeleteEvent, DownloadEvent, DownloadItem, Error as RpcError } from './rpc/schema.gen'
+import type {
+  DeleteEvent,
+  DownloadEvent,
+  DownloadHoldEvent,
+  DownloadItem,
+  Error as RpcError,
+} from './rpc/schema.gen'
 
 export interface Downloads {
   /** The queued, running and failed downloads, in queue order. */
@@ -10,13 +16,18 @@ export interface Downloads {
   /** Why downloading is off, null when it works. */
   problem: RpcError | null
   /**
+   * Why the queue is on hold, null when it isn't: the drive filled, and nothing starts until
+   * there's room.
+   */
+  held: RpcError | null
+  /**
    * Goes up each time a download ends or fails, or a delete changes, so views listing states
    * reload.
    */
   ended: number
 }
 
-let current: Downloads = { items: [], problem: null, ended: 0 }
+let current: Downloads = { items: [], problem: null, held: null, ended: 0 }
 const listeners = new Set<() => void>()
 
 function publish(next: Downloads) {
@@ -27,7 +38,7 @@ function publish(next: Downloads) {
 async function load() {
   try {
     const r = await call('list_downloads')
-    publish({ ...current, items: r.downloads, problem: r.problem ?? null })
+    publish({ ...current, items: r.downloads, problem: r.problem ?? null, held: r.held ?? null })
   } catch (_e) {
     // The backend is down or restarting; the backend status section says so.
   }
@@ -62,6 +73,11 @@ function applyDelete(e: DeleteEvent) {
   if (e.problem) toaster.toast({ title: `Didn't delete ${e.name}`, body: e.problem.message })
 }
 
+function applyHold(e: DownloadHoldEvent) {
+  publish({ ...current, held: e.held ?? null })
+  if (e.held) toaster.toast({ title: 'Downloads on hold', body: e.held.message })
+}
+
 /**
  * Keeps the download queue current from the backend's download events, and reloads it each time
  * the backend becomes ready. Returns a function that stops listening.
@@ -70,12 +86,14 @@ export function watchDownloads(): () => void {
   void load()
   const stop = onEvent('download', apply)
   const stopDeletes = onEvent('delete', applyDelete)
+  const stopHolds = onEvent('download_hold', applyHold)
   const listener = addEventListener<[BackendStatus]>(BACKEND_STATUS_EVENT, (backend) => {
     if (backend.state === 'ready') void load()
   })
   return () => {
     stop()
     stopDeletes()
+    stopHolds()
     removeEventListener(BACKEND_STATUS_EVENT, listener)
   }
 }

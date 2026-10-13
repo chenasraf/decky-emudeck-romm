@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"fmt"
+	"math"
 	"slices"
 	"time"
 )
@@ -108,6 +110,21 @@ type OwnedROM struct {
 	Files       []PlacedFile
 	Snapshot    []FileSnapshot
 	InstalledAt time.Time
+}
+
+var sizeUnits = []string{"B", "KB", "MB", "GB", "TB"}
+
+// FormatSize writes a size in bytes as a short label, e.g. "1.4 GB", the way the frontend does.
+func FormatSize(bytes int64) string {
+	value, unit := float64(bytes), 0
+	for value >= 1024 && unit < len(sizeUnits)-1 {
+		value /= 1024
+		unit++
+	}
+	if value < 10 && unit > 0 {
+		return fmt.Sprintf("%.1f %s", value, sizeUnits[unit])
+	}
+	return fmt.Sprintf("%.0f %s", math.Round(value), sizeUnits[unit])
 }
 
 // SystemForSlug returns the EmuDeck System a RomM platform's games go in.
