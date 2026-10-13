@@ -18,6 +18,7 @@ type Services struct {
 	BIOS       *app.BIOS
 	Games      *app.Games
 	Covers     *app.Covers
+	ESDE       *app.ESDE
 	Servers    *app.ServerSwitch
 }
 
@@ -29,6 +30,7 @@ func Routes(s *Server, version string, svc Services) {
 	biosRoutes(s, svc.BIOS)
 	preferenceRoutes(s, svc.BIOS, svc.Games)
 	coverRoutes(s, svc.Covers)
+	esdeRoutes(s, svc.ESDE)
 
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil

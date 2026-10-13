@@ -18,7 +18,8 @@ func Processes(procRoot string) ([]domain.Process, error) {
 	}
 	var out []domain.Process
 	for _, e := range entries {
-		if _, err := strconv.Atoi(e.Name()); err != nil {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
 			continue
 		}
 		dir := filepath.Join(procRoot, e.Name())
@@ -28,6 +29,7 @@ func Processes(procRoot string) ([]domain.Process, error) {
 		}
 		cgroup, _ := os.ReadFile(filepath.Join(dir, "cgroup"))
 		out = append(out, domain.Process{
+			PID:    pid,
 			Args:   strings.Split(strings.TrimRight(string(cmdline), "\x00"), "\x00"),
 			Cgroup: string(cgroup),
 		})

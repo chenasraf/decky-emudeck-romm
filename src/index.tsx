@@ -25,6 +25,7 @@ import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
 import { watchDownloads } from './downloads'
+import { rescanFor, useESDENotice, watchESDE } from './esde'
 import {
   CollectionsView,
   DownloadsSection,
@@ -135,6 +136,7 @@ function openStatus() {
 
 function InstallSection() {
   const state = useInstallState()
+  const esde = useESDENotice()
   const [checking, setChecking] = useState(false)
 
   if (!state) return null
@@ -173,6 +175,14 @@ function InstallSection() {
           <Field
             label="⚠ ES-DE looks elsewhere"
             description={`ES-DE reads games from ${state.esde.romDirectory}, not EmuDeck's ROMs folder, so downloaded games won't appear. See Setup status.`}
+          />
+        </PanelSectionRow>
+      )}
+      {esde && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ ES-DE needs a rescan"
+            description={`ES-DE was open while games changed. Run Utilities → Rescan ROM directory, or restart ES-DE, to ${rescanFor(esde)}.`}
           />
         </PanelSectionRow>
       )}
@@ -365,6 +375,7 @@ export default definePlugin(() => {
   const stopWatchingConnection = watchConnection()
   const stopWatchingDownloads = watchDownloads()
   const stopWatchingBios = watchBios()
+  const stopWatchingESDE = watchESDE()
 
   return {
     name: 'EmuDeck RomM Sync',
@@ -378,6 +389,7 @@ export default definePlugin(() => {
       stopWatchingConnection()
       stopWatchingDownloads()
       stopWatchingBios()
+      stopWatchingESDE()
     },
   }
 })

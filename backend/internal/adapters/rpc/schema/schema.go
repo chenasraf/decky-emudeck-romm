@@ -94,6 +94,7 @@ type Methods struct {
 	LinkGame            Method[LinkGameParams, LinkGameResult]                       `json:"link_game"`
 	StopManaging        Method[StopManagingParams, StopManagingResult]               `json:"stop_managing"`
 	IgnoreUpdate        Method[IgnoreUpdateParams, IgnoreUpdateResult]               `json:"ignore_update"`
+	ESDENotice          Method[ESDENoticeParams, ESDENotice]                         `json:"esde_notice"`
 	FindGames           Method[FindGamesParams, FindGamesStatus]                     `json:"find_games"`
 	FindGamesStatus     Method[FindGamesStatusParams, FindGamesStatus]               `json:"find_games_status"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
@@ -126,6 +127,9 @@ type Events struct {
 	Ownership OwnershipEvent `json:"ownership"`
 	// FindGames fires when a platform's Find my games starts, makes progress and ends.
 	FindGames FindGamesStatus `json:"find_games"`
+	// ESDERescan fires once the download queue is idle after downloads or deletes changed ROM
+	// folders while ES-DE ran, which it sees only after a rescan.
+	ESDERescan ESDERescanEvent `json:"esde_rescan"`
 	// BIOS fires when a platform's BIOS download starts and when it ends.
 	BIOS BIOSEvent `json:"bios"`
 }
@@ -950,4 +954,20 @@ type Preferences struct {
 type SetPreferencesParams struct {
 	AutoBIOS     *bool `json:"autoBios,omitempty"`
 	WaitForGames *bool `json:"waitForGames,omitempty"`
+}
+
+type ESDENoticeParams struct{}
+
+// ESDENotice counts the games ES-DE hasn't seen: added to or removed from ROM folders while it ran.
+// Both are zero once it restarts or closes, or when nothing changed.
+type ESDENotice struct {
+	Added   int `json:"added"`
+	Removed int `json:"removed"`
+}
+
+type ESDERescanEvent struct {
+	// Batch is what the downloads and deletes just finished changed.
+	Batch ESDENotice `json:"batch"`
+	// Notice is everything ES-DE needs a rescan to see.
+	Notice ESDENotice `json:"notice"`
 }

@@ -112,6 +112,7 @@ export interface Methods {
   link_game: Method<LinkGameParams, LinkGameResult>;
   stop_managing: Method<StopManagingParams, StopManagingResult>;
   ignore_update: Method<IgnoreUpdateParams, IgnoreUpdateResult>;
+  esde_notice: Method<ESDENoticeParams, ESDENotice>;
   find_games: Method<FindGamesParams, FindGamesStatus>;
   find_games_status: Method<FindGamesStatusParams, FindGamesStatus>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
@@ -159,6 +160,11 @@ export interface Events {
    * FindGames fires when a platform's Find my games starts, makes progress and ends.
    */
   find_games: FindGamesStatus;
+  /**
+   * ESDERescan fires once the download queue is idle after downloads or deletes changed ROM
+   * folders while ES-DE ran, which it sees only after a rescan.
+   */
+  esde_rescan: ESDERescanEvent;
   /**
    * BIOS fires when a platform's BIOS download starts and when it ends.
    */
@@ -1188,4 +1194,24 @@ export interface Preferences {
 export interface SetPreferencesParams {
   autoBios?: boolean;
   waitForGames?: boolean;
+}
+export interface ESDENoticeParams {
+}
+/**
+ * ESDENotice counts the games ES-DE hasn't seen: added to or removed from ROM folders while it ran.
+ * Both are zero once it restarts or closes, or when nothing changed.
+ */
+export interface ESDENotice {
+  added: number /* int */;
+  removed: number /* int */;
+}
+export interface ESDERescanEvent {
+  /**
+   * Batch is what the downloads and deletes just finished changed.
+   */
+  batch: ESDENotice;
+  /**
+   * Notice is everything ES-DE needs a rescan to see.
+   */
+  notice: ESDENotice;
 }

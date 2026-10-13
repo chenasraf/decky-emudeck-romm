@@ -8,6 +8,7 @@ import (
 
 // Process is a running process, as /proc describes it.
 type Process struct {
+	PID  int
 	Args []string
 	// Cgroup is its cgroup file. A Flatpak app runs in a systemd scope named after its app id.
 	Cgroup string
@@ -35,4 +36,29 @@ func RunningEmulator(procs []Process) (Emulator, bool) {
 		}
 	}
 	return Emulator{}, false
+}
+
+// RunningESDE returns the process id of a running ES-DE: its binary, or the AppImage EmuDeck starts
+// it from. The lowest id among them stands for the instance, so it stays the same until ES-DE
+// restarts.
+func RunningESDE(procs []Process) (int, bool) {
+	pid := 0
+	for _, p := range procs {
+		if len(p.Args) == 0 || !isESDE(lastElem(p.Args[0])) {
+			continue
+		}
+		if pid == 0 || p.PID < pid {
+			pid = p.PID
+		}
+	}
+	return pid, pid != 0
+}
+
+func isESDE(exe string) bool {
+	exe = strings.ToLower(exe)
+	switch exe {
+	case "es-de", "emulationstation":
+		return true
+	}
+	return strings.HasSuffix(exe, ".appimage") && (strings.HasPrefix(exe, "es-de") || strings.HasPrefix(exe, "emulationstation-de"))
 }

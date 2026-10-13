@@ -46,3 +46,24 @@ func TestRunningEmulator(t *testing.T) {
 		})
 	}
 }
+
+func TestRunningESDE(t *testing.T) {
+	procs := []Process{
+		{PID: 900, Args: []string{"/usr/bin/steam"}},
+		{PID: 1210, Args: []string{"/tmp/.mount_ES-DEabc/usr/bin/es-de", "--home", "/home/deck"}},
+		{PID: 1200, Args: []string{"/home/deck/Applications/ES-DE.AppImage"}},
+	}
+	if pid, ok := RunningESDE(procs); !ok || pid != 1200 {
+		t.Fatalf("pid %d, %v", pid, ok)
+	}
+	if pid, ok := RunningESDE(procs[2:]); !ok || pid != 1200 {
+		t.Fatalf("AppImage alone: %d, %v", pid, ok)
+	}
+	old := []Process{{PID: 7, Args: []string{"/home/deck/Applications/EmulationStation-DE-x64_SteamDeck.AppImage"}}}
+	if _, ok := RunningESDE(old); !ok {
+		t.Fatal("older EmulationStation-DE AppImage not found")
+	}
+	if _, ok := RunningESDE(procs[:1]); ok {
+		t.Fatal("found ES-DE where none runs")
+	}
+}

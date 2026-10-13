@@ -142,6 +142,8 @@ type DownloadListeners struct {
 	Ownership OwnershipListener
 	// Find, when set, hears Find my games start, make progress and end.
 	Find FindListener
+	// Folder, when set, hears each download or delete end, with what it changed in a ROM folder.
+	Folder FolderListener
 }
 
 type Downloads struct {
@@ -163,6 +165,7 @@ type Downloads struct {
 	// onOwnership and onFind are nil when nothing listens.
 	onOwnership OwnershipListener
 	onFind      FindListener
+	onFolder    FolderListener
 	log         *slog.Logger
 	now         func() time.Time
 	retries     []time.Duration
@@ -214,7 +217,7 @@ func NewDownloads(ctx context.Context, catalog CatalogStore, install *Install, c
 	return &Downloads{
 		catalog: catalog, install: install, conn: conn, dial: dial, store: store, problem: problem, free: free, prefs: prefs, games: games,
 		limit: max(limit, 1), onChange: listen.Change, onDelete: listen.Delete, onHold: listen.Hold, onQueued: listen.Queued,
-		onOwnership: listen.Ownership, onFind: listen.Find, log: log, now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx,
+		onOwnership: listen.Ownership, onFind: listen.Find, onFolder: listen.Folder, log: log, now: time.Now, retries: downloadRetryDelays, spacePoll: spacePoll, base: ctx,
 		deleting: map[int]bool{}, checks: map[int]*onDeckJob{}, finds: map[int]*FindStatus{}, found: map[int]foundGame{},
 		scans: map[int]folderScan{}, sums: map[string]cachedSums{},
 	}
@@ -436,6 +439,7 @@ func (d *Downloads) Cancel(id int) bool {
 	}
 	d.log.Info("download cancelled", "rom_id", id)
 	d.onChange(ended)
+	d.folderChanged(0, 0)
 	d.release()
 	return true
 }
@@ -557,6 +561,12 @@ func (d *Downloads) run(ctx context.Context, j *job) {
 		d.log.Warn("download failed", "rom_id", j.ROMID, "err", err)
 	}
 	d.onChange(ended)
+	// An update keeps the game's place in the ROM folder, so there's nothing new to find there.
+	added := 0
+	if err == nil && !j.update {
+		added = 1
+	}
+	d.folderChanged(added, 0)
 	if kindOf(err) == domain.KindNoSpace {
 		d.hold()
 	} else {

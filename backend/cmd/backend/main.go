@@ -140,6 +140,16 @@ func run(log *slog.Logger) error {
 		}
 		return domain.RunningEmulator(procs)
 	}, store, gamesLog)
+	esdeLog := log.With("component", "esde")
+	esde := app.NewESDE(func() (int, bool) {
+		procs, err := system.Processes("/proc")
+		if err != nil {
+			esdeLog.Warn("list processes", "err", err)
+			return 0, false
+		}
+		return domain.RunningESDE(procs)
+	}, rpc.ESDEEvents(srv), esdeLog)
+	listeners.Folder = esde.FolderChanged
 	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr, system.FreeBytes, store,
 		games, store.DownloadConcurrency(), listeners, log.With("component", "downloads"))
 
@@ -154,7 +164,7 @@ func run(log *slog.Logger) error {
 	events.catalog = catalog
 	servers := app.NewServerSwitch(conn, downloads, catalog, log.With("component", "servers"))
 	rpc.Routes(srv, version, rpc.Services{
-		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers,
+		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde,
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)
