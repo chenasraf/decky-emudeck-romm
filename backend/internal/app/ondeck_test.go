@@ -181,3 +181,35 @@ func TestAdoptRefusesFileChangedSinceCheck(t *testing.T) {
 		t.Fatal("recorded the changed file")
 	}
 }
+
+func TestStopManagingLeavesTheFile(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	path := f.installedChrono(t)
+
+	if err := f.downloads.StopManaging(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, owned, _ := f.owned.Owned(ctx, 1); owned {
+		t.Fatal("record kept")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("file gone: %v", err)
+	}
+	if c := f.ownershipChange(t); c.ROMID != 1 || c.Kind != OwnershipReleased || c.State != domain.StateOnDeck {
+		t.Fatalf("change %+v", c)
+	}
+	// The file is the user's now: the plugin neither deletes it nor downloads over it.
+	if _, err := f.downloads.Delete(ctx, []int{1}, 0); err == nil {
+		t.Fatal("deleted a game the plugin no longer manages")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("file deleted: %v", err)
+	}
+	if _, err := f.downloads.Queue(ctx, 1); kindOf(err) != domain.KindTargetExists {
+		t.Fatalf("queue: %v", err)
+	}
+	if err := f.downloads.StopManaging(ctx, 1); kindOf(err) != domain.KindInvalidInput {
+		t.Fatalf("again: %v", err)
+	}
+}

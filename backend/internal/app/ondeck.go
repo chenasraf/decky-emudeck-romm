@@ -43,6 +43,8 @@ const (
 	OwnershipGone OwnershipKind = "gone"
 	// OwnershipChanged: a file the plugin placed changed or went, so the rest are User-managed.
 	OwnershipChanged OwnershipKind = "changed"
+	// OwnershipReleased: the user chose Stop managing, so the game's files are User-managed.
+	OwnershipReleased OwnershipKind = "released"
 )
 
 // OwnershipChange is a game whose ownership changed, and the state it's in now.
@@ -552,6 +554,39 @@ func (d *Downloads) Link(ctx context.Context, id int) error {
 	d.Cancel(id)
 	d.log.Info("game linked", "rom_id", id, "path", path)
 	d.announceOwnership(OwnershipChange{ROMID: id, Name: rom.Name, State: domain.StateOnDeck, Kind: OwnershipLinked})
+	return nil
+}
+
+// StopManaging turns a Plugin-owned game into a User-managed one: the plugin drops its record and
+// leaves its files as they are, never to update or delete them again.
+func (d *Downloads) StopManaging(ctx context.Context, id int) error {
+	if d.store == nil {
+		return d.problem
+	}
+	if _, owned, err := d.store.Owned(ctx, id); err != nil || !owned {
+		if err != nil {
+			return err
+		}
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "The plugin doesn't manage that game."}
+	}
+	d.mu.Lock()
+	deleting := d.deleting[id]
+	d.mu.Unlock()
+	if deleting {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "That game is being deleted."}
+	}
+	if err := d.store.DeleteOwned(ctx, id); err != nil {
+		return fmt.Errorf("drop record: %w", err)
+	}
+	d.mu.Lock()
+	delete(d.checks, id)
+	d.mu.Unlock()
+	d.log.Info("stopped managing game", "rom_id", id)
+	change := OwnershipChange{ROMID: id, Name: d.gameName(ctx, id), State: domain.StateOnRomM, Kind: OwnershipReleased}
+	if states, err := d.States(ctx); err == nil {
+		change.State = domain.StateOf(states, id)
+	}
+	d.announceOwnership(change)
 	return nil
 }
 

@@ -90,6 +90,7 @@ type Methods struct {
 	CheckOnDeck         Method[CheckOnDeckParams, OnDeckCheck]                       `json:"check_on_deck"`
 	AdoptGame           Method[AdoptGameParams, AdoptGameResult]                     `json:"adopt_game"`
 	LinkGame            Method[LinkGameParams, LinkGameResult]                       `json:"link_game"`
+	StopManaging        Method[StopManagingParams, StopManagingResult]               `json:"stop_managing"`
 	FindGames           Method[FindGamesParams, FindGamesStatus]                     `json:"find_games"`
 	FindGamesStatus     Method[FindGamesStatusParams, FindGamesStatus]               `json:"find_games_status"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
@@ -632,6 +633,14 @@ type LinkGameParams struct {
 
 type LinkGameResult struct{}
 
+// StopManagingParams names an installed game the plugin stops managing. Its files stay as they
+// are, User-managed: the plugin never updates or deletes them again.
+type StopManagingParams struct {
+	ID int `json:"id"`
+}
+
+type StopManagingResult struct{}
+
 // FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
 // kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or
 // link_game.
@@ -679,6 +688,8 @@ const (
 	// OwnershipChanged is an installed game with a file changed or gone, found on a library
 	// refresh; the plugin no longer manages what's left.
 	OwnershipChanged OwnershipKind = "changed"
+	// OwnershipReleased is an installed game the user stopped managing; its files stay, now theirs.
+	OwnershipReleased OwnershipKind = "released"
 )
 
 // OwnershipEvent is a change to a game's ownership, and the state it left the game in.

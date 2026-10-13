@@ -51,6 +51,13 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return schema.LinkGameResult{}, nil
 	})
 
+	Register(s, "stop_managing", func(ctx context.Context, p schema.StopManagingParams) (schema.StopManagingResult, error) {
+		if err := downloads.StopManaging(ctx, p.ID); err != nil {
+			return schema.StopManagingResult{}, wireError(err)
+		}
+		return schema.StopManagingResult{}, nil
+	})
+
 	Register(s, "find_games", func(ctx context.Context, p schema.FindGamesParams) (schema.FindGamesStatus, error) {
 		status, err := downloads.FindGames(ctx, p.PlatformID)
 		if err != nil {

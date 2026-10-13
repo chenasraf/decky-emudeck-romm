@@ -108,6 +108,7 @@ export interface Methods {
   check_on_deck: Method<CheckOnDeckParams, OnDeckCheck>;
   adopt_game: Method<AdoptGameParams, AdoptGameResult>;
   link_game: Method<LinkGameParams, LinkGameResult>;
+  stop_managing: Method<StopManagingParams, StopManagingResult>;
   find_games: Method<FindGamesParams, FindGamesStatus>;
   find_games_status: Method<FindGamesStatusParams, FindGamesStatus>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
@@ -777,6 +778,15 @@ export interface LinkGameParams {
 export interface LinkGameResult {
 }
 /**
+ * StopManagingParams names an installed game the plugin stops managing. Its files stay as they
+ * are, User-managed: the plugin never updates or deletes them again.
+ */
+export interface StopManagingParams {
+  id: number /* int */;
+}
+export interface StopManagingResult {
+}
+/**
  * FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
  * kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or
  * link_game.
@@ -843,6 +853,10 @@ export const OwnershipGone: OwnershipKind = "gone";
  * refresh; the plugin no longer manages what's left.
  */
 export const OwnershipChanged: OwnershipKind = "changed";
+/**
+ * OwnershipReleased is an installed game the user stopped managing; its files stay, now theirs.
+ */
+export const OwnershipReleased: OwnershipKind = "released";
 /**
  * OwnershipEvent is a change to a game's ownership, and the state it left the game in.
  */

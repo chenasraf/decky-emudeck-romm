@@ -871,6 +871,20 @@ function confirmDelete(what: string, params: DeleteGamesParams, onError: (e: Rpc
   )
 }
 
+/** Asks before the plugin stops managing a game, then stops. */
+function confirmStopManaging(name: string, id: number, onError: (e: RpcError) => void) {
+  showModal(
+    <ConfirmModal
+      strTitle={`Stop managing ${name}?`}
+      strDescription="Its files stay on this Deck as they are, but the plugin won't update or delete them any more, and its saves stop syncing."
+      strOKButtonText="Stop managing"
+      onOK={() => {
+        call('stop_managing', { id }).catch((err: unknown) => onError(asRpcError(err)))
+      }}
+    />,
+  )
+}
+
 function games(n: number): string {
   return n === 1 ? '1 game' : `${n} games`
 }
@@ -1115,16 +1129,23 @@ export function useGameDetail(id: number): GameDetail {
   const get = () => void act(() => call('download_game', { id }))
   const cancel = () => void act(() => call('cancel_download', { id }))
 
+  const ownedActions = (game: Game): GameAction[] => [
+    {
+      label: 'Stop managing',
+      run: () => confirmStopManaging(game.name, id, setError),
+      disabled: busy,
+    },
+    {
+      label: 'Delete ROM',
+      run: () => confirmDelete(game.name, { ids: [id] }, setError),
+      disabled: downloadOff,
+      destructive: true,
+    },
+  ]
+
   const actions: GameAction[] = []
   if (game?.removed) {
-    if (state === 'installed') {
-      actions.push({
-        label: 'Delete ROM',
-        run: () => confirmDelete(game.name, { ids: [id] }, setError),
-        disabled: downloadOff,
-        destructive: true,
-      })
-    }
+    if (state === 'installed') actions.push(...ownedActions(game))
   } else if (game) {
     switch (state) {
       case 'on_romm':
@@ -1139,12 +1160,7 @@ export function useGameDetail(id: number): GameDetail {
         actions.push({ label: 'Dismiss', run: cancel, disabled: busy })
         break
       case 'installed':
-        actions.push({
-          label: 'Delete ROM',
-          run: () => confirmDelete(game.name, { ids: [id] }, setError),
-          disabled: downloadOff,
-          destructive: true,
-        })
+        actions.push(...ownedActions(game))
         break
       case 'on_deck':
         if (check?.result?.matches) {

@@ -84,6 +84,9 @@ function applyOwnership(e: OwnershipEvent) {
     case 'linked':
       toaster.toast({ title: 'Linked to RomM', body: e.name })
       break
+    case 'released':
+      toaster.toast({ title: 'Stopped managing', body: e.name })
+      break
     case 'changed':
       // The plugin stopped managing a game on its own, so the user hears why.
       toaster.toast({
