@@ -3,9 +3,23 @@ import type { CSSProperties, ReactNode } from 'react'
 import { rpcError } from '../backend'
 import type { Error as RpcError } from '../rpc/schema.gen'
 
-/** A full-screen route's layout. Routes render under Steam's header bar. */
+/**
+ * A full-screen route's scroll area: the screen below Steam's 40px header bar, scrolling inside
+ * itself. A route that grows past the screen instead scrolls Steam's whole page, which carries the
+ * button-hint footer up with the content.
+ */
+export const routeScroll: CSSProperties = {
+  marginTop: 40,
+  height: 'calc(100% - 40px)',
+  overflowY: 'auto',
+  scrollbarWidth: 'none',
+  boxSizing: 'border-box',
+}
+
+/** A full-screen route's layout. */
 export const page: CSSProperties = {
-  padding: '56px 32px 32px',
+  ...routeScroll,
+  padding: '16px 32px 48px',
   display: 'flex',
   flexDirection: 'column',
   gap: 16,

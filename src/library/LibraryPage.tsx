@@ -13,7 +13,7 @@ import type {
   PlatformSummary,
   Error as RpcError,
 } from '../rpc/schema.gen'
-import { asRpcError, ErrorBox, muted } from '../setup/common'
+import { asRpcError, ErrorBox, muted, routeScroll } from '../setup/common'
 import { downloadLabel, GamesView, GameView, OfflineBanner, stateLabel, useSearch } from './Library'
 
 /** How many games each shelf shows; a platform's shelf ends in a See all tile for the rest. */
@@ -36,7 +36,7 @@ const css = `
 .erm-row::-webkit-scrollbar { display: none; }
 `
 
-const pageStyle: CSSProperties = { padding: '56px 0 32px', color: '#dcdedf' }
+const pageStyle: CSSProperties = { ...routeScroll, padding: '16px 0 48px', color: '#dcdedf' }
 const header: CSSProperties = {
   display: 'flex',
   alignItems: 'center',

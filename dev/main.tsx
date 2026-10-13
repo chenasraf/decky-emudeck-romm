@@ -19,7 +19,10 @@ function post(path: string) {
   void fetch(path, { method: 'POST' })
 }
 
-/** Stands in for a full-screen route, which on a Deck replaces the whole Steam UI. */
+/**
+ * Stands in for a full-screen route, which on a Deck replaces the whole Steam UI: as tall as the
+ * Deck's screen, so a route scrolls inside itself as it does there.
+ */
 function RouteView() {
   const path = useRoute()
   if (!path) return null
@@ -29,10 +32,10 @@ function RouteView() {
       style={{
         flex: 1,
         position: 'relative',
-        minHeight: 600,
+        height: 800,
         background: '#0e141b',
         borderRadius: 4,
-        overflow: 'auto',
+        overflow: 'hidden',
       }}
     >
       <div
