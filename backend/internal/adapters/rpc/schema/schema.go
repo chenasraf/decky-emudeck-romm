@@ -80,6 +80,7 @@ type Methods struct {
 	ListGames           Method[ListGamesParams, ListGamesResult]                     `json:"list_games"`
 	ListCollections     Method[ListCollectionsParams, ListCollectionsResult]         `json:"list_collections"`
 	GetGame             Method[GetGameParams, Game]                                  `json:"get_game"`
+	GetCover            Method[GetCoverParams, Cover]                                `json:"get_cover"`
 	SearchGames         Method[SearchGamesParams, SearchGamesResult]                 `json:"search_games"`
 	DownloadGame        Method[DownloadGameParams, DownloadItem]                     `json:"download_game"`
 	CancelDownload      Method[CancelDownloadParams, CancelDownloadResult]           `json:"cancel_download"`
@@ -464,6 +465,8 @@ type GameSummary struct {
 	State     GameState `json:"state"`
 	// PlatformName is set in a collection's list, where games come from several platforms.
 	PlatformName string `json:"platformName,omitempty"`
+	// HasCover is set when get_cover has a small cover to ask for.
+	HasCover bool `json:"hasCover"`
 }
 
 type SearchGamesParams struct {
@@ -490,10 +493,31 @@ type SearchHit struct {
 	SizeBytes    int64     `json:"sizeBytes"`
 	Regions      []string  `json:"regions"`
 	State        GameState `json:"state"`
+	// HasCover is set when get_cover has a small cover to ask for.
+	HasCover bool `json:"hasCover"`
 }
 
 type GetGameParams struct {
 	ID int `json:"id"`
+}
+
+// GetCoverParams names a game and the size of its cover: small for lists, large for its page.
+type GetCoverParams struct {
+	ID   int       `json:"id"`
+	Size CoverSize `json:"size"`
+}
+
+type CoverSize string
+
+const (
+	CoverSmall CoverSize = "small"
+	CoverLarge CoverSize = "large"
+)
+
+type Cover struct {
+	// DataURL is the image as a data: URL, empty when the game has no cover or it can't be fetched
+	// right now.
+	DataURL string `json:"dataUrl,omitempty"`
 }
 
 type Game struct {
@@ -509,6 +533,8 @@ type Game struct {
 	// MultiFile is set when the game is a folder of several files.
 	MultiFile bool      `json:"multiFile"`
 	State     GameState `json:"state"`
+	// HasCover is set when get_cover has a large cover to ask for.
+	HasCover bool `json:"hasCover"`
 	// InstalledPaths are the files the plugin placed, set when installed.
 	InstalledPaths []string `json:"installedPaths,omitempty"`
 	// InstallNote says what's left before the game plays: it was placed in a format its emulator

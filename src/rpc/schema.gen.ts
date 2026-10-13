@@ -98,6 +98,7 @@ export interface Methods {
   list_games: Method<ListGamesParams, ListGamesResult>;
   list_collections: Method<ListCollectionsParams, ListCollectionsResult>;
   get_game: Method<GetGameParams, Game>;
+  get_cover: Method<GetCoverParams, Cover>;
   search_games: Method<SearchGamesParams, SearchGamesResult>;
   download_game: Method<DownloadGameParams, DownloadItem>;
   cancel_download: Method<CancelDownloadParams, CancelDownloadResult>;
@@ -561,6 +562,10 @@ export interface GameSummary {
    * PlatformName is set in a collection's list, where games come from several platforms.
    */
   platformName?: string;
+  /**
+   * HasCover is set when get_cover has a small cover to ask for.
+   */
+  hasCover: boolean;
 }
 export interface SearchGamesParams {
   /**
@@ -592,9 +597,30 @@ export interface SearchHit {
   sizeBytes: number /* int64 */;
   regions: string[];
   state: GameState;
+  /**
+   * HasCover is set when get_cover has a small cover to ask for.
+   */
+  hasCover: boolean;
 }
 export interface GetGameParams {
   id: number /* int */;
+}
+/**
+ * GetCoverParams names a game and the size of its cover: small for lists, large for its page.
+ */
+export interface GetCoverParams {
+  id: number /* int */;
+  size: CoverSize;
+}
+export type CoverSize = string;
+export const CoverSmall: CoverSize = "small";
+export const CoverLarge: CoverSize = "large";
+export interface Cover {
+  /**
+   * DataURL is the image as a data: URL, empty when the game has no cover or it can't be fetched
+   * right now.
+   */
+  dataUrl?: string;
 }
 export interface Game {
   id: number /* int */;
@@ -613,6 +639,10 @@ export interface Game {
    */
   multiFile: boolean;
   state: GameState;
+  /**
+   * HasCover is set when get_cover has a large cover to ask for.
+   */
+  hasCover: boolean;
   /**
    * InstalledPaths are the files the plugin placed, set when installed.
    */

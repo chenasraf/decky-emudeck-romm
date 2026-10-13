@@ -6,6 +6,7 @@ tool github.com/gzuidhof/tygo
 
 require (
 	github.com/bodgit/sevenzip v1.6.5
+	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.59.0
 )
 
@@ -31,7 +32,6 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect

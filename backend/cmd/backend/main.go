@@ -13,6 +13,7 @@ import (
 	"time"
 
 	cachedb "github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/cache"
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/covers"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/emudeck"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/romm"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
@@ -112,8 +113,24 @@ func run(log *slog.Logger) error {
 		biosStore = owned
 	}
 	bios := app.NewBIOS(ctx, cache, install, conn, firmwareDial, biosStore, stateErr, store, rpc.BIOSEvents(srv), log.With("component", "bios"))
+	coverStore, err := covers.Open(filepath.Join(runtimeDir, "covers"))
+	if err != nil {
+		return err
+	}
+	coverDial := func(server domain.Server, token string) app.CoverServer {
+		return romm.New(server, token, version).WithLogger(rommLog)
+	}
+	coverArt := app.NewCovers(ctx, cache, conn, coverDial, coverStore, ownership, log.With("component", "covers"))
+
 	listeners := rpc.DownloadListeners(srv)
 	listeners.Queued = func(d app.Download) { bios.GameQueued(d.PlatformID) }
+	sendDownload := listeners.Change
+	listeners.Change = func(d app.Download) {
+		sendDownload(d)
+		if d.State == domain.StateInstalled {
+			coverArt.Prefetch(d.ROMID)
+		}
+	}
 	gamesLog := log.With("component", "games")
 	games := app.NewGames(func() (domain.Emulator, bool) {
 		procs, err := system.Processes("/proc")
@@ -126,9 +143,18 @@ func run(log *slog.Logger) error {
 	downloads := app.NewDownloads(ctx, cache, install, conn, downloadDial, ownership, stateErr, system.FreeBytes, store,
 		games, store.DownloadConcurrency(), listeners, log.With("component", "downloads"))
 
-	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, rpc.CatalogEvents(srv), log.With("component", "catalog"))
+	sendCatalog := rpc.CatalogEvents(srv)
+	catalog := app.NewCatalog(ctx, cache, downloads, conn, catalogDial, func(s app.CatalogStatus) {
+		sendCatalog(s)
+		// A refresh that worked may have brought new cover paths for games on this Deck.
+		if !s.Refreshing && s.Problem == nil {
+			coverArt.PrefetchOwned()
+		}
+	}, log.With("component", "catalog"))
 	events.catalog = catalog
-	rpc.Routes(srv, version, rpc.Services{Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games})
+	rpc.Routes(srv, version, rpc.Services{
+		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt,
+	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)
 	catalog.Refresh(false)

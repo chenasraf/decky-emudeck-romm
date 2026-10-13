@@ -89,6 +89,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 				ID:        r.ID,
 				Name:      r.Name,
 				SizeBytes: r.SizeBytes,
+				HasCover:  r.CoverSmall != "",
 				Regions:   nonNil(r.Regions),
 				State:     schema.GameState(domain.StateOf(page.States, r.ID)),
 			}
@@ -139,6 +140,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 				PlatformID:   r.PlatformID,
 				PlatformName: result.PlatformNames[r.PlatformID],
 				SizeBytes:    r.SizeBytes,
+				HasCover:     r.CoverSmall != "",
 				Regions:      nonNil(r.Regions),
 				State:        schema.GameState(domain.StateOf(result.States, r.ID)),
 			})
@@ -173,6 +175,7 @@ func catalogRoutes(s *Server, catalog *app.Catalog, downloads *app.Downloads) {
 			Name:           rom.Name,
 			FileName:       rom.FileName,
 			SizeBytes:      rom.SizeBytes,
+			HasCover:       rom.CoverLarge != "",
 			Regions:        nonNil(rom.Regions),
 			Revision:       rom.Revision,
 			MultiFile:      rom.MultiFile,

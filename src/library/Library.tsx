@@ -26,6 +26,7 @@ import { call } from '../backend'
 import { usePlatformBios } from '../bios'
 import { formatSize, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
+import { Cover } from '../covers'
 import { type Downloads, percent, useDownloads } from '../downloads'
 import { disabledReason } from '../features'
 import type {
@@ -57,12 +58,26 @@ const row: CSSProperties = {
 const count: CSSProperties = { color: '#8b929a', flexShrink: 0 }
 const name: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 
-function Row({ label, value, onClick }: { label: string; value?: ReactNode; onClick: () => void }) {
+const gameName: CSSProperties = { ...name, flex: '1 1 auto', textAlign: 'left' }
+
+function Row({
+  label,
+  value,
+  cover,
+  onClick,
+}: {
+  label: string
+  value?: ReactNode
+  /** The game whose small cover leads the row. */
+  cover?: { id: number; hasCover: boolean }
+  onClick: () => void
+}) {
   return (
     <PanelSectionRow>
       <ButtonItem layout="below" onClick={onClick}>
-        <span style={row}>
-          <span style={name}>{label}</span>
+        <span style={cover ? { ...row, alignItems: 'center' } : row}>
+          {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} />}
+          <span style={cover ? gameName : name}>{label}</span>
           {value !== undefined && <span style={count}>{value}</span>}
         </span>
       </ButtonItem>
@@ -642,7 +657,7 @@ export function GamesView({
             </PanelSectionRow>
           )}
           {games.map((g) => (
-            <Row key={g.id} label={g.name} value={value(g)} onClick={() => onOpen(g)} />
+            <Row key={g.id} label={g.name} value={value(g)} cover={g} onClick={() => onOpen(g)} />
           ))}
         </>
       ) : (
@@ -654,6 +669,7 @@ export function GamesView({
               key={g.id}
               label={g.name}
               value={stateLabel(g, downloads) ?? formatSize(g.sizeBytes)}
+              cover={g}
               onClick={() => onOpen(g)}
             />
           ))}
@@ -781,6 +797,7 @@ export function SearchView({
             key={g.id}
             label={g.name}
             value={state ? `${g.platformName} · ${state}` : g.platformName}
+            cover={g}
             onClick={() => onOpen(g)}
           />
         )
@@ -1008,6 +1025,13 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
       <Problem error={error} />
       {game && state && (
         <>
+          {game.hasCover && (
+            <PanelSectionRow>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
+                <Cover id={game.id} size="large" hasCover />
+              </div>
+            </PanelSectionRow>
+          )}
           <PanelSectionRow>
             <Field label="State">
               {download?.converting

@@ -17,6 +17,7 @@ type Services struct {
 	Downloads  *app.Downloads
 	BIOS       *app.BIOS
 	Games      *app.Games
+	Covers     *app.Covers
 }
 
 // Routes registers a handler for every method in schema.Methods.
@@ -26,6 +27,7 @@ func Routes(s *Server, version string, svc Services) {
 	downloadRoutes(s, svc.Downloads)
 	biosRoutes(s, svc.BIOS)
 	preferenceRoutes(s, svc.BIOS, svc.Games)
+	coverRoutes(s, svc.Covers)
 
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil

@@ -31,6 +31,22 @@ type ROM struct {
 	CoverLarge string
 }
 
+// CoverSize picks one of a ROM's cover images: small for lists, large for its own page.
+type CoverSize string
+
+const (
+	CoverSmall CoverSize = "small"
+	CoverLarge CoverSize = "large"
+)
+
+// Cover returns the Server-relative path of r's cover in size, empty when it has none.
+func (r ROM) Cover(size CoverSize) string {
+	if size == CoverLarge {
+		return r.CoverLarge
+	}
+	return r.CoverSmall
+}
+
 // PlatformSummary is a platform with what the Catalog and this Deck hold of it.
 type PlatformSummary struct {
 	Platform
