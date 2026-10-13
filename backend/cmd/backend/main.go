@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/emudeck"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/romm"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
@@ -66,8 +67,10 @@ func run(log *slog.Logger) error {
 
 	srv := rpc.NewServer(os.Stdout, log)
 	conn := app.NewConnection(ctx, store, dial, identity, rpc.NewConnectionEvents(srv), log.With("component", "connection"))
-	rpc.Routes(srv, version, conn)
+	install := app.NewInstall(emudeck.New(userHome(log)), log.With("component", "install"))
+	rpc.Routes(srv, version, conn, install)
 	go conn.Watch(ctx, connectionCheckInterval)
+	go install.State(false)
 
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {
 		return fmt.Errorf("send ready: %w", err)
@@ -75,4 +78,17 @@ func run(log *slog.Logger) error {
 	log.Info("started", "version", version, "protocol", schema.ProtocolVersion, "settings_dir", settingsDir)
 
 	return srv.Serve(ctx, os.Stdin)
+}
+
+// userHome is the Deck user's home directory, where EmuDeck and ES-DE live. main.py passes Decky's
+// DECKY_USER_HOME, which stays right even if the backend runs as another user.
+func userHome(log *slog.Logger) string {
+	if home := os.Getenv("DECKY_USER_HOME"); home != "" {
+		return home
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Error("no home directory; EmuDeck can't be found", "err", err)
+	}
+	return home
 }

@@ -19,7 +19,9 @@ import {
 } from './backend'
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
+import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
 import { SetupPage } from './setup/SetupPage'
+import { StatusPage } from './status/StatusPage'
 
 const STATE_LABELS: Record<BackendState, string> = {
   starting: 'Starting…',
@@ -111,6 +113,63 @@ function ServerSection() {
   )
 }
 
+function openStatus() {
+  Navigation.CloseSideMenus()
+  Navigation.Navigate(STATUS_ROUTE)
+}
+
+function InstallSection() {
+  const state = useInstallState()
+  const [checking, setChecking] = useState(false)
+
+  if (!state) return null
+
+  const checkAgain = async () => {
+    setChecking(true)
+    await loadInstallState(true)
+    setChecking(false)
+  }
+
+  return (
+    <PanelSection title="EmuDeck">
+      {state.emudeck.found ? (
+        <PanelSectionRow>
+          <Field label="EmuDeck" description={state.emudeck.root}>
+            Found
+          </Field>
+        </PanelSectionRow>
+      ) : (
+        <>
+          <PanelSectionRow>
+            <Field
+              label="⚠ EmuDeck not found"
+              description="Downloads, BIOS and save sync stay off until the plugin finds EmuDeck's Emulation folder."
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="below" disabled={checking} onClick={() => void checkAgain()}>
+              {checking ? 'Checking…' : 'Check again'}
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
+      )}
+      {state.esde.parseGamelistOnly && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ ES-DE hides new games"
+            description="ES-DE only shows games from its gamelists, so downloaded games won't appear. Turn off Other Settings → Only show games from gamelist files in ES-DE."
+          />
+        </PanelSectionRow>
+      )}
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={openStatus}>
+          Setup status
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
+  )
+}
+
 function BackendSection() {
   const [status, setStatus] = useState<BackendStatus | null>(null)
 
@@ -149,6 +208,7 @@ function Content() {
   return (
     <>
       <ServerSection />
+      <InstallSection />
       <BackendSection />
     </>
   )
@@ -156,6 +216,7 @@ function Content() {
 
 export default definePlugin(() => {
   routerHook.addRoute(SETUP_ROUTE, SetupPage, { exact: true })
+  routerHook.addRoute(STATUS_ROUTE, StatusPage, { exact: true })
   const stopWatchingConnection = watchConnection()
 
   return {
@@ -165,6 +226,7 @@ export default definePlugin(() => {
     icon: <FaCompactDisc />,
     onDismount() {
       routerHook.removeRoute(SETUP_ROUTE)
+      routerHook.removeRoute(STATUS_ROUTE)
       stopWatchingConnection()
     },
   }

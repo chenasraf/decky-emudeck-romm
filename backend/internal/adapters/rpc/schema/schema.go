@@ -60,6 +60,7 @@ type Methods struct {
 	SignInWithPassword  Method[SignInWithPasswordParams, ConnectionStatus]           `json:"sign_in_with_password"`
 	StartDevicePairing  Method[StartDevicePairingParams, DevicePairing]              `json:"start_device_pairing"`
 	CancelDevicePairing Method[CancelDevicePairingParams, CancelDevicePairingResult] `json:"cancel_device_pairing"`
+	InstallState        Method[InstallStateParams, InstallState]                     `json:"install_state"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -188,4 +189,55 @@ type DevicePairingEvent struct {
 	Status *ConnectionStatus `json:"status,omitempty"`
 	// Problem says what went wrong, set when failed.
 	Problem *Error `json:"problem,omitempty"`
+}
+
+type InstallStateParams struct {
+	// Refresh looks at the disk again even when the last look is under a minute old.
+	Refresh bool `json:"refresh,omitempty"`
+}
+
+// InstallState is what the plugin found of EmuDeck and ES-DE on disk.
+type InstallState struct {
+	EmuDeck   EmuDeckStatus    `json:"emudeck"`
+	ESDE      ESDEStatus       `json:"esde"`
+	Emulators []EmulatorStatus `json:"emulators"`
+}
+
+type EmuDeckStatus struct {
+	// Found is false when no Emulation folder was found, which turns off everything that writes
+	// to disk.
+	Found bool `json:"found"`
+	// Root is the Emulation folder, set when found.
+	Root string `json:"root,omitempty"`
+	// Source is where the Emulation folder's location came from, set when found.
+	Source string `json:"source,omitempty"`
+	// Tried lists the ROM folders the plugin looked for.
+	Tried []string `json:"tried"`
+}
+
+type ESDEStatus struct {
+	// SettingsFound is false when ES-DE's es_settings.xml doesn't exist.
+	SettingsFound  bool   `json:"settingsFound"`
+	MediaDirectory string `json:"mediaDirectory"`
+	// ParseGamelistOnly hides games the plugin adds until ES-DE's gamelists list them.
+	ParseGamelistOnly bool `json:"parseGamelistOnly"`
+	Running           bool `json:"running"`
+}
+
+type EmulatorStatus struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Installed bool   `json:"installed"`
+	// Systems are the ROM folders this emulator is EmuDeck's default for.
+	Systems []string `json:"systems"`
+	// SaveSync says whether the plugin syncs this emulator's saves.
+	SaveSync bool `json:"saveSync"`
+	// SaveDirs are the emulator's save folders under EmuDeck's saves folder, set when SaveSync.
+	SaveDirs []SaveDirStatus `json:"saveDirs,omitempty"`
+}
+
+type SaveDirStatus struct {
+	Path string `json:"path"`
+	// Resolved is where Path leads once symlinks are followed, empty when it leads nowhere.
+	Resolved string `json:"resolved,omitempty"`
 }

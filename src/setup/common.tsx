@@ -3,6 +3,15 @@ import type { CSSProperties, ReactNode } from 'react'
 import { rpcError } from '../backend'
 import type { Error as RpcError } from '../rpc/schema.gen'
 
+/** A full-screen route's layout. Routes render under Steam's header bar. */
+export const page: CSSProperties = {
+  padding: '56px 32px 32px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+  maxWidth: 720,
+}
+
 export const muted: CSSProperties = { color: '#8b929a', fontSize: 14, lineHeight: 1.5 }
 
 export const mono: CSSProperties = {

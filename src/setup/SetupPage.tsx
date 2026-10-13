@@ -1,5 +1,5 @@
 import { DialogButton, Field, Focusable, Navigation, TextField } from '@decky/ui'
-import { type CSSProperties, useState } from 'react'
+import { useState } from 'react'
 
 import { call } from '../backend'
 import { currentConnection, publishConnection } from '../connection'
@@ -10,22 +10,13 @@ import type {
   Error as RpcError,
   Server,
 } from '../rpc/schema.gen'
-import { asRpcError, ErrorBox, mono, muted } from './common'
+import { asRpcError, ErrorBox, mono, muted, page } from './common'
 import { DevicePairingPanel } from './DevicePairingPanel'
 
 type Step =
   | { name: 'server' }
   | { name: 'sign_in'; found: CheckServerResult }
   | { name: 'done'; status: ConnectionStatus }
-
-// Routes render under Steam's header bar.
-const page: CSSProperties = {
-  padding: '56px 32px 32px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  maxWidth: 720,
-}
 
 function ServerStep({ onFound }: { onFound: (found: CheckServerResult) => void }) {
   const [url, setUrl] = useState('')

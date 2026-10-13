@@ -127,6 +127,8 @@ class Backend:
             env = dict(os.environ)
             # Decky's bundled libraries; anything the backend execs must use the system ones.
             env.pop("LD_LIBRARY_PATH", None)
+            # Where EmuDeck and ES-DE live, whichever user the plugin runs as.
+            env["DECKY_USER_HOME"] = decky.DECKY_USER_HOME
             self.proc = await asyncio.create_subprocess_exec(
                 path,
                 stdin=asyncio.subprocess.PIPE,

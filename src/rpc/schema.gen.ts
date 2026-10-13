@@ -68,6 +68,7 @@ export interface Methods {
   sign_in_with_password: Method<SignInWithPasswordParams, ConnectionStatus>;
   start_device_pairing: Method<StartDevicePairingParams, DevicePairing>;
   cancel_device_pairing: Method<CancelDevicePairingParams, CancelDevicePairingResult>;
+  install_state: Method<InstallStateParams, InstallState>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -204,4 +205,73 @@ export interface DevicePairingEvent {
    * Problem says what went wrong, set when failed.
    */
   problem?: Error;
+}
+export interface InstallStateParams {
+  /**
+   * Refresh looks at the disk again even when the last look is under a minute old.
+   */
+  refresh?: boolean;
+}
+/**
+ * InstallState is what the plugin found of EmuDeck and ES-DE on disk.
+ */
+export interface InstallState {
+  emudeck: EmuDeckStatus;
+  esde: ESDEStatus;
+  emulators: EmulatorStatus[];
+}
+export interface EmuDeckStatus {
+  /**
+   * Found is false when no Emulation folder was found, which turns off everything that writes
+   * to disk.
+   */
+  found: boolean;
+  /**
+   * Root is the Emulation folder, set when found.
+   */
+  root?: string;
+  /**
+   * Source is where the Emulation folder's location came from, set when found.
+   */
+  source?: string;
+  /**
+   * Tried lists the ROM folders the plugin looked for.
+   */
+  tried: string[];
+}
+export interface ESDEStatus {
+  /**
+   * SettingsFound is false when ES-DE's es_settings.xml doesn't exist.
+   */
+  settingsFound: boolean;
+  mediaDirectory: string;
+  /**
+   * ParseGamelistOnly hides games the plugin adds until ES-DE's gamelists list them.
+   */
+  parseGamelistOnly: boolean;
+  running: boolean;
+}
+export interface EmulatorStatus {
+  id: string;
+  name: string;
+  installed: boolean;
+  /**
+   * Systems are the ROM folders this emulator is EmuDeck's default for.
+   */
+  systems: string[];
+  /**
+   * SaveSync says whether the plugin syncs this emulator's saves.
+   */
+  saveSync: boolean;
+  /**
+   * SaveDirs are the emulator's save folders under EmuDeck's saves folder, set when SaveSync.
+   */
+  saveDirs?: SaveDirStatus[];
+}
+export interface SaveDirStatus {
+  path: string;
+  /**
+   * Resolved is where Path leads once symlinks are followed, empty when it leads nowhere.
+   */
+  resolved?: string;
 }

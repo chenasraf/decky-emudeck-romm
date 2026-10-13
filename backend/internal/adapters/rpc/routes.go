@@ -10,7 +10,7 @@ import (
 )
 
 // Routes registers a handler for every method in schema.Methods.
-func Routes(s *Server, version string, conn *app.Connection) {
+func Routes(s *Server, version string, conn *app.Connection, install *app.Install) {
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil
 	})
@@ -69,6 +69,45 @@ func Routes(s *Server, version string, conn *app.Connection) {
 		conn.CancelDevicePairing(p.UserCode)
 		return schema.CancelDevicePairingResult{}, nil
 	})
+
+	Register(s, "install_state", func(_ context.Context, p schema.InstallStateParams) (schema.InstallState, error) {
+		return toWireInstall(install.State(p.Refresh)), nil
+	})
+}
+
+func toWireInstall(s domain.InstallState) schema.InstallState {
+	out := schema.InstallState{
+		EmuDeck: schema.EmuDeckStatus{
+			Found:  s.EmuDeckFound(),
+			Root:   s.EmuDeck.Root,
+			Source: string(s.EmuDeck.Source),
+			Tried:  nonNil(s.EmuDeck.Tried),
+		},
+		ESDE: schema.ESDEStatus{
+			SettingsFound:     s.ESDE.SettingsPath != "",
+			MediaDirectory:    s.ESDE.MediaDirectory,
+			ParseGamelistOnly: s.ESDE.ParseGamelistOnly,
+			Running:           s.ESDE.Running,
+		},
+		Emulators: []schema.EmulatorStatus{},
+	}
+	for _, e := range s.Emulators {
+		def, _ := domain.EmulatorByID(e.ID)
+		es := schema.EmulatorStatus{ID: e.ID, Name: def.Name, Installed: e.Installed, Systems: nonNil(e.Systems), SaveSync: def.SaveSync()}
+		for _, d := range e.Saves {
+			es.SaveDirs = append(es.SaveDirs, schema.SaveDirStatus{Path: d.Path, Resolved: d.Resolved})
+		}
+		out.Emulators = append(out.Emulators, es)
+	}
+	return out
+}
+
+// nonNil keeps a list the schema declares as an array from going over the wire as null.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 // ConnectionEvents sends the connection's background events as notifications.
