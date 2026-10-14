@@ -382,8 +382,20 @@ func (s *Saves) saveWritten(ctx context.Context, path string) {
 		s.log.Warn("save written", "path", path, "err", err)
 		return
 	}
+	records, err := s.records(ctx)
+	if err != nil {
+		s.log.Warn("save written", "path", path, "err", err)
+		return
+	}
 	for _, id := range ids {
 		if t, why, err := s.target(ctx, id); err == nil && why == "" && slices.Contains(t.format.files(), path) {
+			// A write that leaves the save as it last synced, the plugin's own download included
+			// however late the watch reports it, has nothing to upload.
+			if r, ok := records[id]; ok && r.Path == t.path && r.Slot == t.slot && r.LocalHash != "" {
+				if local, err := t.format.read(); err == nil && local.exists && local.hash == r.LocalHash {
+					return
+				}
+			}
 			s.log.Info("save written", "rom_id", id, "path", path)
 			s.request([]int{id}, false)
 			return

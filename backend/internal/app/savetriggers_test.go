@@ -114,6 +114,13 @@ func TestOwnDownloadDoesntUpload(t *testing.T) {
 	}
 	w.changes <- f.chronoSave()
 	f.quiet(t, 100*time.Millisecond)
+
+	// Reported after the plugin forgot its own write, the save still matches what synced.
+	f.saves.mu.Lock()
+	clear(f.saves.wrote)
+	f.saves.mu.Unlock()
+	w.changes <- f.chronoSave()
+	f.quiet(t, 100*time.Millisecond)
 }
 
 func TestWaitingDownloadSyncsOnceRetroArchCloses(t *testing.T) {
