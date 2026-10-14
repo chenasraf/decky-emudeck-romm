@@ -34,11 +34,10 @@ lint:
 # without leaving Gaming Mode. The plugin folder is root's, so the files land in a folder of the
 # deck user's first and one sudo moves them. DECK_PWD, when set, is the Deck's sudo password, fed
 # to sudo on stdin; without it, sudo asks in an ssh -t terminal. It goes through the environment so
-# make never prints it.
+# make never prints it. dev/deck-install.sh does the install and restart.
 DECK ?= deck@deck
-DECK_PLUGIN_DIR := /home/deck/homebrew/plugins/decky-emudeck-romm
 DECK_STAGE := .cache/decky-emudeck-romm-deploy
-DECK_INSTALL := rsync -a $(DECK_STAGE)/ $(DECK_PLUGIN_DIR)/ && systemctl restart plugin_loader
+DECK_INSTALL := sh .cache/deck-install.sh $(DECK_STAGE)
 export DECK_PWD
 
 .PHONY: deploy
@@ -48,6 +47,7 @@ deploy:
 	ssh $(DECK) mkdir -p $(DECK_STAGE)/bin
 	rsync -a main.py plugin.json package.json dist $(DECK):$(DECK_STAGE)/
 	rsync -a backend/out/backend-amd64 $(DECK):$(DECK_STAGE)/bin/
+	rsync -a dev/deck-install.sh $(DECK):.cache/
 	if [ -n "$$DECK_PWD" ]; then \
 		printf '%s\n' "$$DECK_PWD" | ssh $(DECK) 'sudo -S -p "" sh -c "$(DECK_INSTALL)"'; \
 	else \
