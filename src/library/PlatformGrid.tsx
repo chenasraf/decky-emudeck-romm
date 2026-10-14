@@ -43,8 +43,25 @@ const chip: CSSProperties = {
   padding: '6px 14px',
   borderRadius: 14,
   fontSize: 13,
+  whiteSpace: 'nowrap',
 }
 const chipOn: CSSProperties = { ...chip, background: '#dcdedf', color: '#111' }
+const actionButton: CSSProperties = {
+  width: 'auto',
+  minWidth: 0,
+  padding: '8px 16px',
+  fontSize: 14,
+  whiteSpace: 'nowrap',
+}
+const title: CSSProperties = {
+  fontSize: 24,
+  fontWeight: 700,
+  color: '#fff',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
 
 /** A platform's every game as a grid of covers, filtered and sorted, loading more as focus nears the end. */
 export function PlatformGrid({
@@ -110,10 +127,30 @@ export function PlatformGrid({
 
   return (
     <div>
-      <div style={{ ...toolbar, paddingBottom: 8 }}>
-        <span style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{platform.name}</span>
-        <span style={muted}>{total === null ? '' : total === 1 ? '1 game' : `${total} games`}</span>
-      </div>
+      {/* The platform and what to do with it on top, how to narrow the grid under it. */}
+      <Focusable style={{ ...toolbar, paddingBottom: 8 }} flow-children="horizontal">
+        <span style={title}>{platform.name}</span>
+        <span style={{ ...muted, flexShrink: 0 }}>
+          {total === null ? '' : total === 1 ? '1 game' : `${total} games`}
+        </span>
+        <span style={{ flex: 1 }} />
+        <DialogButton
+          style={actionButton}
+          disabled={downloads.problem !== null}
+          onClick={() => showFindGames(platform)}
+        >
+          Find my games
+        </DialogButton>
+        {filter !== 'installed' && total !== null && total > 0 && (
+          <DialogButton
+            style={actionButton}
+            disabled={downloads.problem !== null}
+            onClick={() => void confirmDownloadAll({ platformId: platform.id }, setError)}
+          >
+            Download all missing
+          </DialogButton>
+        )}
+      </Focusable>
       <Focusable style={toolbar} flow-children="horizontal">
         {FILTERS.map(({ filter: f, label }) => (
           <DialogButton key={f} style={f === filter ? chipOn : chip} onClick={() => onFilter(f)}>
@@ -123,23 +160,6 @@ export function PlatformGrid({
         <DialogButton style={chip} onClick={() => onSort(nextSort)}>
           Sort: {sortLabel}
         </DialogButton>
-        <span style={{ flex: 1 }} />
-        <DialogButton
-          style={{ width: 'auto', minWidth: 0 }}
-          disabled={downloads.problem !== null}
-          onClick={() => showFindGames(platform)}
-        >
-          Find my games
-        </DialogButton>
-        {filter !== 'installed' && total !== null && total > 0 && (
-          <DialogButton
-            style={{ width: 'auto', minWidth: 0 }}
-            disabled={downloads.problem !== null}
-            onClick={() => void confirmDownloadAll({ platformId: platform.id }, setError)}
-          >
-            Download all missing
-          </DialogButton>
-        )}
       </Focusable>
       <div style={{ maxWidth: 720, padding: '4px 16px 0' }}>
         <BiosSection platformId={platform.id} nudge />

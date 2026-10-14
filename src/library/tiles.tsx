@@ -114,7 +114,15 @@ export function Tile({
   return (
     <TileFrame onOpen={onOpen} onFocus={onFocus}>
       <div className="erm-art" style={art}>
-        {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} style={coverFill} />}
+        {cover && (
+          <Cover
+            id={cover.id}
+            size="small"
+            hasCover={cover.hasCover}
+            name={name}
+            style={coverFill}
+          />
+        )}
         {progress !== undefined && (
           <div style={progressTrack}>
             <div style={{ width: `${progress}%`, height: '100%', background: '#1a9fff' }} />

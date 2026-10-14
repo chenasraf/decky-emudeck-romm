@@ -54,41 +54,105 @@ const SIZES: Record<CoverSize, CSSProperties> = {
   large: { width: 120, height: 160 },
 }
 
+/** A hue of its own for each name, so text covers side by side tell apart at a glance. */
+function hueOf(name: string): number {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return h % 360
+}
+
 /**
- * A game's cover, or a blank of the same shape while it loads or when there's none. style
- * overrides the size's box, e.g. to fill a tile.
+ * Stands in for a cover a game has none of: its name over a gradient of its own hue. Too small for
+ * the name to read, it shows the first letter.
+ */
+function TextCover({
+  name,
+  initial,
+  style,
+}: {
+  name: string
+  initial: boolean
+  style: CSSProperties
+}) {
+  const hue = hueOf(name)
+  return (
+    <div
+      style={{
+        ...style,
+        // Container units scale the title with whatever box the cover fills.
+        containerType: 'size',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        background: `linear-gradient(160deg, hsl(${hue}, 45%, 32%), hsl(${(hue + 40) % 360}, 50%, 16%))`,
+        color: '#fff',
+        fontWeight: 700,
+        textAlign: 'center',
+        textShadow: '0 1px 3px rgba(0, 0, 0, 0.6)',
+      }}
+    >
+      {initial ? (
+        <span style={{ fontSize: '60cqh', lineHeight: 1 }}>{[...name.trim()][0] ?? '?'}</span>
+      ) : (
+        <span
+          style={{
+            padding: '8%',
+            fontSize: 'clamp(10px, 12cqw, 24px)',
+            lineHeight: 1.2,
+            overflowWrap: 'anywhere',
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: 6,
+            overflow: 'hidden',
+          }}
+        >
+          {name}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A game's cover: a blank of the same shape while it loads, and, given the game's name, a text
+ * cover when it has none or it couldn't load. style overrides the size's box, e.g. to fill a tile.
  */
 export function Cover({
   id,
   size,
   hasCover,
+  name,
   style: override,
 }: {
   id: number
   size: CoverSize
   hasCover: boolean
+  name?: string
   style?: CSSProperties
 }) {
   const key = `${size}/${id}`
   // The cover loaded last, with the game and size it's for, so a reused component never shows the
-  // previous game's cover while the new one loads.
-  const [shown, setShown] = useState<{ key: string; url: string | null }>(() => ({
-    key,
-    url: loaded.get(key) ?? null,
-  }))
+  // previous game's cover while the new one loads. done is set once the load settled, found or not.
+  const [shown, setShown] = useState<{ key: string; url: string | null; done: boolean }>(() => {
+    const url = loaded.get(key) ?? null
+    return { key, url, done: url !== null }
+  })
 
   useEffect(() => {
     if (!hasCover) return
     let current = true
     void loadCover(id, size).then((url) => {
-      if (current) setShown({ key: `${size}/${id}`, url })
+      if (current) setShown({ key: `${size}/${id}`, url, done: true })
     })
     return () => {
       current = false
     }
   }, [id, size, hasCover])
 
-  const url = hasCover && shown.key === key ? shown.url : null
+  const mine = shown.key === key
+  const url = hasCover && mine ? shown.url : null
+  const missing = !hasCover || (mine && shown.done && !url)
 
   const style: CSSProperties = {
     ...SIZES[size],
@@ -98,5 +162,8 @@ export function Cover({
     background: 'rgba(255, 255, 255, 0.08)',
     ...override,
   }
-  return url ? <img src={url} style={style} alt="" /> : <div style={style} />
+  if (url) return <img src={url} style={style} alt="" />
+  if (missing && name)
+    return <TextCover name={name} initial={size === 'small' && !override} style={style} />
+  return <div style={style} />
 }

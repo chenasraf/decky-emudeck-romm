@@ -86,7 +86,13 @@ export function GameHero({ id }: { id: number }) {
       {game.hasCover && <Cover id={game.id} size="large" hasCover style={backdrop} />}
       {actions.length > 0 ? (
         <div style={{ position: 'relative', flex: 'none' }}>
-          <Cover id={game.id} size="large" hasCover={game.hasCover} style={coverStyle} />
+          <Cover
+            id={game.id}
+            size="large"
+            hasCover={game.hasCover}
+            name={game.name}
+            style={coverStyle}
+          />
         </div>
       ) : (
         // With no action to take focus, the cover holds it, so B still reaches the page.
@@ -96,7 +102,13 @@ export function GameHero({ id }: { id: number }) {
           preferredFocus
           onActivate={() => undefined}
         >
-          <Cover id={game.id} size="large" hasCover={game.hasCover} style={coverStyle} />
+          <Cover
+            id={game.id}
+            size="large"
+            hasCover={game.hasCover}
+            name={game.name}
+            style={coverStyle}
+          />
         </Focusable>
       )}
       <div style={info}>

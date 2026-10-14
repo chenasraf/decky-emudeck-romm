@@ -115,7 +115,7 @@ function Row({
     <PanelSectionRow>
       <ButtonItem layout="below" onClick={onClick}>
         <span style={lead ? { ...row, alignItems: 'center' } : row}>
-          {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} />}
+          {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} name={label} />}
           {icon}
           {below ? (
             <span style={stacked}>
