@@ -124,6 +124,7 @@ export interface Methods {
   check_on_deck: Method<CheckOnDeckParams, OnDeckCheck>;
   adopt_game: Method<AdoptGameParams, AdoptGameResult>;
   link_game: Method<LinkGameParams, LinkGameResult>;
+  unlink_game: Method<UnlinkGameParams, UnlinkGameResult>;
   stop_managing: Method<StopManagingParams, StopManagingResult>;
   ignore_update: Method<IgnoreUpdateParams, IgnoreUpdateResult>;
   esde_notice: Method<ESDENoticeParams, ESDENotice>;
@@ -851,6 +852,15 @@ export interface LinkGameParams {
 export interface LinkGameResult {
 }
 /**
+ * UnlinkGameParams names a linked game whose link to drop: its saves stop syncing, and its file
+ * stays as it is.
+ */
+export interface UnlinkGameParams {
+  id: number /* int */;
+}
+export interface UnlinkGameResult {
+}
+/**
  * StopManagingParams names an installed game the plugin stops managing. Its files stay as they
  * are, User-managed: the plugin never updates or deletes them again.
  */
@@ -926,6 +936,10 @@ export const OwnershipAdopted: OwnershipKind = "adopted";
  * OwnershipLinked is a game linked to RomM, still on_deck.
  */
 export const OwnershipLinked: OwnershipKind = "linked";
+/**
+ * OwnershipUnlinked is a game whose link to RomM the user dropped; its file stays theirs.
+ */
+export const OwnershipUnlinked: OwnershipKind = "unlinked";
 /**
  * OwnershipGone is an installed game whose files are all gone, found on a library refresh.
  */

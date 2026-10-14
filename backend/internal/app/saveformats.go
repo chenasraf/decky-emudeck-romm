@@ -196,20 +196,19 @@ func (s *Saves) psxCardName(entry, dir string) (string, bool, string) {
 // cardOwner is the name of the game with the lowest ID, below id, that syncs the memory card at
 // card: the discs of a game RomM keeps as one game each share the card DuckStation gives them all.
 func (s *Saves) cardOwner(ctx context.Context, id, platformID int, card string) (string, error) {
-	ids, err := s.owned.OwnedIDs(ctx)
+	ids, err := s.gameIDs(ctx)
 	if err != nil {
 		return "", err
 	}
-	slices.Sort(ids)
 	for _, other := range ids {
 		if other >= id {
 			break
 		}
-		rec, ok, err := s.owned.Owned(ctx, other)
+		otherPlatform, _, _, why, err := s.placed(ctx, other)
 		if err != nil {
 			return "", err
 		}
-		if !ok || rec.PlatformID != platformID {
+		if why != "" || otherPlatform != platformID {
 			continue
 		}
 		t, why, err := s.resolve(ctx, other, false)

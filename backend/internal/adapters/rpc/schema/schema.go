@@ -100,6 +100,7 @@ type Methods struct {
 	CheckOnDeck         Method[CheckOnDeckParams, OnDeckCheck]                       `json:"check_on_deck"`
 	AdoptGame           Method[AdoptGameParams, AdoptGameResult]                     `json:"adopt_game"`
 	LinkGame            Method[LinkGameParams, LinkGameResult]                       `json:"link_game"`
+	UnlinkGame          Method[UnlinkGameParams, UnlinkGameResult]                   `json:"unlink_game"`
 	StopManaging        Method[StopManagingParams, StopManagingResult]               `json:"stop_managing"`
 	IgnoreUpdate        Method[IgnoreUpdateParams, IgnoreUpdateResult]               `json:"ignore_update"`
 	ESDENotice          Method[ESDENoticeParams, ESDENotice]                         `json:"esde_notice"`
@@ -684,6 +685,14 @@ type LinkGameParams struct {
 
 type LinkGameResult struct{}
 
+// UnlinkGameParams names a linked game whose link to drop: its saves stop syncing, and its file
+// stays as it is.
+type UnlinkGameParams struct {
+	ID int `json:"id"`
+}
+
+type UnlinkGameResult struct{}
+
 // StopManagingParams names an installed game the plugin stops managing. Its files stay as they
 // are, User-managed: the plugin never updates or deletes them again.
 type StopManagingParams struct {
@@ -742,6 +751,8 @@ const (
 	OwnershipAdopted OwnershipKind = "adopted"
 	// OwnershipLinked is a game linked to RomM, still on_deck.
 	OwnershipLinked OwnershipKind = "linked"
+	// OwnershipUnlinked is a game whose link to RomM the user dropped; its file stays theirs.
+	OwnershipUnlinked OwnershipKind = "unlinked"
 	// OwnershipGone is an installed game whose files are all gone, found on a library refresh.
 	OwnershipGone OwnershipKind = "gone"
 	// OwnershipChanged is an installed game with a file changed or gone, found on a library

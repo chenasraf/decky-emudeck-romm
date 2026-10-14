@@ -39,6 +39,8 @@ const (
 	OwnershipAdopted OwnershipKind = "adopted"
 	// OwnershipLinked: the user Linked the game's file to RomM.
 	OwnershipLinked OwnershipKind = "linked"
+	// OwnershipUnlinked: the user Unlinked the game, whose file stays theirs.
+	OwnershipUnlinked OwnershipKind = "unlinked"
 	// OwnershipGone: every file the plugin placed for the game is gone.
 	OwnershipGone OwnershipKind = "gone"
 	// OwnershipChanged: a file the plugin placed changed or went, so the rest are User-managed.
@@ -556,6 +558,32 @@ func (d *Downloads) Link(ctx context.Context, id int) error {
 	d.Cancel(id)
 	d.log.Info("game linked", "rom_id", id, "path", path)
 	d.announceOwnership(OwnershipChange{ROMID: id, Name: rom.Name, State: domain.StateOnDeck, Kind: OwnershipLinked})
+	return nil
+}
+
+// Unlink drops the link of a Linked game, so its saves stop syncing. Its file stays as it is.
+func (d *Downloads) Unlink(ctx context.Context, id int) error {
+	if d.store == nil {
+		return d.problem
+	}
+	if _, linked, err := d.store.Linked(ctx, id); err != nil || !linked {
+		if err != nil {
+			return err
+		}
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "That game isn't linked to RomM."}
+	}
+	if err := d.store.DeleteLinked(ctx, id); err != nil {
+		return fmt.Errorf("drop link: %w", err)
+	}
+	d.mu.Lock()
+	delete(d.checks, id)
+	d.mu.Unlock()
+	d.log.Info("game unlinked", "rom_id", id)
+	change := OwnershipChange{ROMID: id, Name: d.gameName(ctx, id), State: domain.StateOnDeck, Kind: OwnershipUnlinked}
+	if states, err := d.States(ctx); err == nil {
+		change.State = domain.StateOf(states, id)
+	}
+	d.announceOwnership(change)
 	return nil
 }
 

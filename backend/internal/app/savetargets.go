@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -61,20 +62,59 @@ type saveTarget struct {
 	format saveFormat
 }
 
-// target finds where a Plugin-owned game's save is and how RomM tags it. why says why the plugin
-// doesn't sync it, empty when it does.
+// gameIDs are the games whose saves sync: Plugin-owned and Linked ones, by ID.
+func (s *Saves) gameIDs(ctx context.Context) ([]int, error) {
+	ids, err := s.owned.OwnedIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	linked, err := s.owned.LinkedGames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range linked {
+		if !slices.Contains(ids, g.ROMID) {
+			ids = append(ids, g.ROMID)
+		}
+	}
+	slices.Sort(ids)
+	return ids, nil
+}
+
+// placed is where a game whose saves sync is on the Deck: the files of a Plugin-owned game, or the
+// file or folder a Linked game was linked for, which is the entry ES-DE lists.
+func (s *Saves) placed(ctx context.Context, id int) (platformID int, files []domain.PlacedFile, linked string, why string, err error) {
+	rec, ok, err := s.owned.Owned(ctx, id)
+	if err != nil {
+		return 0, nil, "", "", err
+	}
+	if ok && len(rec.Files) > 0 {
+		return rec.PlatformID, rec.Files, "", "", nil
+	}
+	link, ok, err := s.owned.Linked(ctx, id)
+	if err != nil {
+		return 0, nil, "", "", err
+	}
+	if !ok {
+		return 0, nil, "", "Only games the plugin downloaded or linked to RomM sync their saves.", nil
+	}
+	if _, err := os.Stat(link.Path); err != nil {
+		return 0, nil, "", "The file this game was linked to RomM for isn't there any more.", nil
+	}
+	return link.PlatformID, []domain.PlacedFile{{Path: link.Path}}, link.Path, "", nil
+}
+
+// target finds where the save of a Plugin-owned or Linked game is and how RomM tags it. why says
+// why the plugin doesn't sync it, empty when it does.
 func (s *Saves) target(ctx context.Context, id int) (saveTarget, string, error) {
 	return s.resolve(ctx, id, true)
 }
 
 // resolve is target, looking for another game that syncs the same memory card when shared is set.
 func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, string, error) {
-	rec, ok, err := s.owned.Owned(ctx, id)
-	if err != nil {
-		return saveTarget{}, "", err
-	}
-	if !ok || len(rec.Files) == 0 {
-		return saveTarget{}, "Only games the plugin downloaded sync their saves.", nil
+	platformID, files, linked, why, err := s.placed(ctx, id)
+	if err != nil || why != "" {
+		return saveTarget{}, why, err
 	}
 	rom, ok, err := s.catalog.ROM(ctx, id)
 	if err != nil {
@@ -84,7 +124,7 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 	if ok {
 		name = rom.Name
 	}
-	platform, _, err := s.catalog.Platform(ctx, rec.PlatformID)
+	platform, _, err := s.catalog.Platform(ctx, platformID)
 	if err != nil {
 		return saveTarget{}, "", err
 	}
@@ -93,13 +133,15 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 		return saveTarget{}, "EmuDeck has no folder for this game's platform.", nil
 	}
 	state := s.install.State(false)
-	folder, dir := folderHolding(state, system, rec.Files[0].Path)
+	folder, dir := folderHolding(state, system, files[0].Path)
 	if dir == "" {
 		return saveTarget{}, "The game isn't in one of EmuDeck's ROM folders.", nil
 	}
-	entry, why := gameEntry(rec.Files, dir)
-	if why != "" {
-		return saveTarget{}, why, nil
+	entry := linked
+	if entry == "" {
+		if entry, why = gameEntry(files, dir); why != "" {
+			return saveTarget{}, why, nil
+		}
 	}
 
 	rel, err := filepath.Rel(filepath.Join(state.EmuDeck.ROMsPath, folder), entry)
@@ -127,7 +169,7 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 		t.path = filepath.Join(saves, card)
 		t.format = psxCard{rawFile{path: t.path}}
 		if set && shared {
-			owner, err := s.cardOwner(ctx, id, rec.PlatformID, t.path)
+			owner, err := s.cardOwner(ctx, id, platformID, t.path)
 			if err != nil {
 				return saveTarget{}, "", err
 			}

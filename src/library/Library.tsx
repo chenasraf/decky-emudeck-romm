@@ -1329,9 +1329,16 @@ export function useGameDetail(id: number): GameDetail {
     },
   ]
 
+  const unlink: GameAction = {
+    label: 'Unlink',
+    run: () => void act(() => call('unlink_game', { id })),
+    disabled: busy,
+  }
+
   const actions: GameAction[] = []
   if (game?.removed) {
     if (state === 'installed' || state === 'update_available') actions.push(...ownedActions(game))
+    else if (game.linkedPath) actions.push(unlink)
   } else if (game) {
     switch (state) {
       case 'on_romm':
@@ -1365,7 +1372,9 @@ export function useGameDetail(id: number): GameDetail {
             disabled: busy,
           })
         }
-        if (!game.linkedPath) {
+        if (game.linkedPath) {
+          actions.push(unlink)
+        } else {
           actions.push({
             label: 'Link to RomM',
             run: () => void act(() => call('link_game', { id })),
@@ -1393,7 +1402,7 @@ export function useGameDetail(id: number): GameDetail {
     const path = game?.linkedPath ?? check?.result?.path
     const where = path ? ` at ${path}` : ''
     if (game?.linkedPath) {
-      notice = `Linked to RomM. The file${where} stays yours: the plugin never deletes or replaces it.`
+      notice = `Linked to RomM, so its saves sync. The file${where} stays yours: the plugin never deletes or replaces it.`
     } else if (check?.error) {
       notice = `There's a copy of this game the plugin didn't download${where}. It couldn't be compared with RomM's: ${check.error.message}`
     } else if (!check?.result || check.result.checking) {
@@ -1449,7 +1458,11 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
             </PanelSectionRow>
           )}
           <BiosSection platformId={game.platformId} nudge />
-          {(state === 'installed' || state === 'update_available') && <SavesSection id={game.id} />}
+          {(state === 'installed' ||
+            state === 'update_available' ||
+            (state === 'on_deck' && game.linkedPath && !game.removed)) && (
+            <SavesSection id={game.id} />
+          )}
           {download?.state === 'downloading' && !download.converting && (
             <PanelSectionRow>
               <ProgressBarWithInfo

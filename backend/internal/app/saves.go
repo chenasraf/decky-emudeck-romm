@@ -109,15 +109,21 @@ type SaveSyncEvent struct {
 // SaveListener hears syncs start and end.
 type SaveListener func(SaveSyncEvent)
 
-// Saves syncs the saves of Plugin-owned games with RomM, for the emulators domain.SaveRules lists,
-// one sync at a time. RomM works out what each sync takes; the plugin uploads, downloads, and never
-// resolves a conflict on its own.
+// SaveGameStore keeps the games whose saves sync: Plugin-owned ROMs and Linked games.
+type SaveGameStore interface {
+	OwnershipStore
+	LinkStore
+}
+
+// Saves syncs the saves of Plugin-owned and Linked games with RomM, for the emulators
+// domain.SaveRules lists, one sync at a time. RomM works out what each sync takes; the plugin
+// uploads, downloads, and never resolves a conflict on its own.
 type Saves struct {
 	catalog     CatalogStore
 	install     *Install
 	conn        *Connection
 	dial        SaveDialer
-	owned       OwnershipStore
+	owned       SaveGameStore
 	store       SaveStore
 	problem     error
 	launchers   Launchers
@@ -174,7 +180,7 @@ const (
 
 // NewSaves returns save sync. A nil store turns it off, reporting problem. Overwritten saves are
 // backed up under backups.
-func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial SaveDialer, owned OwnershipStore,
+func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial SaveDialer, owned SaveGameStore,
 	store SaveStore, problem error, sources SaveSources, running RunningGame, backups string, onChange SaveListener, log *slog.Logger,
 ) *Saves {
 	return &Saves{
@@ -364,7 +370,7 @@ func (s *Saves) saveWritten(ctx context.Context, path string) {
 	if s.store == nil {
 		return
 	}
-	ids, err := s.owned.OwnedIDs(ctx)
+	ids, err := s.gameIDs(ctx)
 	if err != nil {
 		s.log.Warn("save written", "path", path, "err", err)
 		return
@@ -457,7 +463,7 @@ func saveDirs(state domain.InstallState) []string {
 	return out
 }
 
-// Sync syncs the saves of the games with ids, or of every Plugin-owned game when ids is empty, and
+// Sync syncs the saves of the games with ids, or of every game whose saves sync when ids is empty, and
 // returns what it did. It fails only when it couldn't ask RomM; how each game went is in its
 // SaveStatus.
 func (s *Saves) Sync(ctx context.Context, ids []int) (SaveSummary, error) {
@@ -468,7 +474,7 @@ func (s *Saves) Sync(ctx context.Context, ids []int) (SaveSummary, error) {
 		return SaveSummary{}, err
 	}
 	if len(ids) == 0 {
-		if ids, err = s.owned.OwnedIDs(ctx); err != nil {
+		if ids, err = s.gameIDs(ctx); err != nil {
 			return SaveSummary{}, err
 		}
 	}
