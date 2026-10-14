@@ -33,6 +33,16 @@ func (c *SaveConfigs) SaveProblem(id string) string {
 		if v := ini["Rosalie's Mupen GUI Core Overlay"]["SaveFilenameFormat"]; v != "" && v != "1" {
 			return "RMG names saves after the cart's header, which several games can share, so its saves don't sync. Set Settings → Core → Save filename format back to the ROM database name."
 		}
+	case "duckstation":
+		// EmuDeck gives each game a card of its own in slot 1, named after its title, shared by the
+		// discs of a game on several.
+		cards := readINI(filepath.Join(c.home, duckStationData, "settings.ini"))["MemoryCards"]
+		if t := cards["Card1Type"]; t != "" && t != "PerGameTitle" {
+			return "DuckStation's memory card in slot 1 isn't the game's own, named by its title, so its saves don't sync. Set Settings → Memory Cards → Card 1 to \"Separate Card Per Game (Title)\"."
+		}
+		if v := cards["UsePlaylistTitle"]; strings.EqualFold(v, "false") || v == "0" {
+			return "DuckStation gives each disc of a game its own memory card, so its saves don't sync. Turn Settings → Memory Cards → \"Use Single Card For Multi-Disc Games\" back on."
+		}
 	}
 	return ""
 }

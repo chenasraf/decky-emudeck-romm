@@ -24,12 +24,27 @@ type N64Database interface {
 	GoodName(rom domain.N64ROM) (name string, known bool, err error)
 }
 
+// PSXDiscs reads PlayStation discs as DuckStation does to tell their game.
+type PSXDiscs interface {
+	Disc(path string) (domain.PSXDisc, error)
+}
+
+// DuckStationGames are what DuckStation names memory cards after: its game database, and the
+// titles and settings the user gave games.
+type DuckStationGames interface {
+	// Game returns how DuckStation names the memory card of the game it boots from path, whose disc
+	// is disc. why says what in DuckStation's settings for the game stops the plugin from naming it.
+	Game(path string, disc domain.PSXDisc) (game domain.DuckStationGame, why string, err error)
+}
+
 // SaveSources are what save sync reads, besides the Deck's saves, to tell how each game's save is
 // named and which emulator writes it.
 type SaveSources struct {
-	Launchers Launchers
-	Configs   SaveConfigs
-	N64       N64Database
+	Launchers   Launchers
+	Configs     SaveConfigs
+	N64         N64Database
+	PSX         PSXDiscs
+	DuckStation DuckStationGames
 }
 
 // saveTarget is a game whose save the plugin syncs.
@@ -49,6 +64,11 @@ type saveTarget struct {
 // target finds where a Plugin-owned game's save is and how RomM tags it. why says why the plugin
 // doesn't sync it, empty when it does.
 func (s *Saves) target(ctx context.Context, id int) (saveTarget, string, error) {
+	return s.resolve(ctx, id, true)
+}
+
+// resolve is target, looking for another game that syncs the same memory card when shared is set.
+func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, string, error) {
 	rec, ok, err := s.owned.Owned(ctx, id)
 	if err != nil {
 		return saveTarget{}, "", err
@@ -98,7 +118,25 @@ func (s *Saves) target(ctx context.Context, id int) (saveTarget, string, error) 
 		return saveTarget{}, rule.Emulator.Name + "'s saves folder wasn't found. Set it up in EmuDeck, then check Setup status again.", nil
 	}
 	t := saveTarget{romID: id, name: name, rule: rule, emulator: tag}
-	if rule.Kind == domain.SaveN64Files {
+	switch rule.Kind {
+	case domain.SavePSXCard:
+		card, set, why := s.psxCardName(entry, saves)
+		if why != "" {
+			return saveTarget{}, why, nil
+		}
+		t.path = filepath.Join(saves, card)
+		t.format = psxCard{rawFile{path: t.path}}
+		if set && shared {
+			owner, err := s.cardOwner(ctx, id, rec.PlatformID, t.path)
+			if err != nil {
+				return saveTarget{}, "", err
+			}
+			if owner != "" {
+				return saveTarget{}, fmt.Sprintf("DuckStation keeps one memory card for every disc of this game, and it syncs with %s.", owner), nil
+			}
+		}
+		return t, "", nil
+	case domain.SaveN64Files:
 		base, why := s.n64Base(entry, saves)
 		if why != "" {
 			return saveTarget{}, why, nil

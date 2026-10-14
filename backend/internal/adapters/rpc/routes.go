@@ -209,8 +209,7 @@ func toWireStatus(s app.ConnectionStatus) schema.ConnectionStatus {
 
 // problemOf describes err for a field the frontend shows, rather than for a rejected call.
 func problemOf(err error) *schema.Error {
-	var rpcErr *Error
-	if errors.As(wireError(err), &rpcErr) {
+	if rpcErr, ok := errors.AsType[*Error](wireError(err)); ok {
 		e := schema.Error(*rpcErr)
 		return &e
 	}

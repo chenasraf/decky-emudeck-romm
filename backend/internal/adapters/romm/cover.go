@@ -37,8 +37,7 @@ func (c *Client) Cover(ctx context.Context, path string) ([]byte, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
 		c.log.Warn("cover failed", "url", target, "err", err)
-		var de *domain.Error
-		if errors.As(err, &de) {
+		if de, ok := errors.AsType[*domain.Error](err); ok {
 			return nil, de
 		}
 		return nil, &domain.Error{Kind: domain.KindUnreachable, Message: "Couldn't reach the server.", Err: err}

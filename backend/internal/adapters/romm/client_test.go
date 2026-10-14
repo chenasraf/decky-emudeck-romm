@@ -29,8 +29,7 @@ func heartbeatHandler(version string) http.HandlerFunc {
 }
 
 func kindOf(err error) domain.Kind {
-	var de *domain.Error
-	if errors.As(err, &de) {
+	if de, ok := errors.AsType[*domain.Error](err); ok {
 		return de.Kind
 	}
 	return ""

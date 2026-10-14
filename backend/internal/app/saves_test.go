@@ -323,6 +323,8 @@ type saveFixture struct {
 	launchers fakeLaunchers
 	configs   fakeConfigs
 	n64db     fakeN64Database
+	psx       fakePSXDiscs
+	duck      fakeDuckStation
 	saves     *Saves
 	retroarch atomic.Bool
 	// playing is the id of a standalone emulator running a game, if one is.
@@ -345,6 +347,8 @@ func newSaveFixture(t *testing.T) *saveFixture {
 		launchers:       fakeLaunchers{"snes": snes9x},
 		configs:         fakeConfigs{},
 		n64db:           fakeN64Database{},
+		psx:             fakePSXDiscs{},
+		duck:            fakeDuckStation{},
 		events:          make(chan SaveSyncEvent, 256),
 	}
 	f.settings.mu.Lock()
@@ -360,7 +364,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 func (f *saveFixture) newSaves() *Saves {
 	d := f.downloads
 	s := NewSaves(context.Background(), d.catalog, d.install, d.conn, func(domain.Server, string) SaveServer { return f.romm },
-		f.owned, f.store, nil, SaveSources{Launchers: f.launchers, Configs: f.configs, N64: f.n64db}, func() (domain.Emulator, bool) {
+		f.owned, f.store, nil, SaveSources{Launchers: f.launchers, Configs: f.configs, N64: f.n64db, PSX: f.psx, DuckStation: f.duck}, func() (domain.Emulator, bool) {
 			if f.retroarch.Load() {
 				return domain.EmulatorByID(domain.RetroArchID)
 			}
@@ -378,6 +382,27 @@ type fakeN64Database map[string]string
 func (d fakeN64Database) GoodName(rom domain.N64ROM) (string, bool, error) {
 	name, ok := d[rom.MD5]
 	return name, ok, nil
+}
+
+// fakePSXDiscs reads discs by their file's name.
+type fakePSXDiscs map[string]domain.PSXDisc
+
+func (d fakePSXDiscs) Disc(path string) (domain.PSXDisc, error) {
+	disc, ok := d[filepath.Base(path)]
+	if !ok {
+		return domain.PSXDisc{}, errors.New("not a disc")
+	}
+	return disc, nil
+}
+
+// fakeDuckStation names games by their disc's serial, and those it doesn't know by their file.
+type fakeDuckStation map[string]domain.DuckStationGame
+
+func (d fakeDuckStation) Game(path string, disc domain.PSXDisc) (domain.DuckStationGame, string, error) {
+	if g, ok := d[disc.Serial]; ok {
+		return g, "", nil
+	}
+	return domain.DuckStationGame{Title: domain.FileTitle(path)}, "", nil
 }
 
 // fakeConfigs reports each emulator's settings problem, by its id.

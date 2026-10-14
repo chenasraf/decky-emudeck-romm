@@ -276,8 +276,7 @@ func (c *Connection) WaitSignedIn(ctx context.Context) error {
 }
 
 func kindOf(err error) domain.Kind {
-	var de *domain.Error
-	if errors.As(err, &de) {
+	if de, ok := errors.AsType[*domain.Error](err); ok {
 		return de.Kind
 	}
 	return ""

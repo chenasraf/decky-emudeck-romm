@@ -15,7 +15,7 @@ jobs:
     uses: chenasraf/workflows/.github/workflows/go-release.yml@go-release-latest
     with:
       name: backend
-      go-version: '1.25'
+      go-version: '1.26'
       package: cmd/backend
       working-directory: backend
       platforms: '["linux/amd64", "linux/arm64"]'

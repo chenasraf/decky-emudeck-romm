@@ -222,8 +222,7 @@ func (c *Client) CompleteSync(ctx context.Context, sessionID, completed, failed 
 // noAnswer is the error of a request that got no answer: the certificate's own error when it was
 // refused, else KindUnreachable.
 func noAnswer(err error) error {
-	var de *domain.Error
-	if errors.As(err, &de) {
+	if de, ok := errors.AsType[*domain.Error](err); ok {
 		return de
 	}
 	return &domain.Error{Kind: domain.KindUnreachable, Message: "Couldn't reach the server.", Err: err}

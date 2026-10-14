@@ -491,8 +491,12 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		}}, {ID: "rmg", Installed: true, Saves: []domain.SaveDirState{
 			{Path: filepath.Join(root, "saves", "RMG", "saves"), Resolved: filepath.Join(root, "saves", "RMG", "saves")},
 			{Path: filepath.Join(root, "saves", "RMG", "states"), Resolved: filepath.Join(root, "saves", "RMG", "states")},
+		}}, {ID: "duckstation", Installed: true, Saves: []domain.SaveDirState{
+			{Path: filepath.Join(root, "saves", "duckstation", "saves"), Resolved: filepath.Join(root, "saves", "duckstation", "saves")},
+			{Path: filepath.Join(root, "saves", "duckstation", "states"), Resolved: filepath.Join(root, "saves", "duckstation", "states")},
 		}}},
-		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes, Emulator: domain.RetroArchID}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
+		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes, Emulator: domain.RetroArchID},
+			{Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx"), Emulator: "duckstation"},
 			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")},
 			{Folder: "dreamcast", ROMPath: filepath.Join(root, "roms", "dreamcast")},
 			{Folder: "dos", ROMPath: filepath.Join(root, "roms", "dos")},

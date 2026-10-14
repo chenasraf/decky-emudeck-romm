@@ -3,8 +3,6 @@
 package esde
 
 import (
-	"debug/elf"
-	"encoding/binary"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -18,8 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CalebQ42/squashfs"
-
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/appimage"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
@@ -133,23 +130,14 @@ func sameStamps(a, b []fileStamp) bool {
 	return true
 }
 
-// readBundled reads the system definitions out of an AppImage: an ELF runtime with the
-// application's squashfs image appended right after its section headers.
+// readBundled reads the system definitions out of ES-DE's AppImage.
 func readBundled(image string) ([]byte, error) {
-	f, err := os.Open(image)
+	r, err := appimage.Open(image)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
-	offset, err := squashfsOffset(f)
-	if err != nil {
-		return nil, err
-	}
-	r, err := squashfs.NewReaderAtOffset(f, offset)
-	if err != nil {
-		return nil, fmt.Errorf("open squashfs: %w", err)
-	}
-	if data, err := r.ReadFile(bundledSystems); err == nil {
+	defer func() { _ = r.Close() }()
+	if data, err := fs.ReadFile(r, bundledSystems); err == nil {
 		return data, nil
 	}
 	// An AppImage laid out differently still keeps the file under resources/.
@@ -164,36 +152,7 @@ func readBundled(image string) ([]byte, error) {
 	if found == "" {
 		return nil, errors.New("no es_systems.xml in the AppImage")
 	}
-	return r.ReadFile(found)
-}
-
-// squashfsOffset is where an AppImage's squashfs image starts: the end of its runtime's section
-// header table.
-func squashfsOffset(r io.ReaderAt) (int64, error) {
-	ident := make([]byte, elf.EI_NIDENT)
-	if _, err := r.ReadAt(ident, 0); err != nil || string(ident[:4]) != elf.ELFMAG {
-		return 0, errors.New("not an AppImage: no ELF header")
-	}
-	var order binary.ByteOrder = binary.LittleEndian
-	if elf.Data(ident[elf.EI_DATA]) == elf.ELFDATA2MSB {
-		order = binary.BigEndian
-	}
-	sr := io.NewSectionReader(r, 0, 1<<16)
-	switch elf.Class(ident[elf.EI_CLASS]) {
-	case elf.ELFCLASS64:
-		var hdr elf.Header64
-		if err := binary.Read(sr, order, &hdr); err != nil {
-			return 0, err
-		}
-		return int64(hdr.Shoff) + int64(hdr.Shentsize)*int64(hdr.Shnum), nil
-	case elf.ELFCLASS32:
-		var hdr elf.Header32
-		if err := binary.Read(sr, order, &hdr); err != nil {
-			return 0, err
-		}
-		return int64(hdr.Shoff) + int64(hdr.Shentsize)*int64(hdr.Shnum), nil
-	}
-	return 0, errors.New("not an AppImage: unknown ELF class")
+	return fs.ReadFile(r, found)
 }
 
 // parseSystems reads the commands of each system in an es_systems.xml.

@@ -113,22 +113,24 @@ type SaveListener func(SaveSyncEvent)
 // one sync at a time. RomM works out what each sync takes; the plugin uploads, downloads, and never
 // resolves a conflict on its own.
 type Saves struct {
-	catalog   CatalogStore
-	install   *Install
-	conn      *Connection
-	dial      SaveDialer
-	owned     OwnershipStore
-	store     SaveStore
-	problem   error
-	launchers Launchers
-	configs   SaveConfigs
-	n64db     N64Database
-	running   RunningGame
-	backups   string
-	onChange  SaveListener
-	log       *slog.Logger
-	now       func() time.Time
-	base      context.Context
+	catalog     CatalogStore
+	install     *Install
+	conn        *Connection
+	dial        SaveDialer
+	owned       OwnershipStore
+	store       SaveStore
+	problem     error
+	launchers   Launchers
+	configs     SaveConfigs
+	n64db       N64Database
+	psx         PSXDiscs
+	duckstation DuckStationGames
+	running     RunningGame
+	backups     string
+	onChange    SaveListener
+	log         *slog.Logger
+	now         func() time.Time
+	base        context.Context
 
 	pullEvery time.Duration
 	settle    time.Duration
@@ -154,8 +156,8 @@ type Saves struct {
 	// wrote is when the plugin last wrote each save, so the watch doesn't take its own writes for
 	// the game's.
 	wrote map[string]time.Time
-	// roms are N64 ROMs as last read, by path.
-	roms map[string]cachedROM
+	// reads are what games' files gave when last read, by path.
+	reads map[string]cachedRead
 }
 
 const (
@@ -177,8 +179,8 @@ func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn 
 ) *Saves {
 	return &Saves{
 		catalog: catalog, install: install, conn: conn, dial: dial, owned: owned, store: store, problem: problem,
-		launchers: sources.Launchers, configs: sources.Configs, n64db: sources.N64, running: running, backups: backups,
-		onChange: onChange, log: log, now: time.Now, base: ctx, roms: map[string]cachedROM{},
+		launchers: sources.Launchers, configs: sources.Configs, n64db: sources.N64, psx: sources.PSX, duckstation: sources.DuckStation,
+		running: running, backups: backups, onChange: onChange, log: log, now: time.Now, base: ctx, reads: map[string]cachedRead{},
 		pullEvery: savePullEvery, settle: saveSettle, pollEvery: savePoll, openGap: saveOpenGap,
 		pending: map[int]bool{}, current: map[int]bool{}, wrote: map[string]time.Time{}, waits: true,
 	}

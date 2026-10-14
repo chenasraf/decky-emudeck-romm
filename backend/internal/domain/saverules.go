@@ -23,6 +23,9 @@ const (
 	// SaveN64Files is mupen64plus's files of an N64 save, named after the ROM database's name and
 	// the ROM's hash, kept on RomM as the unit N64Save describes.
 	SaveN64Files
+	// SavePSXCard is a PlayStation memory card DuckStation names after the game's title in its game
+	// database, kept on RomM as is.
+	SavePSXCard
 )
 
 // SaveRule is how an emulator whose saves sync names them and tags them on RomM. Each keeps a game's
@@ -52,6 +55,9 @@ var saveRules = func() []SaveRule {
 		rule("mgba", SaveRule{Ext: ".sav", Archives: ArchiveNamingOuter, Tag: "mgba", esdeVar: "%EMULATOR_MGBA%", label: "mGBA (Standalone)"}),
 		rule("rmg", SaveRule{
 			Kind: SaveN64Files, Tag: "rmg", esdeVar: "%EMULATOR_ROSALIES-MUPEN-GUI%", label: "Rosalie's Mupen GUI (Standalone)",
+		}),
+		rule("duckstation", SaveRule{
+			Kind: SavePSXCard, Tag: "duckstation", esdeVar: "%EMULATOR_DUCKSTATION%", label: "DuckStation (Standalone)",
 		}),
 	}
 }()

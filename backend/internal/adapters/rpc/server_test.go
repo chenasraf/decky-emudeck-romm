@@ -223,8 +223,8 @@ func TestRoutesCoverSchema(t *testing.T) {
 	Routes(s, "test", Services{})
 
 	methods := reflect.TypeFor[schema.Methods]()
-	for i := range methods.NumField() {
-		name, _, _ := strings.Cut(methods.Field(i).Tag.Get("json"), ",")
+	for field := range methods.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		if _, ok := s.handlers[name]; !ok {
 			t.Errorf("schema method %q has no handler", name)
 		}

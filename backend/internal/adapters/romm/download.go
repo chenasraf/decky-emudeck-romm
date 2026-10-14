@@ -257,8 +257,7 @@ func (c *Client) fetchContent(ctx context.Context, path string, from int64, open
 	n, err := io.Copy(writer{w}, &resetReader{r: resp.Body, timer: watchdog})
 	c.log.Debug("downloaded", "url", c.base+path, "bytes", n, "duration", time.Since(start).Round(time.Millisecond))
 	if err != nil {
-		var werr writeError
-		if errors.As(err, &werr) {
+		if werr, ok := errors.AsType[writeError](err); ok {
 			return werr.err
 		}
 		c.log.Warn("download cut off", "url", c.base+path, "bytes", n, "err", err)

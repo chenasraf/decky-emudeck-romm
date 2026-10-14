@@ -16,6 +16,7 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/covers"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/emudeck"
 	esdecfg "github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/esde"
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/psxdisc"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/romm"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/rpc/schema"
@@ -179,6 +180,7 @@ func run(log *slog.Logger) error {
 	home := userHome(log)
 	saves := app.NewSaves(ctx, cache, install, conn, saveDial, ownership, saveStore, stateErr, app.SaveSources{
 		Launchers: esdecfg.New(home), Configs: emudeck.NewSaveConfigs(home), N64: emudeck.NewN64Database(home),
+		PSX: psxdisc.Discs{}, DuckStation: emudeck.NewDuckStation(home),
 	}, runningGame,
 		filepath.Join(runtimeDir, "backups"), rpc.SaveEvents(srv), log.With("component", "saves"))
 	rpc.Routes(srv, version, rpc.Services{

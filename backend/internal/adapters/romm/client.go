@@ -380,8 +380,7 @@ func (c *Client) exchange(ctx context.Context, client *http.Client, limit int64,
 	attrs := []any{"method", method, "url", c.base + path, "duration", time.Since(start).Round(time.Millisecond)}
 	if err != nil {
 		c.log.Warn("request failed", append(attrs, "err", err)...)
-		var de *domain.Error
-		if errors.As(err, &de) {
+		if de, ok := errors.AsType[*domain.Error](err); ok {
 			return 0, de
 		}
 		return 0, &domain.Error{Kind: domain.KindUnreachable, Message: "Couldn't reach the server.", Err: err}

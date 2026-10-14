@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -53,6 +54,17 @@ func (f rawFile) read() (localSave, error) {
 }
 
 func (f rawFile) write(data []byte) error { return writeAtomic(f.path, data) }
+
+// psxCard is a PlayStation memory card kept in one file, on RomM as is. Any emulator's raw card
+// will do: RetroArch's PlayStation cores keep the same.
+type psxCard struct{ rawFile }
+
+func (f psxCard) write(data []byte) error {
+	if !domain.IsPSXCard(data) {
+		return errors.New("RomM's save isn't a PlayStation memory card, so DuckStation can't use it")
+	}
+	return f.rawFile.write(data)
+}
 
 // n64Files is an N64 save in mupen64plus's files, base being their path without the extension. On
 // RomM it's the unit RomM's clients share.
@@ -155,41 +167,104 @@ func (s *Saves) n64Base(entry, dir string) (string, string) {
 	return filepath.Join(dir, domain.N64SaveName(rom, good, known)), ""
 }
 
-// cachedROM is what a ROM's file gave when it was last read.
-type cachedROM struct {
-	size int64
-	mod  time.Time
-	rom  domain.N64ROM
+// psxCardName is the file DuckStation keeps the memory card of the game at entry in, in dir, and
+// whether the discs of a game on several share it.
+func (s *Saves) psxCardName(entry, dir string) (string, bool, string) {
+	// ES-DE launches a game kept in a folder by the file in it named like the folder.
+	path := entry
+	if info, err := os.Stat(entry); err == nil && info.IsDir() {
+		path = filepath.Join(entry, filepath.Base(entry))
+	}
+	disc, err := readCached(s, path, func() (domain.PSXDisc, error) { return s.psx.Disc(path) })
+	if err != nil {
+		return "", false, "The game's disc couldn't be read to tell its memory card's name: " + err.Error()
+	}
+	game, why, err := s.duckstation.Game(path, disc)
+	if err != nil {
+		return "", false, "DuckStation's game database couldn't be read, so this game's memory card name can't be told: " + err.Error()
+	}
+	if why != "" {
+		return "", false, why
+	}
+	card := game.Card(func(name string) bool {
+		_, err := os.Stat(filepath.Join(dir, name))
+		return err == nil
+	})
+	return card, game.DiscSet != "" && card == domain.DuckStationCardName(game.DiscSet), ""
+}
+
+// cardOwner is the name of the game with the lowest ID, below id, that syncs the memory card at
+// card: the discs of a game RomM keeps as one game each share the card DuckStation gives them all.
+func (s *Saves) cardOwner(ctx context.Context, id, platformID int, card string) (string, error) {
+	ids, err := s.owned.OwnedIDs(ctx)
+	if err != nil {
+		return "", err
+	}
+	slices.Sort(ids)
+	for _, other := range ids {
+		if other >= id {
+			break
+		}
+		rec, ok, err := s.owned.Owned(ctx, other)
+		if err != nil {
+			return "", err
+		}
+		if !ok || rec.PlatformID != platformID {
+			continue
+		}
+		t, why, err := s.resolve(ctx, other, false)
+		if err != nil {
+			return "", err
+		}
+		if why == "" && t.path == card {
+			return t.name, nil
+		}
+	}
+	return "", nil
+}
+
+// cachedRead is what a game's file gave when it was last read.
+type cachedRead struct {
+	size  int64
+	mod   time.Time
+	value any
+}
+
+// readCached returns what read gives for the file at path, reading it again only when it changed.
+func readCached[T any](s *Saves, path string, read func() (T, error)) (T, error) {
+	var zero T
+	info, err := os.Stat(path)
+	if err != nil {
+		return zero, err
+	}
+	s.mu.Lock()
+	c, ok := s.reads[path]
+	s.mu.Unlock()
+	if v, isT := c.value.(T); ok && isT && c.size == info.Size() && c.mod.Equal(info.ModTime()) {
+		return v, nil
+	}
+	v, err := read()
+	if err != nil {
+		return zero, err
+	}
+	s.mu.Lock()
+	s.reads[path] = cachedRead{size: info.Size(), mod: info.ModTime(), value: v}
+	s.mu.Unlock()
+	return v, nil
 }
 
 // maxN64ROM bounds an N64 ROM as read; the largest carts are 64 MB.
 const maxN64ROM = 128 << 20
 
-// n64ROM reads the N64 ROM at path, from inside it when it's an archive of one file, reading it
-// again only when it changed.
+// n64ROM reads the N64 ROM at path, from inside it when it's an archive of one file.
 func (s *Saves) n64ROM(path string) (domain.N64ROM, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return domain.N64ROM{}, err
-	}
-	s.mu.Lock()
-	c, ok := s.roms[path]
-	s.mu.Unlock()
-	if ok && c.size == info.Size() && c.mod.Equal(info.ModTime()) {
-		return c.rom, nil
-	}
-	data, err := romBytes(path)
-	if err != nil {
-		return domain.N64ROM{}, err
-	}
-	rom, err := domain.ParseN64ROM(data)
-	if err != nil {
-		return domain.N64ROM{}, err
-	}
-	s.mu.Lock()
-	s.roms[path] = cachedROM{size: info.Size(), mod: info.ModTime(), rom: rom}
-	s.mu.Unlock()
-	return rom, nil
+	return readCached(s, path, func() (domain.N64ROM, error) {
+		data, err := romBytes(path)
+		if err != nil {
+			return domain.N64ROM{}, err
+		}
+		return domain.ParseN64ROM(data)
+	})
 }
 
 func romBytes(path string) ([]byte, error) {
