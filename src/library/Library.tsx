@@ -22,7 +22,22 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { FaBookOpen, FaLayerGroup, FaListUl, FaSearch, FaSyncAlt } from 'react-icons/fa'
+import {
+  FaBookmark,
+  FaBookOpen,
+  FaCheckCircle,
+  FaCloudDownloadAlt,
+  FaCloudUploadAlt,
+  FaExchangeAlt,
+  FaExclamationTriangle,
+  FaHistory,
+  FaLayerGroup,
+  FaListUl,
+  FaSearch,
+  FaSyncAlt,
+  FaTimesCircle,
+  FaTrashAlt,
+} from 'react-icons/fa'
 
 import { call } from '../backend'
 import { usePlatformBios } from '../bios'
@@ -620,7 +635,9 @@ export function SavesSection({ id }: { id: number }) {
       )}
       <PanelSectionRow>
         <ButtonItem layout="below" disabled={busy || status.syncing} onClick={() => void sync()}>
-          {status.syncing ? 'Syncing saves…' : 'Sync saves now'}
+          <IconLabel icon={<FaExchangeAlt />}>
+            {status.syncing ? 'Syncing saves…' : 'Sync saves now'}
+          </IconLabel>
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
@@ -653,6 +670,34 @@ export function SavesSection({ id }: { id: number }) {
   )
 }
 
+const warn = { color: '#e0a030', flexShrink: 0 }
+const bad = { color: '#d94141', flexShrink: 0 }
+const plain = { flexShrink: 0 }
+
+/** What a save activity entry did, as an icon; trouble is colored to stand out in a list. */
+export function ActivityIcon({ kind }: { kind: string }) {
+  switch (kind) {
+    case 'uploaded':
+      return <FaCloudUploadAlt style={plain} />
+    case 'downloaded':
+      return <FaCloudDownloadAlt style={plain} />
+    case 'conflict':
+      return <FaExclamationTriangle style={warn} />
+    case 'resolved':
+      return <FaCheckCircle style={plain} />
+    case 'failed':
+      return <FaTimesCircle style={bad} />
+    case 'removed_on_server':
+      return <FaTrashAlt style={warn} />
+    case 'restored':
+      return <FaHistory style={plain} />
+    case 'slot':
+      return <FaBookmark style={plain} />
+    default:
+      return <FaExchangeAlt style={plain} />
+  }
+}
+
 /** What save sync last did to a game's save. */
 function SaveHistory({ id }: { id: number }) {
   const entries = useSaveActivity(id, 5)
@@ -665,7 +710,11 @@ function SaveHistory({ id }: { id: number }) {
       {/* No value beside the label, so the message under it gets the row's whole width. */}
       {entries.map((e) => (
         <PanelSectionRow key={e.id}>
-          <Field label={timeAgo(e.at)} description={e.message} />
+          <Field
+            icon={<ActivityIcon kind={e.kind} />}
+            label={timeAgo(e.at)}
+            description={e.message}
+          />
         </PanelSectionRow>
       ))}
     </>

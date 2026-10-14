@@ -9,7 +9,7 @@ import {
   ToggleField,
 } from '@decky/ui'
 import { type ReactNode, useEffect, useState } from 'react'
-import { FaCog, FaCompactDisc, FaServer } from 'react-icons/fa'
+import { FaCog, FaCompactDisc, FaExchangeAlt, FaServer } from 'react-icons/fa'
 
 import {
   BACKEND_STATUS_EVENT,
@@ -27,6 +27,7 @@ import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
 import { watchDownloads } from './downloads'
 import { rescanFor, useESDENotice, watchESDE } from './esde'
 import {
+  ActivityIcon,
   Back,
   CollectionsView,
   DownloadsSection,
@@ -306,7 +307,9 @@ function SaveSyncSection({ onOpen }: { onOpen: (id: number) => void }) {
           disabled={busy || summary.syncing}
           onClick={() => void syncAll()}
         >
-          {summary.syncing ? 'Syncing saves…' : 'Sync all saves'}
+          <IconLabel icon={<FaExchangeAlt />}>
+            {summary.syncing ? 'Syncing saves…' : 'Sync all saves'}
+          </IconLabel>
         </ButtonItem>
       </PanelSectionRow>
       <RecentSaveActivity onOpen={onOpen} />
@@ -327,6 +330,7 @@ function RecentSaveActivity({ onOpen }: { onOpen: (id: number) => void }) {
       {entries.map((e) => (
         <PanelSectionRow key={e.id}>
           <Field
+            icon={<ActivityIcon kind={e.kind} />}
             label={e.name}
             description={`${timeAgo(e.at)} · ${e.message}`}
             onActivate={() => onOpen(e.game)}
