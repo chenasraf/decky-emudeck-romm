@@ -16,6 +16,13 @@
    Plugin from ZIP** and pick the file.
 3. Open the Quick Access Menu (the **···** button) and choose **EmuDeck RomM Sync**.
 
+To skip the download, enter this address under **Install Plugin from URL** in the same tab instead
+and press **Install**:
+
+```
+https://github.com/chenasraf/decky-emudeck-romm/releases/latest/download/decky-emudeck-romm.zip
+```
+
 ## Connecting to RomM
 
 Press **Set up RomM** in the plugin's **RomM** section.

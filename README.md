@@ -42,6 +42,13 @@ Quick Access Menu, without leaving Gaming Mode.
    Plugin from ZIP** and pick the file.
 3. Open the Quick Access Menu, choose **EmuDeck RomM Sync** and press **Set up RomM**.
 
+To skip the download, enter this address under **Install Plugin from URL** in the same tab instead
+and press **Install**:
+
+```
+https://github.com/chenasraf/decky-emudeck-romm/releases/latest/download/decky-emudeck-romm.zip
+```
+
 The [getting started guide](docs/getting-started.md) walks through setup and signing in.
 
 ## Documentation
