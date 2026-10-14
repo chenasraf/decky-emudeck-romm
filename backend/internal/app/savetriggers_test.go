@@ -226,6 +226,8 @@ func (c *changingConfigs) SaveConfig(id string) domain.SaveConfig {
 	return c.cfg[id]
 }
 
+func (c *changingConfigs) StateConfig(string) domain.SaveConfig { return domain.SaveConfig{} }
+
 func (c *changingConfigs) Files() []string { return []string{c.file} }
 
 func (c *changingConfigs) set(id string, cfg domain.SaveConfig) {

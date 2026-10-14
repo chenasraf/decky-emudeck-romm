@@ -192,7 +192,7 @@ func run(log *slog.Logger) error {
 	home := userHome(log)
 	saves := app.NewSaves(ctx, cache, install, conn, saveDial, ownership, saveStore, stateErr, app.SaveSources{
 		Launchers: esdecfg.New(home), Configs: emudeck.NewSaveConfigs(home), N64: emudeck.NewN64Database(home),
-		PSX: psxdisc.Discs{}, DuckStation: emudeck.NewDuckStation(home),
+		PSX: psxdisc.Discs{}, DuckStation: emudeck.NewDuckStation(home), States: store,
 	}, runningGame,
 		filepath.Join(runtimeDir, "backups"), rpc.SaveEvents(srv), log.With("component", "saves"))
 	downloads.KeepSavesWith(saves)

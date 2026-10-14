@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
+	"github.com/chenasraf/saveporter"
 )
 
 // saveBackups is how many overwritten copies of each game's save are kept.
@@ -29,6 +30,13 @@ type SaveServer interface {
 	ConfirmSaveDownload(ctx context.Context, id int, deviceID, hash string) error
 	CompleteSync(ctx context.Context, sessionID, completed, failed int) error
 	SaveSlots(ctx context.Context, id int) ([]domain.SaveSlot, error)
+
+	// States lists the ROM with id's save states, every ROM's when id is 0.
+	States(ctx context.Context, id int) ([]domain.ServerState, error)
+	UploadState(ctx context.Context, u domain.StateUpload) (domain.ServerState, error)
+	DownloadState(ctx context.Context, id int) ([]byte, error)
+	StateScreenshot(ctx context.Context, path string) ([]byte, error)
+	DeleteStates(ctx context.Context, ids []int) error
 }
 
 // SaveDialer returns a SaveServer for server, authenticated with token.
@@ -51,6 +59,18 @@ type SaveStore interface {
 	SaveSlot(ctx context.Context, id int) (string, error)
 	// SetSaveSlot picks the ROM's slot; domain.AutosaveSlot clears the pick.
 	SetSaveSlot(ctx context.Context, id int, slot string) error
+
+	StateFiles(ctx context.Context, id int) ([]domain.StateFile, error)
+	PutStateFile(ctx context.Context, f domain.StateFile) error
+	// UploadedStates are the ROM's states this Deck put on RomM, oldest first.
+	UploadedStates(ctx context.Context, id int) ([]domain.UploadedState, error)
+	AddUploadedState(ctx context.Context, u domain.UploadedState) error
+	ForgetUploadedStates(ctx context.Context, ids []int) error
+	StateGame(ctx context.Context, id int) (domain.StateGame, error)
+	StateGames(ctx context.Context) ([]domain.StateGame, error)
+	PutStateGame(ctx context.Context, g domain.StateGame) error
+	StatePrefs(ctx context.Context, id int) (domain.StatePrefs, error)
+	SetStatePrefs(ctx context.Context, id int, p domain.StatePrefs) error
 }
 
 // Launchers finds the command ES-DE launches a game with, rel being its path under its system's
@@ -101,6 +121,9 @@ type SaveSummary struct {
 	Conflicts  int
 	Waiting    int
 	Failed     int
+	// StatesUploaded and StatesDownloaded count save states.
+	StatesUploaded   int
+	StatesDownloaded int
 }
 
 // SaveSyncEvent is a sync starting, with Syncing set, or ending with what it did and, when it
@@ -136,6 +159,7 @@ type Saves struct {
 	problem     error
 	launchers   Launchers
 	configs     SaveConfigs
+	states      StateSettingsStore
 	n64db       N64Database
 	psx         PSXDiscs
 	duckstation DuckStationGames
@@ -193,7 +217,7 @@ func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn 
 ) *Saves {
 	return &Saves{
 		catalog: catalog, install: install, conn: conn, dial: dial, owned: owned, store: store, problem: problem,
-		launchers: sources.Launchers, configs: sources.Configs, n64db: sources.N64, psx: sources.PSX, duckstation: sources.DuckStation,
+		launchers: sources.Launchers, configs: sources.Configs, states: sources.States, n64db: sources.N64, psx: sources.PSX, duckstation: sources.DuckStation,
 		running: running, backups: backups, onChange: onChange, log: log, now: time.Now, base: ctx, reads: map[string]cachedRead{},
 		pullEvery: savePullEvery, settle: saveSettle, pollEvery: savePoll, openGap: saveOpenGap,
 		pending: map[int]bool{}, current: map[int]bool{}, wrote: map[string]time.Time{}, waits: true,
@@ -389,7 +413,15 @@ func (s *Saves) saveConfigs() map[string]domain.SaveConfig {
 // watchDirs are the folders the watch covers: those saves are in, and those holding the emulators'
 // settings files, of which only the files among configs count.
 func (s *Saves) watchDirs(configs []string) []string {
-	dirs := s.saveDirs(s.install.State(false))
+	state := s.install.State(false)
+	dirs := s.saveDirs(state)
+	for _, r := range domain.SaveRules() {
+		if dir, why := s.stateDir(state, r.Emulator); why == "" && !slices.Contains(dirs, dir) {
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
 	for _, f := range configs {
 		if dir := filepath.Dir(f); !slices.Contains(dirs, dir) {
 			if info, err := os.Stat(dir); err == nil && info.IsDir() {
@@ -422,6 +454,10 @@ func (s *Saves) saveWritten(ctx context.Context, path string) {
 		s.log.Warn("save written", "path", path, "err", err)
 		return
 	}
+	if _, ok := saveporter.ParseStateName(path); ok {
+		s.stateWritten(ctx, ids, path)
+		return
+	}
 	for _, id := range ids {
 		if t, why, err := s.target(ctx, id); err == nil && why == "" && slices.Contains(t.format.files(), path) {
 			// A write that leaves the save as it last synced, the plugin's own download included
@@ -452,15 +488,26 @@ func (s *Saves) retryWaiting(ctx context.Context) {
 	}
 	var ids []int
 	still := false
-	for _, r := range records {
-		if r.State != domain.SaveWaiting {
-			continue
-		}
-		if t, why, err := s.target(ctx, r.ROMID); err == nil && why == "" && s.runs(t.rule.Emulator.ID) {
+	waiting := func(id int) {
+		if t, why, err := s.target(ctx, id); err == nil && why == "" && s.runs(t.rule.Emulator.ID) {
 			still = true
-			continue
+			return
 		}
-		ids = append(ids, r.ROMID)
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	for _, r := range records {
+		if r.State == domain.SaveWaiting {
+			waiting(r.ROMID)
+		}
+	}
+	if games, err := s.store.StateGames(ctx); err == nil {
+		for _, g := range games {
+			if g.Waiting {
+				waiting(g.ROMID)
+			}
+		}
 	}
 	s.mu.Lock()
 	s.waits = still
@@ -580,6 +627,7 @@ func (s *Saves) Sync(ctx context.Context, ids []int) (SaveSummary, error) {
 			return total, err
 		}
 	}
+	total.add(s.syncStates(ctx, *in, server, targets))
 	return total, nil
 }
 
@@ -591,6 +639,8 @@ func (s *SaveSummary) add(o SaveSummary) {
 	s.Conflicts += o.Conflicts
 	s.Waiting += o.Waiting
 	s.Failed += o.Failed
+	s.StatesUploaded += o.StatesUploaded
+	s.StatesDownloaded += o.StatesDownloaded
 }
 
 // records returns what save sync knows of each game, by ROM id.

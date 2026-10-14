@@ -87,6 +87,8 @@ const (
 	ActivitySlot            ActivityKind = "slot"
 	ActivityDeleted         ActivityKind = "deleted"
 	ActivityMoved           ActivityKind = "moved"
+	ActivityStateUploaded   ActivityKind = "state_uploaded"
+	ActivityStateDownloaded ActivityKind = "state_downloaded"
 )
 
 // SaveActivity is one entry of the activity log: something save sync did to a game's save.

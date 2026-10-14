@@ -75,6 +75,7 @@ import {
 import { asRpcError } from '../setup/common'
 import { showFindGames } from './FindGames'
 import { showSaveSlots } from './SaveSlots'
+import { StatesSection } from './SaveStates'
 
 /** How many games each step of a list loads; "Show more" loads the next. */
 const PAGE_SIZE = 50
@@ -667,6 +668,7 @@ export function SavesSection({ id }: { id: number }) {
       </PanelSectionRow>
       <SaveHistory id={id} />
       <SaveBackups id={id} onError={setError} />
+      <StatesSection id={id} onError={setError} />
     </>
   )
 }
@@ -696,6 +698,10 @@ export function ActivityIcon({ kind }: { kind: string }) {
       return <FaBookmark style={plain} />
     case 'deleted':
       return <FaTrashAlt style={plain} />
+    case 'state_uploaded':
+      return <FaCloudUploadAlt style={plain} />
+    case 'state_downloaded':
+      return <FaCloudDownloadAlt style={plain} />
     default:
       return <FaExchangeAlt style={plain} />
   }

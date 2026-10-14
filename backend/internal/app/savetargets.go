@@ -16,8 +16,16 @@ import (
 // from syncing.
 type SaveConfigs interface {
 	SaveConfig(id string) domain.SaveConfig
-	// Files are the settings files SaveConfig reads.
+	// StateConfig is SaveConfig for the emulator's save states.
+	StateConfig(id string) domain.SaveConfig
+	// Files are the settings files SaveConfig and StateConfig read.
 	Files() []string
+}
+
+// StateSettingsStore keeps how save states sync for games that don't set their own.
+type StateSettingsStore interface {
+	StateSettings() domain.StateSettings
+	SetStateSettings(p domain.StatePrefs) error
 }
 
 // N64Database is the ROM database RMG names N64 saves from.
@@ -47,6 +55,8 @@ type SaveSources struct {
 	N64         N64Database
 	PSX         PSXDiscs
 	DuckStation DuckStationGames
+	// States is how save states sync; nil leaves domain.DefaultStateSettings.
+	States StateSettingsStore
 }
 
 // saveTarget is a game whose save the plugin syncs.
@@ -60,6 +70,8 @@ type saveTarget struct {
 	emulator string
 	// slot is the RomM slot the save syncs in.
 	slot string
+	// system is the EmuDeck folder of the game's system.
+	system string
 	// format reads and writes the save, kept at path as RomM keeps it: for a save kept in several
 	// files, path names them all, and isn't a file itself.
 	format saveFormat
@@ -163,7 +175,7 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 	if err != nil {
 		return saveTarget{}, "", err
 	}
-	t := saveTarget{romID: id, name: name, rule: rule, emulator: tag, slot: slot}
+	t := saveTarget{romID: id, name: name, rule: rule, emulator: tag, slot: slot, system: system.Folder}
 	switch rule.Kind {
 	case domain.SavePSXCard:
 		card, set, why := s.psxCardName(entry, saves)

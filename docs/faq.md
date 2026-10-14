@@ -118,7 +118,17 @@ each game are kept, and RomM keeps its own history of each slot.
 
 ### Do save states sync?
 
-No, only in-game saves.
+For Game Boy Advance games, yes, both ways with RomM's web player: a state saved in the browser
+loads on the Deck, and one saved on the Deck loads in the browser. Other systems sync in-game saves
+only. See [Save states](save-sync.md#save-states).
+
+### A game started somewhere other than where I left it
+
+RomM's newest save state goes in the game's auto-state, which RetroArch loads when the game starts.
+If a state from the web player or another device was newer than the Deck's, that's where the game
+picks up. The Deck's state went to RomM first: open **Browse save states** on the game's page and
+load it. To keep RomM's states out of the auto-state, pick another slot under **RomM's state goes
+in**.
 
 ## Everything else
 

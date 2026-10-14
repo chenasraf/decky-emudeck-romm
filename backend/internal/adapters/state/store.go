@@ -155,6 +155,35 @@ CREATE TABLE save_slots (
 	slot   TEXT NOT NULL
 );
 `,
+	`
+CREATE TABLE state_files (
+	rom_id INTEGER NOT NULL,
+	path   TEXT NOT NULL,
+	hash   TEXT NOT NULL,
+	PRIMARY KEY (rom_id, path)
+);
+CREATE TABLE state_uploads (
+	state_id    INTEGER PRIMARY KEY,
+	rom_id      INTEGER NOT NULL,
+	path        TEXT NOT NULL,
+	uploaded_at INTEGER NOT NULL
+);
+CREATE INDEX state_uploads_by_rom ON state_uploads (rom_id);
+CREATE TABLE state_games (
+	rom_id     INTEGER PRIMARY KEY,
+	placed     INTEGER NOT NULL,
+	waiting    INTEGER NOT NULL,
+	problem    TEXT NOT NULL,
+	checked_at INTEGER NOT NULL
+);
+CREATE TABLE state_prefs (
+	rom_id INTEGER PRIMARY KEY,
+	sync   INTEGER,
+	target TEXT,
+	extra  TEXT,
+	keep   INTEGER
+);
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -649,7 +678,8 @@ func (s *Store) ForgetServer(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records", "save_activity", "save_slots"} {
+	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records", "save_activity", "save_slots",
+		"state_files", "state_uploads", "state_games", "state_prefs"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}

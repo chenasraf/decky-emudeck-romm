@@ -60,7 +60,7 @@ func (c *SaveConfigs) SaveConfig(id string) domain.SaveConfig {
 			return problem("RetroArch has no saves folder set, so it writes saves next to the games and they don't sync. Set Settings → Directory → Save Files.")
 		}
 		if ok {
-			return c.follow("RetroArch", dir, "")
+			return c.follow("RetroArch", "saves", dir, "")
 		}
 	case "melonds":
 		// melonDS reads its .ini only when it has no .toml.
@@ -75,7 +75,7 @@ func (c *SaveConfigs) SaveConfig(id string) domain.SaveConfig {
 			return problem("melonDS has no saves folder set, so it writes saves next to the games and they don't sync. Set one in melonDS's Config → Path settings.")
 		}
 		if ok {
-			return c.follow("melonDS", dir, "")
+			return c.follow("melonDS", "saves", dir, "")
 		}
 	case "mgba":
 		qt := readINI(filepath.Join(c.home, mGBAConfig))["ports.qt"]
@@ -88,7 +88,7 @@ func (c *SaveConfigs) SaveConfig(id string) domain.SaveConfig {
 			return problem("mGBA has no saves folder set, so it writes saves next to the games and they don't sync. Set one in mGBA's Tools → Settings → Paths.")
 		}
 		if ok {
-			return c.follow("mGBA", dir, "")
+			return c.follow("mGBA", "saves", dir, "")
 		}
 	case "rmg":
 		ini := readINI(filepath.Join(c.home, rmgConfig))
@@ -102,7 +102,7 @@ func (c *SaveConfigs) SaveConfig(id string) domain.SaveConfig {
 			return problem("RMG keeps saves inside its own app folder, so they don't sync. Set its save (SRAM) folder in RMG's settings.")
 		}
 		if ok {
-			return c.follow("RMG", dir, "")
+			return c.follow("RMG", "saves", dir, "")
 		}
 	case "duckstation":
 		data := filepath.Join(c.home, duckStationData)
@@ -121,25 +121,60 @@ func (c *SaveConfigs) SaveConfig(id string) domain.SaveConfig {
 		}
 		// DuckStation keeps cards in memcards under its data folder unless told otherwise, and reads
 		// a relative folder from there too.
-		return c.follow("DuckStation", orDefault(cards["Directory"], "memcards"), data)
+		return c.follow("DuckStation", "saves", orDefault(cards["Directory"], "memcards"), data)
 	}
 	return domain.SaveConfig{}
 }
 
-// follow is the saves folder an emulator's setting names, links followed, a relative one under
-// base.
-func (c *SaveConfigs) follow(emulator, dir, base string) domain.SaveConfig {
+// follow is the folder an emulator's setting names for what it keeps there ("saves", "save
+// states"), links followed, a relative one under base.
+func (c *SaveConfigs) follow(emulator, what, dir, base string) domain.SaveConfig {
 	dir = expandHome(dir, c.home)
 	if !filepath.IsAbs(dir) {
 		if base == "" {
-			return problem(fmt.Sprintf("%s's saves folder, %q, isn't a full path, so its saves don't sync.", emulator, dir))
+			return problem(fmt.Sprintf("%s's %s folder, %q, isn't a full path, so its %s don't sync.", emulator, what, dir, what))
 		}
 		dir = filepath.Join(base, dir)
 	}
 	if real := resolveDir(dir); real != "" {
 		return domain.SaveConfig{Dir: real}
 	}
-	return problem(fmt.Sprintf("%s keeps saves in %s, which isn't there, so its saves don't sync.", emulator, dir))
+	return problem(fmt.Sprintf("%s keeps %s in %s, which isn't there, so its %s don't sync.", emulator, what, dir, what))
+}
+
+// StateConfig reads where the emulator with id keeps its save states, and what in its settings
+// stops them from syncing. Settings that aren't there leave EmuDeck's states folder standing.
+func (c *SaveConfigs) StateConfig(id string) domain.SaveConfig {
+	switch id {
+	case domain.RetroArchID:
+		path := filepath.Join(c.home, retroArchConfig)
+		if !isFile(path) {
+			break
+		}
+		cfg := readINI(path)[""]
+		switch {
+		case isTrue(cfg["savestates_in_content_dir"]):
+			return problem("RetroArch writes save states next to the games, so its states don't sync. Turn off Settings → Saving → \"Write Save States to Content Directory\".")
+		case isTrue(cfg["sort_savestates_enable"]), isTrue(cfg["sort_savestates_by_content_enable"]):
+			return problem("RetroArch sorts save states into folders, so its states don't sync. Turn off both \"Sort Save States into Folders\" options in Settings → Saving.")
+		}
+		dir, ok := cfg["savestate_directory"]
+		if dir = unquote(dir); ok && (dir == "" || dir == "default") {
+			return problem("RetroArch has no save states folder set, so it writes states next to the games and they don't sync. Set Settings → Directory → Save States.")
+		}
+		if ok {
+			return c.follow("RetroArch", "save states", dir, "")
+		}
+	case "mgba":
+		dir, ok := readINI(filepath.Join(c.home, mGBAConfig))["ports.qt"]["savestatePath"]
+		if ok && dir == "" {
+			return problem("mGBA has no save states folder set, so it writes states next to the games and they don't sync. Set one in mGBA's Tools → Settings → Paths.")
+		}
+		if ok {
+			return c.follow("mGBA", "save states", dir, "")
+		}
+	}
+	return domain.SaveConfig{}
 }
 
 func problem(why string) domain.SaveConfig { return domain.SaveConfig{Problem: why} }

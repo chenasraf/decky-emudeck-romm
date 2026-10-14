@@ -128,6 +128,10 @@ type Methods struct {
 	RestoreSaveBackup   Method[RestoreSaveBackupParams, SaveStatus]                  `json:"restore_save_backup"`
 	SaveSlots           Method[SaveSlotsParams, SaveSlots]                           `json:"save_slots"`
 	SwitchSaveSlot      Method[SwitchSaveSlotParams, SaveStatus]                     `json:"switch_save_slot"`
+	StateStatus         Method[StateStatusParams, StateStatus]                       `json:"state_status"`
+	SaveStates          Method[SaveStatesParams, SaveStates]                         `json:"save_states"`
+	LoadSaveState       Method[LoadSaveStateParams, StateStatus]                     `json:"load_save_state"`
+	SetStatePrefs       Method[SetStatePrefsParams, StateStatus]                     `json:"set_state_prefs"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1027,6 +1031,8 @@ type Preferences struct {
 	WaitForGames bool `json:"waitForGames"`
 	// ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder.
 	ESDEMedia bool `json:"esdeMedia"`
+	// States is how save states sync, for games that don't set their own.
+	States StateSettings `json:"states"`
 }
 
 // SetPreferencesParams changes the preferences it sets, leaving the rest.
@@ -1034,6 +1040,85 @@ type SetPreferencesParams struct {
 	AutoBIOS     *bool `json:"autoBios,omitempty"`
 	WaitForGames *bool `json:"waitForGames,omitempty"`
 	ESDEMedia    *bool `json:"esdeMedia,omitempty"`
+	// States changes the state settings it sets.
+	States *StatePrefs `json:"states,omitempty"`
+}
+
+// StateSettings is how a game's save states sync.
+type StateSettings struct {
+	Sync bool `json:"sync"`
+	// Target is the state slot RomM's newest state goes in: "auto" or "0" to "9".
+	Target string `json:"target"`
+	// Extra is another slot that gets a copy, empty for none.
+	Extra string `json:"extra"`
+	// Keep is how many of a game's states this Deck uploaded RomM keeps: 5, 10, 20, or 0 for every
+	// one.
+	Keep int `json:"keep"`
+}
+
+// StatePrefs are state settings of their own, each field unset following the global setting.
+type StatePrefs struct {
+	Sync   *bool   `json:"sync,omitempty"`
+	Target *string `json:"target,omitempty"`
+	Extra  *string `json:"extra,omitempty"`
+	Keep   *int    `json:"keep,omitempty"`
+}
+
+type StateStatusParams struct {
+	ID int `json:"id"`
+}
+
+// StateStatus is where a game's save state sync stands, and how its states sync.
+type StateStatus struct {
+	ID int `json:"id"`
+	// Syncs is unset when the game's states don't sync at all; Why says why.
+	Syncs bool   `json:"syncs"`
+	Why   string `json:"why,omitempty"`
+	// Emulator is the emulator that writes the states, Dir the folder they're in.
+	Emulator string `json:"emulator,omitempty"`
+	Dir      string `json:"dir,omitempty"`
+	// Settings are how the game's states sync: Own, the game's own settings, over Global.
+	Settings StateSettings `json:"settings"`
+	Own      StatePrefs    `json:"own"`
+	Global   StateSettings `json:"global"`
+	// Waiting says RomM's newest state waits for the emulator to close.
+	Waiting bool   `json:"waiting"`
+	Problem string `json:"problem,omitempty"`
+}
+
+type SaveStatesParams struct {
+	ID int `json:"id"`
+}
+
+// SaveStates are the newest of a game's save states on RomM, newest first.
+type SaveStates struct {
+	States []SaveStateEntry `json:"states"`
+}
+
+type SaveStateEntry struct {
+	ID int `json:"id"`
+	// At is when the state reached RomM, as RFC 3339.
+	At string `json:"at"`
+	// FromDeck says this Deck uploaded it, and Slot from which state slot.
+	FromDeck bool   `json:"fromDeck"`
+	Slot     string `json:"slot,omitempty"`
+	// Placed says it's RomM's state last put in the target slot.
+	Placed bool `json:"placed"`
+	// Screenshot is the state's screenshot as a data: URL, empty when RomM has none.
+	Screenshot string `json:"screenshot,omitempty"`
+	SizeBytes  int64  `json:"sizeBytes"`
+}
+
+// LoadSaveStateParams puts RomM's state with StateID in the game with ID's target slot.
+type LoadSaveStateParams struct {
+	ID      int `json:"id"`
+	StateID int `json:"stateId"`
+}
+
+// SetStatePrefsParams sets the game with ID's own state settings, replacing them all.
+type SetStatePrefsParams struct {
+	ID  int        `json:"id"`
+	Own StatePrefs `json:"own"`
 }
 
 type ESDENoticeParams struct{}
@@ -1160,6 +1245,8 @@ const (
 	ActivitySlot            ActivityKind = "slot"
 	ActivityDeleted         ActivityKind = "deleted"
 	ActivityMoved           ActivityKind = "moved"
+	ActivityStateUploaded   ActivityKind = "state_uploaded"
+	ActivityStateDownloaded ActivityKind = "state_downloaded"
 )
 
 // SaveActivityEntry is something save sync did to a game's save.
@@ -1253,6 +1340,9 @@ type SaveCounts struct {
 	Conflicts  int `json:"conflicts"`
 	Waiting    int `json:"waiting"`
 	Failed     int `json:"failed"`
+	// StatesUploaded and StatesDownloaded count save states.
+	StatesUploaded   int `json:"statesUploaded"`
+	StatesDownloaded int `json:"statesDownloaded"`
 }
 
 // SaveSummary is where save sync stands across every game a sync looked at.

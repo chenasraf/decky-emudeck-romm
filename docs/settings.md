@@ -14,6 +14,9 @@ All three are on by default.
 - **Add art to ES-DE**: downloaded games get their RomM cover and screenshot in ES-DE without
   scraping.
 
+**Sync save states** is on by default too, with the slot RomM's state goes in, a slot for a copy,
+and how many of this Deck's states RomM keeps. See [Save states](save-sync.md#save-states).
+
 Per-platform choices, **Install to** and **Keep archives**, are in each platform's list. See
 [Downloading games](downloads.md).
 

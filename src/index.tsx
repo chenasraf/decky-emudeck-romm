@@ -8,6 +8,7 @@ import {
 import {
   ButtonItem,
   ConfirmModal,
+  DropdownItem,
   Field,
   Navigation,
   PanelSection,
@@ -50,7 +51,15 @@ import {
 } from './library/Library'
 import { LibraryPage } from './library/LibraryPage'
 import type { GameFilter, InstallState, Preferences } from './rpc/schema.gen'
-import { useSaveActivity, useSaveSummary, watchSaves } from './saves'
+import {
+  STATE_KEEPS,
+  STATE_SLOTS,
+  stateKeepLabel,
+  stateSlotLabel,
+  useSaveActivity,
+  useSaveSummary,
+  watchSaves,
+} from './saves'
 import { asRpcError } from './setup/common'
 import { SetupPage } from './setup/SetupPage'
 import { StatusPage } from './status/StatusPage'
@@ -556,6 +565,71 @@ function SettingsToggles({
           }}
         />
       </PanelSectionRow>
+      <StateSettingsFields prefs={prefs} setPrefs={setPrefs} />
+    </>
+  )
+}
+
+/** How save states sync, for games that don't set their own on their page. */
+function StateSettingsFields({
+  prefs,
+  setPrefs,
+}: {
+  prefs: Preferences
+  setPrefs: (p: Preferences) => void
+}) {
+  const states = prefs.states
+  const change = (next: Partial<Preferences['states']>) => {
+    setPrefs({ ...prefs, states: { ...states, ...next } })
+    call('set_preferences', { states: next }).then(setPrefs, () => setPrefs(prefs))
+  }
+  return (
+    <>
+      <PanelSectionRow>
+        <ToggleField
+          label="Sync save states"
+          description="Save states of Game Boy Advance games sync with RomM, so you can pick up where you left off in RomM's web player or on another device, and back. A game's page can set its own."
+          checked={states.sync}
+          onChange={(sync) => change({ sync })}
+        />
+      </PanelSectionRow>
+      {states.sync && (
+        <>
+          <PanelSectionRow>
+            <DropdownItem
+              label="RomM's state goes in"
+              description="The slot RomM's newest save state is put in. RetroArch loads its auto-state when a game starts, so the game picks up there."
+              rgOptions={STATE_SLOTS.map((s) => ({ data: s, label: stateSlotLabel(s) }))}
+              selectedOption={states.target}
+              onChange={(o) => change({ target: o.data as string })}
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <DropdownItem
+              label="Also copy it to"
+              description="A slot that keeps RomM's state after a game writes its own auto-state on quitting."
+              rgOptions={[
+                { data: '', label: 'None' },
+                ...STATE_SLOTS.filter((s) => s !== 'auto').map((s) => ({
+                  data: s,
+                  label: stateSlotLabel(s),
+                })),
+              ]}
+              selectedOption={states.extra}
+              onChange={(o) => change({ extra: o.data as string })}
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <DropdownItem
+              label="This Deck's states on RomM"
+              description="How many of each game's states from this Deck RomM keeps. States from the web player and other devices are never removed."
+              rgOptions={STATE_KEEPS.map((k) => ({ data: k, label: stateKeepLabel(k) }))}
+              selectedOption={states.keep}
+              onChange={(o) => change({ keep: o.data as number })}
+            />
+          </PanelSectionRow>
+        </>
+      )}
     </>
   )
 }

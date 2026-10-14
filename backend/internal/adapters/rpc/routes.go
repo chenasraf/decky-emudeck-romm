@@ -33,10 +33,11 @@ func Routes(s *Server, version string, svc Services) {
 	catalogRoutes(s, svc.Catalog, svc.Downloads)
 	downloadRoutes(s, svc.Downloads)
 	biosRoutes(s, svc.BIOS)
-	preferenceRoutes(s, svc.BIOS, svc.Games, svc.Media)
+	preferenceRoutes(s, svc.BIOS, svc.Games, svc.Media, svc.Saves)
 	coverRoutes(s, svc.Covers)
 	esdeRoutes(s, svc.ESDE)
 	saveRoutes(s, svc.Saves)
+	stateRoutes(s, svc.Saves)
 
 	Register(s, "ping", func(context.Context, schema.PingParams) (schema.PingResult, error) {
 		return schema.PingResult{Version: version}, nil

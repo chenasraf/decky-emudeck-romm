@@ -34,6 +34,12 @@ type fakeRomMSaves struct {
 	// noBaselines is RomM before 5.4.0, which keeps no hashes of what a Device synced and goes by
 	// times alone.
 	noBaselines bool
+	// states are the save states RomM keeps, oldest first.
+	states []fakeState
+	// deletedStates are the states the plugin deleted.
+	deletedStates []int
+	stateFail     error
+	stateLists    int
 }
 
 type fakeVersion struct {
@@ -279,6 +285,11 @@ type memSaveStore struct {
 	records  map[int]domain.SaveRecord
 	activity []domain.SaveActivity
 	slots    map[int]string
+
+	stateFiles map[int]map[string]string
+	uploaded   []domain.UploadedState
+	stateGames map[int]domain.StateGame
+	statePrefs map[int]domain.StatePrefs
 }
 
 func (m *memSaveStore) SaveSlot(_ context.Context, id int) (string, error) {
@@ -383,6 +394,7 @@ type saveFixture struct {
 	n64db     fakeN64Database
 	psx       fakePSXDiscs
 	duck      fakeDuckStation
+	stateSet  *memStateSettings
 	saves     *Saves
 	retroarch atomic.Bool
 	// playing is the id of a standalone emulator running a game, if one is.
@@ -407,6 +419,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 		n64db:           fakeN64Database{},
 		psx:             fakePSXDiscs{},
 		duck:            fakeDuckStation{},
+		stateSet:        &memStateSettings{set: domain.DefaultStateSettings},
 		events:          make(chan SaveSyncEvent, 256),
 	}
 	f.settings.mu.Lock()
@@ -422,7 +435,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 func (f *saveFixture) newSaves() *Saves {
 	d := f.downloads
 	s := NewSaves(context.Background(), d.catalog, d.install, d.conn, func(domain.Server, string) SaveServer { return f.romm },
-		f.owned, f.store, nil, SaveSources{Launchers: f.launchers, Configs: f.configs, N64: f.n64db, PSX: f.psx, DuckStation: f.duck}, func() (domain.Emulator, bool) {
+		f.owned, f.store, nil, SaveSources{Launchers: f.launchers, Configs: f.configs, N64: f.n64db, PSX: f.psx, DuckStation: f.duck, States: f.stateSet}, func() (domain.Emulator, bool) {
 			if f.retroarch.Load() {
 				return domain.EmulatorByID(domain.RetroArchID)
 			}
@@ -467,6 +480,9 @@ func (d fakeDuckStation) Game(path string, disc domain.PSXDisc) (domain.DuckStat
 type fakeConfigs map[string]domain.SaveConfig
 
 func (c fakeConfigs) SaveConfig(id string) domain.SaveConfig { return c[id] }
+
+// StateConfig answers what each emulator's settings say of its states, under "states:<id>".
+func (c fakeConfigs) StateConfig(id string) domain.SaveConfig { return c["states:"+id] }
 
 func (c fakeConfigs) Files() []string { return nil }
 

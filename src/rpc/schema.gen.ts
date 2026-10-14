@@ -152,6 +152,10 @@ export interface Methods {
   restore_save_backup: Method<RestoreSaveBackupParams, SaveStatus>;
   save_slots: Method<SaveSlotsParams, SaveSlots>;
   switch_save_slot: Method<SwitchSaveSlotParams, SaveStatus>;
+  state_status: Method<StateStatusParams, StateStatus>;
+  save_states: Method<SaveStatesParams, SaveStates>;
+  load_save_state: Method<LoadSaveStateParams, StateStatus>;
+  set_state_prefs: Method<SetStatePrefsParams, StateStatus>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1292,6 +1296,10 @@ export interface Preferences {
    * ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder.
    */
   esdeMedia: boolean;
+  /**
+   * States is how save states sync, for games that don't set their own.
+   */
+  states: StateSettings;
 }
 /**
  * SetPreferencesParams changes the preferences it sets, leaving the rest.
@@ -1300,6 +1308,112 @@ export interface SetPreferencesParams {
   autoBios?: boolean;
   waitForGames?: boolean;
   esdeMedia?: boolean;
+  /**
+   * States changes the state settings it sets.
+   */
+  states?: StatePrefs;
+}
+/**
+ * StateSettings is how a game's save states sync.
+ */
+export interface StateSettings {
+  sync: boolean;
+  /**
+   * Target is the state slot RomM's newest state goes in: "auto" or "0" to "9".
+   */
+  target: string;
+  /**
+   * Extra is another slot that gets a copy, empty for none.
+   */
+  extra: string;
+  /**
+   * Keep is how many of a game's states this Deck uploaded RomM keeps: 5, 10, 20, or 0 for every
+   * one.
+   */
+  keep: number /* int */;
+}
+/**
+ * StatePrefs are state settings of their own, each field unset following the global setting.
+ */
+export interface StatePrefs {
+  sync?: boolean;
+  target?: string;
+  extra?: string;
+  keep?: number /* int */;
+}
+export interface StateStatusParams {
+  id: number /* int */;
+}
+/**
+ * StateStatus is where a game's save state sync stands, and how its states sync.
+ */
+export interface StateStatus {
+  id: number /* int */;
+  /**
+   * Syncs is unset when the game's states don't sync at all; Why says why.
+   */
+  syncs: boolean;
+  why?: string;
+  /**
+   * Emulator is the emulator that writes the states, Dir the folder they're in.
+   */
+  emulator?: string;
+  dir?: string;
+  /**
+   * Settings are how the game's states sync: Own, the game's own settings, over Global.
+   */
+  settings: StateSettings;
+  own: StatePrefs;
+  global: StateSettings;
+  /**
+   * Waiting says RomM's newest state waits for the emulator to close.
+   */
+  waiting: boolean;
+  problem?: string;
+}
+export interface SaveStatesParams {
+  id: number /* int */;
+}
+/**
+ * SaveStates are the newest of a game's save states on RomM, newest first.
+ */
+export interface SaveStates {
+  states: SaveStateEntry[];
+}
+export interface SaveStateEntry {
+  id: number /* int */;
+  /**
+   * At is when the state reached RomM, as RFC 3339.
+   */
+  at: string;
+  /**
+   * FromDeck says this Deck uploaded it, and Slot from which state slot.
+   */
+  fromDeck: boolean;
+  slot?: string;
+  /**
+   * Placed says it's RomM's state last put in the target slot.
+   */
+  placed: boolean;
+  /**
+   * Screenshot is the state's screenshot as a data: URL, empty when RomM has none.
+   */
+  screenshot?: string;
+  sizeBytes: number /* int64 */;
+}
+/**
+ * LoadSaveStateParams puts RomM's state with StateID in the game with ID's target slot.
+ */
+export interface LoadSaveStateParams {
+  id: number /* int */;
+  stateId: number /* int */;
+}
+/**
+ * SetStatePrefsParams sets the game with ID's own state settings, replacing them all.
+ */
+export interface SetStatePrefsParams {
+  id: number /* int */;
+  own: StatePrefs;
 }
 export interface ESDENoticeParams {
 }
@@ -1456,6 +1570,8 @@ export const ActivityRestored: ActivityKind = "restored";
 export const ActivitySlot: ActivityKind = "slot";
 export const ActivityDeleted: ActivityKind = "deleted";
 export const ActivityMoved: ActivityKind = "moved";
+export const ActivityStateUploaded: ActivityKind = "state_uploaded";
+export const ActivityStateDownloaded: ActivityKind = "state_downloaded";
 /**
  * SaveActivityEntry is something save sync did to a game's save.
  */
@@ -1567,6 +1683,11 @@ export interface SaveCounts {
   conflicts: number /* int */;
   waiting: number /* int */;
   failed: number /* int */;
+  /**
+   * StatesUploaded and StatesDownloaded count save states.
+   */
+  statesUploaded: number /* int */;
+  statesDownloaded: number /* int */;
 }
 /**
  * SaveSummary is where save sync stands across every game a sync looked at.

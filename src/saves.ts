@@ -6,9 +6,11 @@ import type {
   SaveActivityEntry,
   SaveBackup,
   SaveCounts,
+  SaveStateEntry,
   SaveStatus,
   SaveSummary,
   SaveSyncEvent,
+  StateStatus,
 } from './rpc/schema.gen'
 
 /** Goes up each time a save sync starts or ends, so views showing save status reload. */
@@ -19,11 +21,17 @@ function games(n: number): string {
   return n === 1 ? '1 game' : `${n} games`
 }
 
+function states(n: number): string {
+  return n === 1 ? '1 save state' : `${n} save states`
+}
+
 /** What a sync did, as a sentence, e.g. "1 uploaded, 2 downloaded." */
 export function syncOutcome(c: SaveCounts): string {
   const parts = []
   if (c.uploaded > 0) parts.push(`${c.uploaded} uploaded`)
   if (c.downloaded > 0) parts.push(`${c.downloaded} downloaded`)
+  if (c.statesUploaded > 0) parts.push(`${states(c.statesUploaded)} uploaded`)
+  if (c.statesDownloaded > 0) parts.push(`${states(c.statesDownloaded)} downloaded`)
   if (c.waiting > 0) parts.push(`${c.waiting} waiting for an emulator to close`)
   if (c.failed > 0) parts.push(`${c.failed} failed`)
   return parts.length > 0 ? `${parts.join(', ')}.` : 'Everything is up to date.'
@@ -44,6 +52,11 @@ function apply(e: SaveSyncEvent) {
       toaster.toast({
         title: 'Saves downloaded',
         body: `Newer saves from RomM for ${games(e.counts.downloaded)}.`,
+      })
+    } else if (e.counts.statesDownloaded > 0) {
+      toaster.toast({
+        title: 'Save states downloaded',
+        body: `RomM's newest ${states(e.counts.statesDownloaded)} ${e.counts.statesDownloaded === 1 ? 'is' : 'are'} on this Deck.`,
       })
     }
     return
@@ -158,4 +171,30 @@ export function saveStateDetail(s: SaveStatus): string | undefined {
     default:
       return undefined
   }
+}
+
+/** Where a game's save state sync stands, and how its states sync. */
+export function useStateStatus(id: number): StateStatus | null {
+  return useReloading(() => call('state_status', { id }), [id])
+}
+
+/** The newest of a game's save states on RomM, newest first. */
+export function useSaveStates(id: number): SaveStateEntry[] | null {
+  return useReloading(() => call('save_states', { id }).then((r) => r.states), [id])
+}
+
+/** The state slots a setting can name, in order. */
+export const STATE_SLOTS = ['auto', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+
+/** How many of a game's states from this Deck RomM keeps; 0 keeps every one. */
+export const STATE_KEEPS = [5, 10, 20, 0]
+
+/** A state slot as a choice reads: "Auto-state" or "Slot 3". */
+export function stateSlotLabel(slot: string): string {
+  return slot === 'auto' ? 'Auto-state' : `Slot ${slot}`
+}
+
+/** How many states are kept, as a choice reads. */
+export function stateKeepLabel(keep: number): string {
+  return keep === 0 ? 'All' : `Newest ${keep}`
 }

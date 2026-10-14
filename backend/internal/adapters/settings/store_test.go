@@ -10,6 +10,25 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
+func TestStateSettings(t *testing.T) {
+	dir := t.TempDir()
+	if got := New(dir).StateSettings(); got != domain.DefaultStateSettings {
+		t.Fatalf("unset: %+v", got)
+	}
+	off, extra := false, "1"
+	if err := New(dir).SetStateSettings(domain.StatePrefs{Sync: &off}); err != nil {
+		t.Fatal(err)
+	}
+	if err := New(dir).SetStateSettings(domain.StatePrefs{Extra: &extra}); err != nil {
+		t.Fatal(err)
+	}
+	want := domain.DefaultStateSettings
+	want.Sync, want.Extra = false, "1"
+	if got := New(dir).StateSettings(); got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
 func TestEmptyStore(t *testing.T) {
 	got, err := New(t.TempDir()).SignIn()
 	if err != nil || got != nil {

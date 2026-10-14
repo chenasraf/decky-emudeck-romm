@@ -22,7 +22,7 @@ The emulator is the one ES-DE launches the game with, so changing a system's or 
 ES-DE changes which saves sync. Games played in other emulators, such as Dolphin, PCSX2, PPSSPP or
 Ryujinx, don't sync their saves; their page says so.
 
-Save states don't sync, only in-game saves.
+Save states sync too, for Game Boy Advance games: see [Save states](#save-states).
 
 ## When saves sync
 
@@ -72,6 +72,48 @@ and restoring one puts it back and syncs it like any other change.
 **Save history** on a game's page, and **Recent activity** in the panel, show what save sync did:
 uploads, downloads, conflicts, restores and more.
 
+## Save states
+
+Save states of Game Boy Advance games sync with RomM when the game is played in RetroArch's mGBA
+core (EmuDeck's default) or in mGBA. They work with RomM's web player both ways: a state saved in
+the browser loads on the Deck, and one saved on the Deck loads in the browser. The plugin converts
+each state to what the emulator it goes to loads.
+
+States sync whenever saves do:
+
+- **Every state the Deck writes goes to RomM**, as an entry in the game's list: any slot, and the
+  auto-state RetroArch writes when a game closes. A state that came from RomM doesn't go back.
+- **RomM's newest state from elsewhere comes to the Deck**, into the auto-state unless you pick
+  another slot, when it's newer than the Deck's. RetroArch loads its auto-state when a game starts,
+  so **games resume from the newest state on RomM**, such as where you left off in the browser.
+- **Nothing on the Deck is lost**: before a state from RomM replaces one, the Deck's goes to RomM.
+  When RomM can't be reached, nothing is replaced.
+- **A state that arrives while the game runs waits** for the emulator to close, since RetroArch
+  writes its auto-state on the way out.
+
+### State settings
+
+**Settings → Preferences** sets how states sync for every game, and a game's page can set its own
+(its **Default** choices follow Preferences):
+
+- **Sync save states**: on unless turned off.
+- **RomM's state goes in**: the slot RomM's newest state is put in, the auto-state unless changed.
+- **Also copy it to**: another slot that gets a copy, none unless picked. RetroArch writes its
+  auto-state when a game closes, so a copy in, say, slot 1 keeps RomM's state to load again later.
+- **This Deck's states on RomM**: how many of each game's states from this Deck RomM keeps, the
+  newest 10 unless changed. States from the web player and other devices are never removed.
+
+### Loading a state
+
+**Browse save states** on a game's page lists the game's states on RomM, newest first, with each
+one's screenshot and where it came from. **Load** puts one in the slot RomM's states go in, and its
+copy, after sending what's there to RomM.
+
+### Slots in mGBA
+
+mGBA's slot 0 is its auto-state, loaded when a game starts, and its slots 1 to 9 are RetroArch's 1
+to 9. **Auto-state** and **Slot 0** both mean mGBA's slot 0.
+
 ## When an emulator's settings stop sync
 
 The plugin names saves the way each emulator does, which some emulator settings change. When one of
@@ -88,6 +130,10 @@ paused** with what to change back:
 
 When an emulator's save folder moves to another folder that exists, the plugin follows it on its
 own.
+
+Save states stop syncing on their own settings: in RetroArch, **Write Save States to Content
+Directory**, either **Sort Save States into Folders** option, or no **Save States** folder; in mGBA,
+no save states folder. A game's page says which.
 
 ## Special cases
 

@@ -48,6 +48,55 @@ type fileSettings struct {
 	// ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder; unset
 	// means on.
 	ESDEMedia *bool `json:"esdeMedia,omitempty"`
+	// States is how save states sync, for games that don't set their own; unset fields mean
+	// domain.DefaultStateSettings.
+	States *fileStates `json:"states,omitempty"`
+}
+
+type fileStates struct {
+	Sync   *bool   `json:"sync,omitempty"`
+	Target *string `json:"target,omitempty"`
+	Extra  *string `json:"extra,omitempty"`
+	Keep   *int    `json:"keep,omitempty"`
+}
+
+// StateSettings returns how save states sync, for games that don't set their own.
+func (s *Store) StateSettings() domain.StateSettings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil || f.States == nil {
+		return domain.DefaultStateSettings
+	}
+	p := domain.StatePrefs{Sync: f.States.Sync, Target: f.States.Target, Extra: f.States.Extra, Keep: f.States.Keep}
+	return p.Apply(domain.DefaultStateSettings)
+}
+
+// SetStateSettings changes how save states sync for games that don't set their own: the fields p
+// sets, leaving the rest.
+func (s *Store) SetStateSettings(p domain.StatePrefs) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	if f.States == nil {
+		f.States = &fileStates{}
+	}
+	if p.Sync != nil {
+		f.States.Sync = p.Sync
+	}
+	if p.Target != nil {
+		f.States.Target = p.Target
+	}
+	if p.Extra != nil {
+		f.States.Extra = p.Extra
+	}
+	if p.Keep != nil {
+		f.States.Keep = p.Keep
+	}
+	return s.save(f)
 }
 
 // ESDEMedia says whether downloads copy their art into ES-DE's media folder.

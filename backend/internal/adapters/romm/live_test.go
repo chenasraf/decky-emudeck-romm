@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -76,4 +77,40 @@ func TestLiveStartDeviceAuth(t *testing.T) {
 		t.Fatalf("got %+v", p)
 	}
 	t.Logf("user code %s, expires in %v, poll every %v", p.UserCode, p.ExpiresIn, p.Interval)
+}
+
+// TestLiveStates reads the save states of the game in ROMM_STATES_ROM: a game with GBA states saved
+// in RomM's web player.
+func TestLiveStates(t *testing.T) {
+	c := liveClient(t)
+	id, err := strconv.Atoi(os.Getenv("ROMM_STATES_ROM"))
+	if err != nil {
+		t.Skip("ROMM_STATES_ROM not set")
+	}
+	ctx := context.Background()
+	states, err := c.States(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(states) == 0 {
+		t.Fatalf("game %d has no states", id)
+	}
+	s := states[len(states)-1]
+	t.Logf("%d states; newest listed %d %q, %s, %d bytes, screenshot %q", len(states), s.ID, s.FileName, s.CreatedAt, s.SizeBytes, s.Screenshot)
+	if s.CreatedAt.IsZero() || s.Emulator == "" {
+		t.Fatalf("state %+v", s)
+	}
+	data, err := c.DownloadState(ctx, s.ID)
+	if err != nil || int64(len(data)) != s.SizeBytes {
+		t.Fatalf("downloaded %d bytes, %v", len(data), err)
+	}
+	if _, err := domain.GBAStateForRetroArch(data); err != nil {
+		t.Fatalf("convert for RetroArch: %v", err)
+	}
+	if s.Screenshot != "" {
+		shot, err := c.StateScreenshot(ctx, s.Screenshot)
+		if err != nil || !strings.HasPrefix(string(shot), "\x89PNG") {
+			t.Fatalf("screenshot %d bytes, %v", len(shot), err)
+		}
+	}
 }

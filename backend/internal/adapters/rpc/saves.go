@@ -150,6 +150,7 @@ func SaveEvents(s *Server) app.SaveListener {
 func toWireCounts(c app.SaveSummary) schema.SaveCounts {
 	return schema.SaveCounts{
 		Games: c.Games, Uploaded: c.Uploaded, Downloaded: c.Downloaded, Conflicts: c.Conflicts, Waiting: c.Waiting, Failed: c.Failed,
+		StatesUploaded: c.StatesUploaded, StatesDownloaded: c.StatesDownloaded,
 	}
 }
 

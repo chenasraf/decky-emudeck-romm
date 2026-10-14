@@ -111,6 +111,57 @@ func TestSaveFolderSettings(t *testing.T) {
 	}
 }
 
+// RetroArch's and the mGBA app's save states folder settings are followed like their saves'; ones
+// that put states next to the games or sort them into folders stop them syncing.
+func TestStateFolderSettings(t *testing.T) {
+	cases := map[string]struct {
+		id, path, body string
+		// dir is where the states are, relative to the test's saves folder; empty for the problem.
+		dir     string
+		problem string
+	}{
+		"no settings":         {"retroarch", "", "", "", ""},
+		"RetroArch":           {"retroarch", retroArchConfig, "savestate_directory = \"SAVES/retroarch/states\"\n", "retroarch/states", ""},
+		"RetroArch unset":     {"retroarch", retroArchConfig, "savestate_directory = \"default\"\n", "", "Save States"},
+		"RetroArch in games":  {"retroarch", retroArchConfig, "savestate_directory = \"SAVES/retroarch/states\"\nsavestates_in_content_dir = \"true\"\n", "", "Content Directory"},
+		"RetroArch sorted":    {"retroarch", retroArchConfig, "savestate_directory = \"SAVES/retroarch/states\"\nsort_savestates_by_content_enable = \"true\"\n", "", "Sort Save States"},
+		"RetroArch gone":      {"retroarch", retroArchConfig, "savestate_directory = \"SAVES/gone\"\n", "", "save states in"},
+		"mGBA":                {"mgba", mGBAConfig, "[ports.qt]\nsavestatePath=SAVES/mgba/states\n", "mgba/states", ""},
+		"mGBA beside games":   {"mgba", mGBAConfig, "[ports.qt]\nsavestatePath=\n", "", "Paths"},
+		"saves stay separate": {"mgba", mGBAConfig, "[ports.qt]\nsavegamePath=SAVES/mgba/saves\n", "", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			saves := filepath.Join(home, "Emulation", "saves")
+			for _, d := range []string{"retroarch/states", "mgba/states", "mgba/saves"} {
+				if err := os.MkdirAll(filepath.Join(saves, d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.path != "" {
+				put(t, filepath.Join(home, c.path), strings.ReplaceAll(c.body, "SAVES", saves))
+			}
+			got := NewSaveConfigs(home).StateConfig(c.id)
+			switch {
+			case c.problem != "":
+				if got.Dir != "" || !strings.Contains(got.Problem, c.problem) {
+					t.Fatalf("got %+v", got)
+				}
+			case c.dir == "":
+				if got != (domain.SaveConfig{}) {
+					t.Fatalf("got %+v, want EmuDeck's folder to stand", got)
+				}
+			default:
+				want, _ := filepath.EvalSymlinks(filepath.Join(saves, c.dir))
+				if got.Problem != "" || got.Dir != want {
+					t.Fatalf("got %+v, want %s", got, want)
+				}
+			}
+		})
+	}
+}
+
 // A saves folder set through a link is followed to where the link leads.
 func TestSaveFolderSettingFollowsLinks(t *testing.T) {
 	home := t.TempDir()
