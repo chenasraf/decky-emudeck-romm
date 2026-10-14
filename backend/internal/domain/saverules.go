@@ -14,10 +14,23 @@ const (
 	ArchiveNamingInner
 )
 
-// SaveRule is how an emulator whose saves sync names them and tags them on RomM. Each keeps one
-// save per game, named after the game's file without its extension, in the first of its SaveDirs.
+// SaveKind is how an emulator keeps a game's save.
+type SaveKind int
+
+const (
+	// SaveRawFile is one file named after the game's file without its extension, kept on RomM as is.
+	SaveRawFile SaveKind = iota
+	// SaveN64Files is mupen64plus's files of an N64 save, named after the ROM database's name and
+	// the ROM's hash, kept on RomM as the unit N64Save describes.
+	SaveN64Files
+)
+
+// SaveRule is how an emulator whose saves sync names them and tags them on RomM. Each keeps a game's
+// save in the first of its SaveDirs.
 type SaveRule struct {
 	Emulator Emulator
+	Kind     SaveKind
+	// Ext is a SaveRawFile's extension.
 	Ext      string
 	Archives ArchiveNaming
 	// Tag is what the emulator's saves are tagged with on RomM. RetroArch's have none of their own:
@@ -37,6 +50,9 @@ var saveRules = func() []SaveRule {
 		rule(RetroArchID, SaveRule{Ext: ".srm", esdeVar: "%EMULATOR_RETROARCH%"}),
 		rule("melonds", SaveRule{Ext: ".sav", Archives: ArchiveNamingInner, Tag: "melonds", esdeVar: "%EMULATOR_MELONDS%", label: "melonDS (Standalone)"}),
 		rule("mgba", SaveRule{Ext: ".sav", Archives: ArchiveNamingOuter, Tag: "mgba", esdeVar: "%EMULATOR_MGBA%", label: "mGBA (Standalone)"}),
+		rule("rmg", SaveRule{
+			Kind: SaveN64Files, Tag: "rmg", esdeVar: "%EMULATOR_ROSALIES-MUPEN-GUI%", label: "Rosalie's Mupen GUI (Standalone)",
+		}),
 	}
 }()
 

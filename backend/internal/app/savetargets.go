@@ -18,6 +18,20 @@ type SaveConfigs interface {
 	SaveProblem(id string) string
 }
 
+// N64Database is the ROM database RMG names N64 saves from.
+type N64Database interface {
+	// GoodName returns the database's name of a ROM; known is false when it lacks the ROM.
+	GoodName(rom domain.N64ROM) (name string, known bool, err error)
+}
+
+// SaveSources are what save sync reads, besides the Deck's saves, to tell how each game's save is
+// named and which emulator writes it.
+type SaveSources struct {
+	Launchers Launchers
+	Configs   SaveConfigs
+	N64       N64Database
+}
+
 // saveTarget is a game whose save the plugin syncs.
 type saveTarget struct {
 	romID int
@@ -27,6 +41,9 @@ type saveTarget struct {
 	// the save under.
 	rule     domain.SaveRule
 	emulator string
+	// format reads and writes the save, kept at path as RomM keeps it: for a save kept in several
+	// files, path names them all, and isn't a file itself.
+	format saveFormat
 }
 
 // target finds where a Plugin-owned game's save is and how RomM tags it. why says why the plugin
@@ -80,11 +97,23 @@ func (s *Saves) target(ctx context.Context, id int) (saveTarget, string, error) 
 	if !ok {
 		return saveTarget{}, rule.Emulator.Name + "'s saves folder wasn't found. Set it up in EmuDeck, then check Setup status again.", nil
 	}
+	t := saveTarget{romID: id, name: name, rule: rule, emulator: tag}
+	if rule.Kind == domain.SaveN64Files {
+		base, why := s.n64Base(entry, saves)
+		if why != "" {
+			return saveTarget{}, why, nil
+		}
+		// RomM keeps the files as one zip, named for them.
+		t.path, t.format = base+".zip", n64Files{base: base}
+		return t, "", nil
+	}
 	file, why := saveName(entry, rule)
 	if why != "" {
 		return saveTarget{}, why, nil
 	}
-	return saveTarget{romID: id, name: name, path: filepath.Join(saves, file+rule.Ext), rule: rule, emulator: tag}, "", nil
+	t.path = filepath.Join(saves, file+rule.Ext)
+	t.format = rawFile{path: t.path}
+	return t, "", nil
 }
 
 // saveName is the name an emulator gives the save of the game at entry, without its extension.

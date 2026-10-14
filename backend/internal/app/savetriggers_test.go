@@ -70,7 +70,8 @@ func TestRunWatchesSaveFolders(t *testing.T) {
 	f := newSaveFixture(t)
 	w := newFakeWatch()
 	f.run(t, w)
-	want := []string{f.raSaves, filepath.Join(f.root, "saves", "melonds", "saves"), filepath.Join(f.root, "saves", "mgba", "saves")}
+	want := []string{f.raSaves, filepath.Join(f.root, "saves", "melonds", "saves"), filepath.Join(f.root, "saves", "mgba", "saves"),
+		filepath.Join(f.root, "saves", "RMG", "saves")}
 	if dirs := <-w.dirs; !slices.Equal(dirs, want) {
 		t.Fatalf("watching %v", dirs)
 	}

@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/md5" //nolint:gosec // RomM identifies save content by its MD5, not for security
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -124,6 +122,7 @@ type Saves struct {
 	problem   error
 	launchers Launchers
 	configs   SaveConfigs
+	n64db     N64Database
 	running   RunningGame
 	backups   string
 	onChange  SaveListener
@@ -155,6 +154,8 @@ type Saves struct {
 	// wrote is when the plugin last wrote each save, so the watch doesn't take its own writes for
 	// the game's.
 	wrote map[string]time.Time
+	// roms are N64 ROMs as last read, by path.
+	roms map[string]cachedROM
 }
 
 const (
@@ -172,12 +173,12 @@ const (
 // NewSaves returns save sync. A nil store turns it off, reporting problem. Overwritten saves are
 // backed up under backups.
 func NewSaves(ctx context.Context, catalog CatalogStore, install *Install, conn *Connection, dial SaveDialer, owned OwnershipStore,
-	store SaveStore, problem error, launchers Launchers, configs SaveConfigs, running RunningGame, backups string, onChange SaveListener,
-	log *slog.Logger,
+	store SaveStore, problem error, sources SaveSources, running RunningGame, backups string, onChange SaveListener, log *slog.Logger,
 ) *Saves {
 	return &Saves{
 		catalog: catalog, install: install, conn: conn, dial: dial, owned: owned, store: store, problem: problem,
-		launchers: launchers, configs: configs, running: running, backups: backups, onChange: onChange, log: log, now: time.Now, base: ctx,
+		launchers: sources.Launchers, configs: sources.Configs, n64db: sources.N64, running: running, backups: backups,
+		onChange: onChange, log: log, now: time.Now, base: ctx, roms: map[string]cachedROM{},
 		pullEvery: savePullEvery, settle: saveSettle, pollEvery: savePoll, openGap: saveOpenGap,
 		pending: map[int]bool{}, current: map[int]bool{}, wrote: map[string]time.Time{}, waits: true,
 	}
@@ -367,7 +368,7 @@ func (s *Saves) saveWritten(ctx context.Context, path string) {
 		return
 	}
 	for _, id := range ids {
-		if t, why, err := s.target(ctx, id); err == nil && why == "" && t.path == path {
+		if t, why, err := s.target(ctx, id); err == nil && why == "" && slices.Contains(t.format.files(), path) {
 			s.log.Info("save written", "rom_id", id, "path", path)
 			s.request([]int{id}, false)
 			return
@@ -615,34 +616,6 @@ func (s *Saves) Summary(ctx context.Context) (SaveSummary, time.Time, bool, erro
 	return out, last, syncing, nil
 }
 
-// localSave is a save on the Deck as a sync read it.
-type localSave struct {
-	exists bool
-	data   []byte
-	hash   string
-	mod    time.Time
-}
-
-func readLocal(path string) (localSave, error) {
-	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return localSave{}, nil
-	}
-	if err != nil {
-		return localSave{}, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return localSave{}, err
-	}
-	return localSave{exists: true, data: data, hash: md5Hex(data), mod: info.ModTime().UTC()}, nil
-}
-
-func md5Hex(data []byte) string {
-	sum := md5.Sum(data) //nolint:gosec // see import
-	return hex.EncodeToString(sum[:])
-}
-
 // savePass is one sync: a negotiation with RomM and the steps it planned.
 type savePass struct {
 	*Saves
@@ -704,7 +677,7 @@ func (p *savePass) plan(ctx context.Context, targets []saveTarget) (domain.SyncP
 	req := domain.SyncRequest{DeviceID: p.in.DeviceID, RestoreUnlisted: true}
 	for _, t := range targets {
 		req.ROMIDs = append(req.ROMIDs, t.romID)
-		local, err := readLocal(t.path)
+		local, err := t.format.read()
 		if err != nil {
 			r := p.record(p.records, t)
 			r.State, r.Problem = domain.SaveFailed, "Couldn't read the save: "+err.Error()
@@ -823,7 +796,8 @@ func (p *savePass) upload(ctx context.Context, t saveTarget, local localSave, op
 }
 
 func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOperation, local localSave, session int, r *domain.SaveRecord) error {
-	if !domain.RawBatterySave(op.Emulator) {
+	// An N64 save is checked as it's read: any N64 emulator's unit, files or .srm will do.
+	if t.rule.Kind == domain.SaveRawFile && !domain.RawBatterySave(op.Emulator) {
 		return fmt.Errorf("RomM's newest save is from %s, which %s can't load", op.Emulator, t.rule.Emulator.Name)
 	}
 	if p.runs(t.rule.Emulator.ID) {
@@ -833,14 +807,14 @@ func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOpe
 		return nil
 	}
 	// The save changed since the plan was made: the plan no longer applies.
-	if now, err := readLocal(t.path); err != nil || now.exists != local.exists || now.hash != local.hash {
+	if now, err := t.format.read(); err != nil || now.exists != local.exists || now.hash != local.hash {
 		return errors.New("the save changed while syncing; sync again")
 	}
 	data, err := p.server.DownloadSave(ctx, op.SaveID, p.in.DeviceID, session)
 	if err != nil {
 		return p.conn.observe(p.in, err)
 	}
-	hash := md5Hex(data)
+	hash := domain.ContentHash(data)
 	if op.ServerHash != "" && hash != op.ServerHash {
 		return errors.New("the save from RomM didn't match its hash")
 	}
@@ -850,16 +824,24 @@ func (p *savePass) download(ctx context.Context, t saveTarget, op domain.SyncOpe
 		}
 	}
 	p.mu.Lock()
-	p.wrote[t.path] = p.now()
+	for _, f := range t.format.files() {
+		p.wrote[f] = p.now()
+	}
 	p.mu.Unlock()
-	if err := writeAtomic(t.path, data); err != nil {
+	if err := t.format.write(data); err != nil {
 		return fmt.Errorf("write the save: %w", err)
 	}
 	if err := p.server.ConfirmSaveDownload(ctx, op.SaveID, p.in.DeviceID, hash); err != nil {
 		// The bytes are in place; RomM just doesn't know yet. The next sync finds them equal.
 		p.log.Warn("confirm save download", "rom_id", t.romID, "err", p.conn.observe(p.in, err))
 	}
-	r.LocalHash, r.ServerSaveID, r.ServerHash, r.SyncedAt = hash, op.SaveID, hash, op.ServerUpdatedAt
+	// The save as the Deck now holds it can hash differently from RomM's: an N64 save from another
+	// emulator's files reads back as the shared unit. Each side keeps its own hash.
+	written := hash
+	if now, err := t.format.read(); err == nil && now.exists {
+		written = now.hash
+	}
+	r.LocalHash, r.ServerSaveID, r.ServerHash, r.SyncedAt = written, op.SaveID, hash, op.ServerUpdatedAt
 	r.State, r.Problem = domain.SaveSynced, ""
 	p.summary.Downloaded++
 	p.done++

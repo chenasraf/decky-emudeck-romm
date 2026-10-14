@@ -19,13 +19,20 @@ func NewSaveConfigs(home string) *SaveConfigs { return &SaveConfigs{home: home} 
 // SaveProblem says why the saves of the emulator with id don't sync as the plugin names them, empty
 // when nothing in its settings stops them.
 func (c *SaveConfigs) SaveProblem(id string) string {
-	if id != "mgba" {
-		return ""
-	}
-	// mGBA's "Use player N save game" writes <game>.saN for players 2 to 4.
-	ini := readINI(filepath.Join(c.home, ".config", "mgba", "config.ini"))
-	if n, err := strconv.Atoi(ini["ports.qt"]["savePlayerId"]); err == nil && n > 1 {
-		return fmt.Sprintf("mGBA uses player %d's save files (.sa%d), and only player 1's sync. Pick player 1's save game in mGBA's File menu.", n, n)
+	switch id {
+	case "mgba":
+		// mGBA's "Use player N save game" writes <game>.saN for players 2 to 4.
+		ini := readINI(filepath.Join(c.home, ".config", "mgba", "config.ini"))
+		if n, err := strconv.Atoi(ini["ports.qt"]["savePlayerId"]); err == nil && n > 1 {
+			return fmt.Sprintf("mGBA uses player %d's save files (.sa%d), and only player 1's sync. Pick player 1's save game in mGBA's File menu.", n, n)
+		}
+	case "rmg":
+		// EmuDeck sets format 1, names from the ROM database and hash; 0 names saves after the
+		// cart's header, which games share.
+		ini := readINI(filepath.Join(c.home, ".var", "app", "com.github.Rosalie241.RMG", "config", "RMG", "mupen64plus.cfg"))
+		if v := ini["Rosalie's Mupen GUI Core Overlay"]["SaveFilenameFormat"]; v != "" && v != "1" {
+			return "RMG names saves after the cart's header, which several games can share, so its saves don't sync. Set Settings → Core → Save filename format back to the ROM database name."
+		}
 	}
 	return ""
 }

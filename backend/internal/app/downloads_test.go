@@ -452,7 +452,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		Platforms: []domain.Platform{{ID: 1, Slug: "snes", Name: "Super Nintendo"}, {ID: 2, Slug: "unknown-console", Name: "Mystery"},
 			{ID: 3, Slug: "psx", Name: "PlayStation"}, {ID: 4, Slug: "arcade", Name: "Arcade"},
 			{ID: 5, Slug: "dc", Name: "Dreamcast"}, {ID: 6, Slug: "dos", Name: "DOS"}, {ID: 7, Slug: "ps3", Name: "PlayStation 3"},
-			{ID: 8, Slug: "3ds", Name: "Nintendo 3DS"}, {ID: 9, Slug: "nds", Name: "Nintendo DS"}, {ID: 10, Slug: "gba", Name: "Game Boy Advance"}},
+			{ID: 8, Slug: "3ds", Name: "Nintendo 3DS"}, {ID: 9, Slug: "nds", Name: "Nintendo DS"}, {ID: 10, Slug: "gba", Name: "Game Boy Advance"},
+			{ID: 11, Slug: "n64", Name: "Nintendo 64"}},
 		ROMs: []domain.ROM{
 			{ID: 1, PlatformID: 1, Name: "Chrono Trigger", SizeBytes: int64(len(chrono))},
 			{ID: 2, PlatformID: 1, Name: "Super Metroid", SizeBytes: int64(len(metroid))},
@@ -487,6 +488,9 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 		}}, {ID: "mgba", Installed: true, Saves: []domain.SaveDirState{
 			{Path: filepath.Join(root, "saves", "mgba", "saves"), Resolved: filepath.Join(root, "saves", "mgba", "saves")},
 			{Path: filepath.Join(root, "saves", "mgba", "states"), Resolved: filepath.Join(root, "saves", "mgba", "states")},
+		}}, {ID: "rmg", Installed: true, Saves: []domain.SaveDirState{
+			{Path: filepath.Join(root, "saves", "RMG", "saves"), Resolved: filepath.Join(root, "saves", "RMG", "saves")},
+			{Path: filepath.Join(root, "saves", "RMG", "states"), Resolved: filepath.Join(root, "saves", "RMG", "states")},
 		}}},
 		Systems: []domain.SystemState{{Folder: "snes", ROMPath: f.snes, Emulator: domain.RetroArchID}, {Folder: "psx", ROMPath: filepath.Join(root, "roms", "psx")},
 			{Folder: "arcade", ROMPath: filepath.Join(root, "roms", "arcade")},
@@ -495,7 +499,8 @@ func newDownloadFixture(t *testing.T, limit int) *downloadFixture {
 			{Folder: "ps3", ROMPath: filepath.Join(root, "roms", "ps3")},
 			{Folder: "n3ds", ROMPath: filepath.Join(root, "roms", "n3ds")},
 			{Folder: "nds", ROMPath: filepath.Join(root, "roms", "nds"), Emulator: "melonds"},
-			{Folder: "gba", ROMPath: filepath.Join(root, "roms", "gba"), Emulator: domain.RetroArchID}},
+			{Folder: "gba", ROMPath: filepath.Join(root, "roms", "gba"), Emulator: domain.RetroArchID},
+			{Folder: "n64", ROMPath: filepath.Join(root, "roms", "n64"), Emulator: domain.RetroArchID}},
 	}}, log)
 	conn, _ := newConnectionWithEvents(t, f.settings, &fakeNet{})
 	dial := func(domain.Server, string) DownloadServer { return f.server }

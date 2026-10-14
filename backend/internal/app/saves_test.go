@@ -76,7 +76,7 @@ func (f *fakeRomMSaves) otherDevice(romID int, emulator string, data []byte) fak
 	defer f.mu.Unlock()
 	v := fakeVersion{ServerSave: domain.ServerSave{
 		ID: f.nextID, ROMID: romID, FileName: "save.srm", Slot: domain.AutosaveSlot, Emulator: emulator,
-		ContentHash: md5Hex(data), UpdatedAt: f.tick(),
+		ContentHash: domain.ContentHash(data), UpdatedAt: f.tick(),
 	}, data: data}
 	f.nextID++
 	f.versions = append(f.versions, v)
@@ -168,7 +168,7 @@ func (f *fakeRomMSaves) UploadSave(_ context.Context, u domain.SaveUpload) (doma
 	}
 	v := fakeVersion{ServerSave: domain.ServerSave{
 		ID: f.nextID, ROMID: u.ROMID, FileName: u.FileName, Slot: u.Slot, Emulator: u.Emulator,
-		ContentHash: md5Hex(u.Data), UpdatedAt: f.tick(),
+		ContentHash: domain.ContentHash(u.Data), UpdatedAt: f.tick(),
 	}, data: append([]byte{}, u.Data...)}
 	f.nextID++
 	f.versions = append(f.versions, v)
@@ -322,6 +322,7 @@ type saveFixture struct {
 	store     *memSaveStore
 	launchers fakeLaunchers
 	configs   fakeConfigs
+	n64db     fakeN64Database
 	saves     *Saves
 	retroarch atomic.Bool
 	// playing is the id of a standalone emulator running a game, if one is.
@@ -343,6 +344,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 		store:           &memSaveStore{records: map[int]domain.SaveRecord{}},
 		launchers:       fakeLaunchers{"snes": snes9x},
 		configs:         fakeConfigs{},
+		n64db:           fakeN64Database{},
 		events:          make(chan SaveSyncEvent, 256),
 	}
 	f.settings.mu.Lock()
@@ -358,7 +360,7 @@ func newSaveFixture(t *testing.T) *saveFixture {
 func (f *saveFixture) newSaves() *Saves {
 	d := f.downloads
 	s := NewSaves(context.Background(), d.catalog, d.install, d.conn, func(domain.Server, string) SaveServer { return f.romm },
-		f.owned, f.store, nil, f.launchers, f.configs, func() (domain.Emulator, bool) {
+		f.owned, f.store, nil, SaveSources{Launchers: f.launchers, Configs: f.configs, N64: f.n64db}, func() (domain.Emulator, bool) {
 			if f.retroarch.Load() {
 				return domain.EmulatorByID(domain.RetroArchID)
 			}
@@ -368,6 +370,14 @@ func (f *saveFixture) newSaves() *Saves {
 			return domain.Emulator{}, false
 		}, f.backups, func(e SaveSyncEvent) { f.events <- e }, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return s
+}
+
+// fakeN64Database names ROMs by their MD5.
+type fakeN64Database map[string]string
+
+func (d fakeN64Database) GoodName(rom domain.N64ROM) (string, bool, error) {
+	name, ok := d[rom.MD5]
+	return name, ok, nil
 }
 
 // fakeConfigs reports each emulator's settings problem, by its id.

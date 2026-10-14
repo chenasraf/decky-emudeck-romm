@@ -157,19 +157,19 @@ func (s *Saves) restore(ctx context.Context, t saveTarget, name string) error {
 	if err != nil {
 		return err
 	}
-	local, err := readLocal(t.path)
+	local, err := t.format.read()
 	if err != nil {
 		return err
 	}
 	if local.exists {
-		if local.hash == md5Hex(data) {
+		if local.hash == domain.ContentHash(data) {
 			return &domain.Error{Kind: domain.KindInvalidInput, Message: "The save is already that backup."}
 		}
 		if err := s.backupSave(t.romID, t.path, local.data); err != nil {
 			return err
 		}
 	}
-	if err := writeAtomic(t.path, data); err != nil {
+	if err := t.format.write(data); err != nil {
 		return err
 	}
 	s.log.Info("save backup restored", "rom_id", t.romID, "backup", name)
