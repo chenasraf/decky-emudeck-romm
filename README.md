@@ -1,46 +1,61 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="EmuDeck RomM Sync" width="100%">
+</p>
+
 # EmuDeck RomM Sync
 
-A [Decky Loader](https://decky.xyz) plugin that turns a [RomM](https://romm.app) server into a
-library for an [EmuDeck](https://www.emudeck.com) install: it places ROMs and BIOS in EmuDeck's
-folders and keeps saves in sync with RomM.
+Browse your [RomM](https://romm.app) library from your Steam Deck, download games straight into
+[EmuDeck](https://www.emudeck.com)'s folders, and keep your saves in sync with RomM, all from the
+Quick Access Menu, without leaving Gaming Mode.
 
-## Layout
+## What it does
 
-- `src/` — the frontend (TypeScript, React), shown in the Quick Access Menu.
-- `main.py` — supervises the backend binary and relays calls to it
-  ([ADR 1](docs/adr/0001-stdio-json-rpc-relay.md)).
-- `backend/` — the Go backend, a self-contained module built into `bin/backend-amd64` and
-  `bin/backend-arm64`. `main.py` picks one by CPU architecture.
+- **Your whole RomM library on the Deck.** Browse by platform or collection, search by title, and
+  open a full-screen library with covers.
+- **One-press downloads.** Games land in the right EmuDeck folder, extracted or kept zipped as the
+  system needs, multi-disc games bundled into a single playlist entry, ready for ES-DE and Steam ROM
+  Manager.
+- **BIOS files included.** Missing BIOS for a platform download with its first game.
+- **Save sync.** Saves from RetroArch, melonDS, mGBA, RMG and DuckStation upload to RomM as you play
+  and download on your other devices. Conflicts are never resolved behind your back, and overwritten
+  saves are kept as backups.
+- **Updates.** When a game's files change on RomM, the plugin offers the update, and your save
+  follows the game even when its name changes.
+- **Games you already have.** Find my games matches the ROMs already on your Deck against RomM, so
+  the plugin can manage them or sync their saves.
+- **Safe by design.** The plugin never replaces or deletes a file it didn't download, and never
+  deletes a save RomM doesn't hold.
 
-## Development
+## Requirements
 
-Requirements: Node with pnpm, Go, Docker, [lefthook](https://lefthook.dev) and
-[golangci-lint](https://golangci-lint.run).
+- A Steam Deck (or another SteamOS/Linux handheld) with [Decky Loader](https://decky.xyz).
+- [EmuDeck](https://www.emudeck.com), set up with ES-DE.
+- A [RomM](https://romm.app) server, version 5.1.0 or newer, reachable from the Deck.
 
-```sh
-pnpm install
-make install-hooks
-pnpm dev         # the plugin in a browser at http://localhost:5174, backed by the real main.py and backend
-make build       # frontend into dist/, backend binaries into backend/out/
-make test
-make lint
-make package     # the installable zip into out/, built like the plugin store does (needs the decky CLI)
-make deploy      # build, copy onto a Steam Deck over SSH and reload Decky (DECK=deck@deck)
-```
+## Install
 
-`make deploy` needs SSH on the Deck, set up once in Desktop Mode: set a password with `passwd`, then
-run `sudo systemctl enable --now sshd`. From then on the Deck can stay in Gaming Mode; each deploy
-restarts Decky, not Steam. It asks for the Deck's sudo password, unless `DECK_PWD` holds it.
+1. Download `decky-emudeck-romm.zip` from the
+   [latest release](https://github.com/chenasraf/decky-emudeck-romm/releases/latest).
+2. In Decky's settings, turn on **Developer mode**, then in the **Developer** tab choose **Install
+   Plugin from ZIP** and pick the file.
+3. Open the Quick Access Menu, choose **EmuDeck RomM Sync** and press **Set up RomM**.
 
-`pnpm dev` runs `dev/bridge.py`, which loads `main.py` with a stand-in for Decky's `decky` module
-(its folders live in `dev/.data/`) and builds the backend for your machine. `@decky/api` and
-`@decky/ui` are swapped for browser versions in `dev/mocks/`, so the UI is close to the Quick Access
-Menu but not pixel-exact. Editing Go code rebuilds and restarts the backend; editing `main.py`
-restarts the bridge. The page's **Kill backend** button shows the supervisor recovering.
+The [getting started guide](docs/getting-started.md) walks through setup and signing in.
 
-The RPC contract lives in `backend/internal/adapters/rpc/schema`. After changing it, run
-`pnpm generate` to regenerate `src/rpc/schema.gen.ts`, and bump `ProtocolVersion` there and
-`PROTOCOL_VERSION` in `main.py` for incompatible changes.
+## Documentation
+
+- [Getting started](docs/getting-started.md): installing, connecting to RomM, signing in
+- [Browsing the library](docs/library.md)
+- [Downloading games](docs/downloads.md): where games go, archives, multi-disc games, BIOS, ES-DE
+- [Managing games](docs/managing-games.md): deleting, updates, Find my games, games you already had
+- [Save sync](docs/save-sync.md): supported emulators, conflicts, slots, backups
+- [Settings and plugin data](docs/settings.md)
+- [FAQ and troubleshooting](docs/faq.md)
+
+## Contributing
+
+Bug reports and pull requests are welcome. [DEVELOPMENT.md](DEVELOPMENT.md) explains how the plugin
+is built and how to run it locally.
 
 ## License
 
