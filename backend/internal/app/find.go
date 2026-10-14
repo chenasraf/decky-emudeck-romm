@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -260,17 +261,18 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 	hashed := 0
 	last := time.Now()
 	for _, w := range work {
-		// Each of RomM's files this entry holds, by ROM id, then by file id.
-		hits := map[int]map[int]adoptFile{}
+		// The files in this entry holding each of RomM's files, by ROM id, then by file id. Files
+		// of the same content, such as a disc's identical audio tracks, each hold all of them.
+		hits := map[int]map[int][]adoptFile{}
 		for _, path := range w.files {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
 			for _, h := range d.matchFile(path, byHash) {
 				if hits[h.romID] == nil {
-					hits[h.romID] = map[int]adoptFile{}
+					hits[h.romID] = map[int][]adoptFile{}
 				}
-				hits[h.romID][h.file.file.ID] = h.file
+				hits[h.romID][h.file.file.ID] = append(hits[h.romID][h.file.file.ID], h.file)
 			}
 			hashed++
 			if time.Since(last) >= progressEvery {
@@ -447,7 +449,7 @@ func (d *Downloads) matchFile(path string, byHash map[string][]serverFile) []fil
 
 // wholeGame picks the game an entry holds every game file of, if any. A game more than one entry
 // holds goes to the first.
-func (d *Downloads) wholeGame(ctx context.Context, path string, hits map[int]map[int]adoptFile, games map[int][]domain.ROMFile, claimed map[int]bool) (foundGame, bool) {
+func (d *Downloads) wholeGame(ctx context.Context, path string, hits map[int]map[int][]adoptFile, games map[int][]domain.ROMFile, claimed map[int]bool) (foundGame, bool) {
 	ids := make([]int, 0, len(hits))
 	for id := range hits {
 		ids = append(ids, id)
@@ -458,17 +460,46 @@ func (d *Downloads) wholeGame(ctx context.Context, path string, hits map[int]map
 		if claimed[id] || len(hits[id]) != len(game) {
 			continue
 		}
+		files, ok := assignFiles(game, hits[id])
+		if !ok {
+			continue
+		}
 		rom, _, err := d.lookup(ctx, id)
 		if err != nil {
 			continue
 		}
-		files := make([]adoptFile, 0, len(game))
-		for _, f := range game {
-			files = append(files, hits[id][f.ID])
-		}
 		return foundGame{FoundGame: FoundGame{ROMID: id, Name: rom.Name, Path: path}, files: files}, true
 	}
 	return foundGame{}, false
+}
+
+// assignFiles gives each of game's files a file on disk of its own from those holding its content,
+// the one of the same name first. ok is unset when there are too few to go round.
+func assignFiles(game []domain.ROMFile, hits map[int][]adoptFile) ([]adoptFile, bool) {
+	files := make([]adoptFile, len(game))
+	used := map[string]bool{}
+	pick := func(i int, sameName bool) {
+		for _, c := range hits[game[i].ID] {
+			if used[c.path] || (sameName && filepath.Base(c.path) != path.Base(game[i].Name)) {
+				continue
+			}
+			files[i], used[c.path] = c, true
+			return
+		}
+	}
+	for _, sameName := range []bool{true, false} {
+		for i := range game {
+			if files[i].path == "" {
+				pick(i, sameName)
+			}
+		}
+	}
+	for _, f := range files {
+		if f.path == "" {
+			return nil, false
+		}
+	}
+	return files, true
 }
 
 // AdoptFailure is a found game Adopt all couldn't adopt, and why.

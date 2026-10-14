@@ -144,6 +144,39 @@ func TestFindPrefersTheCopyWhereTheGameBelongs(t *testing.T) {
 	}
 }
 
+// A disc image often has audio tracks with the same content. Each of RomM's tracks is matched to
+// its own file, the one of the same name, so adopting never records one file twice.
+func TestFindGivesIdenticalTracksTheirOwnFiles(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	silence := []byte("the same audio track")
+	f.server.mu.Lock()
+	f.server.files[1] = []domain.ROMFile{
+		{ID: 10, Name: "ct.cue", Path: "ct.cue", SizeBytes: 3, Category: "game", SHA1: sha1Hex("cue")},
+		{ID: 12, Name: "ct (Track 2).bin", Path: "ct (Track 2).bin", SizeBytes: int64(len(silence)), Category: "game", SHA1: sha1Hex(string(silence))},
+		{ID: 14, Name: "ct (Track 4).bin", Path: "ct (Track 4).bin", SizeBytes: int64(len(silence)), Category: "game", SHA1: sha1Hex(string(silence))},
+	}
+	f.server.mu.Unlock()
+	f.snesFile(t, "Chrono/ct.cue", []byte("cue"))
+	track2 := f.snesFile(t, "Chrono/ct (Track 2).bin", silence)
+	track4 := f.snesFile(t, "Chrono/ct (Track 4).bin", silence)
+
+	if s := f.findDone(t); len(s.Found) != 1 || s.Found[0].ROMID != 1 {
+		t.Fatalf("found %+v", s.Found)
+	}
+	if err := f.downloads.Adopt(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	rec, _, _ := f.owned.Owned(ctx, 1)
+	paths := map[int]string{}
+	for i, p := range rec.Files {
+		paths[rec.Snapshot[i].FileID] = p.Path
+	}
+	if paths[12] != track2 || paths[14] != track4 {
+		t.Fatalf("files %v", paths)
+	}
+}
+
 func TestAdoptEveryFoundGame(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	ctx := context.Background()

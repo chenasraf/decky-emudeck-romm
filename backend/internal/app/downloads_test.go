@@ -6,6 +6,7 @@ import (
 	"crypto/sha1" //nolint:gosec // matches the code under test
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -197,8 +198,32 @@ func (m *memOwnership) SaveOwned(_ context.Context, rom domain.OwnedROM) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
+	if err := m.uniquePaths(rom.ROMID, rom); err != nil {
+		return err
+	}
 	m.roms[rom.ROMID] = rom
 	delete(m.updates, rom.ROMID)
+	return nil
+}
+
+// uniquePaths refuses a record holding a file twice, or one another game holds, as state.db's
+// owned_files does. replaced is the record rom takes the place of.
+func (m *memOwnership) uniquePaths(replaced int, rom domain.OwnedROM) error {
+	seen := map[string]bool{}
+	for id, other := range m.roms {
+		if id == replaced || id == rom.ROMID {
+			continue
+		}
+		for _, f := range other.Files {
+			seen[f.Path] = true
+		}
+	}
+	for _, f := range rom.Files {
+		if seen[f.Path] {
+			return fmt.Errorf("UNIQUE constraint failed: owned_files.path (%s)", f.Path)
+		}
+		seen[f.Path] = true
+	}
 	return nil
 }
 
@@ -220,6 +245,9 @@ func (m *memOwnership) DeleteOwned(_ context.Context, id int) error {
 func (m *memOwnership) MoveOwned(_ context.Context, from int, rom domain.OwnedROM) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.uniquePaths(from, rom); err != nil {
+		return err
+	}
 	delete(m.roms, from)
 	m.roms[rom.ROMID] = rom
 	return nil
