@@ -46,6 +46,9 @@ func TestRepeatedFailureLoggedOnce(t *testing.T) {
 
 func TestRestoreBackup(t *testing.T) {
 	f := newSaveFixture(t)
+	// Every backup is taken in the same millisecond, so none may overwrite another.
+	at := time.Now()
+	f.saves.now = func() time.Time { return at }
 	f.writeSave(t, "old progress", time.Now().Add(-time.Hour))
 	f.sync(t)
 	f.romm.otherDevice(1, "snes9x", []byte("newer progress"))

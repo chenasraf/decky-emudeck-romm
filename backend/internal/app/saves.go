@@ -1016,7 +1016,19 @@ func (s *Saves) backupSave(id int, path string, data []byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	name := s.now().UTC().Format(backupTime) + filepath.Ext(path)
+	// Two backups within a millisecond would share a name; the later one takes the next free
+	// millisecond so neither is lost and names still sort in the order they were taken.
+	at := s.now().UTC()
+	name := at.Format(backupTime) + filepath.Ext(path)
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, name)); errors.Is(err, os.ErrNotExist) {
+			break
+		} else if err != nil {
+			return err
+		}
+		at = at.Add(time.Millisecond)
+		name = at.Format(backupTime) + filepath.Ext(path)
+	}
 	if err := writeAtomic(filepath.Join(dir, name), data); err != nil {
 		return err
 	}
