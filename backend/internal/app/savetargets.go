@@ -209,6 +209,13 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 	}
 	t.path = filepath.Join(saves, file+rule.Ext)
 	t.format = rawFile{path: t.path}
+	if format, ok := domain.GBSaveFormat(rule.Emulator.ID, tag); ok && slices.Contains(domain.GBSystems, system.Folder) {
+		cart, err := s.gbCart(entry)
+		if err != nil {
+			return saveTarget{}, "The game's ROM couldn't be read to tell its cartridge, which says how its save is kept: " + err.Error(), nil
+		}
+		t.format = gbSave{path: t.path, format: format, cart: cart, tag: tag, now: s.now}
+	}
 	return t, "", nil
 }
 

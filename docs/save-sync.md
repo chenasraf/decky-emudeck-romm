@@ -24,6 +24,17 @@ Ryujinx, don't sync their saves; their page says so.
 
 Save states sync too, for Game Boy Advance games: see [Save states](#save-states).
 
+### Game Boy and Game Boy Color
+
+Each emulator keeps a Game Boy save its own way, so the plugin converts it between them, reading the
+game's ROM to tell what the cartridge holds. A save from RetroArch (any of its Game Boy cores), mGBA
+or RomM's web player loads in whichever of them plays the game on the Deck.
+
+The cartridge clock, which games like Pokémon Gold, Silver and Crystal run on, syncs with the save:
+RetroArch keeps it in a `.rtc` file beside the `.srm`, mGBA inside its `.sav`, and on RomM it
+follows the save's data, where the web player ignores it. The web player keeps no clock of its own,
+so a save from it leaves the Deck's clock running as it was.
+
 ## When saves sync
 
 - **When you save in a game**: the save uploads a few seconds after the emulator finishes writing

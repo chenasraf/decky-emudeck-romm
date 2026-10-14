@@ -9,7 +9,7 @@ require (
 	github.com/ZaparooProject/go-gameid v0.2.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/chenasraf/saveporter v0.1.0
+	github.com/chenasraf/saveporter v0.2.0
 	github.com/fsnotify/fsnotify v1.10.1
 	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.59.0

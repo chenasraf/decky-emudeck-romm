@@ -18,7 +18,7 @@ Quick Access Menu, without leaving Gaming Mode.
 - **BIOS files included.** Missing BIOS for a platform download with its first game.
 - **Save sync.** Saves from RetroArch, melonDS, mGBA, RMG and DuckStation upload to RomM as you play
   and download on your other devices. Conflicts are never resolved behind your back, and overwritten
-  saves are kept as backups.
+  saves are kept as backups. Game Boy saves convert between emulators, cartridge clock included.
 - **Save state sync.** Game Boy Advance save states sync with RomM both ways, so a game started in
   RomM's web player picks up on the Deck, and back.
 - **Updates.** When a game's files change on RomM, the plugin offers the update, and your save
