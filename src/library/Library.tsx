@@ -22,6 +22,7 @@ import {
   useEffect,
   useState,
 } from 'react'
+import { FaBookOpen, FaLayerGroup, FaListUl, FaSearch, FaSyncAlt } from 'react-icons/fa'
 
 import { call } from '../backend'
 import { usePlatformBios } from '../bios'
@@ -73,24 +74,40 @@ const name: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whit
 
 const gameName: CSSProperties = { ...name, flex: '1 1 auto', textAlign: 'left' }
 
+const iconLabel: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10 }
+
+/** A button's label led by its icon. */
+export function IconLabel({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <span style={iconLabel}>
+      {icon}
+      {children}
+    </span>
+  )
+}
+
 function Row({
   label,
   value,
   cover,
+  icon,
   onClick,
 }: {
   label: string
   value?: ReactNode
   /** The game whose small cover leads the row. */
   cover?: { id: number; hasCover: boolean }
+  icon?: ReactNode
   onClick: () => void
 }) {
+  const lead = cover !== undefined || icon !== undefined
   return (
     <PanelSectionRow>
       <ButtonItem layout="below" onClick={onClick}>
-        <span style={cover ? { ...row, alignItems: 'center' } : row}>
+        <span style={lead ? { ...row, alignItems: 'center' } : row}>
           {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} />}
-          <span style={cover ? gameName : name}>{label}</span>
+          {icon}
+          <span style={lead ? gameName : name}>{label}</span>
           {value !== undefined && <span style={count}>{value}</span>}
         </span>
       </ButtonItem>
@@ -98,7 +115,7 @@ function Row({
   )
 }
 
-function Back({ onBack }: { onBack: () => void }) {
+export function Back({ onBack }: { onBack: () => void }) {
   return (
     <PanelSectionRow>
       <ButtonItem layout="below" onClick={onBack}>
@@ -194,22 +211,17 @@ export function LibrarySection({
         </Field>
       </PanelSectionRow>
       {catalog.games > 0 && (
-        <>
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={() => {
-                Navigation.CloseSideMenus()
-                Navigation.Navigate(LIBRARY_ROUTE)
-              }}
-            >
-              Open RomM library
-            </ButtonItem>
-          </PanelSectionRow>
-          <Row label="Search" onClick={onSearch} />
-          <Row label="Browse library" onClick={onBrowse} />
-          <Row label="Collections" onClick={onCollections} />
-        </>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            onClick={() => {
+              Navigation.CloseSideMenus()
+              Navigation.Navigate(LIBRARY_ROUTE)
+            }}
+          >
+            <IconLabel icon={<FaBookOpen />}>Open RomM library</IconLabel>
+          </ButtonItem>
+        </PanelSectionRow>
       )}
       <PanelSectionRow>
         <ButtonItem
@@ -217,9 +229,16 @@ export function LibrarySection({
           disabled={catalog.refreshing || connection.state === 'signed_out'}
           onClick={() => void refreshLibrary(true)}
         >
-          Refresh library
+          <IconLabel icon={<FaSyncAlt />}>Refresh library</IconLabel>
         </ButtonItem>
       </PanelSectionRow>
+      {catalog.games > 0 && (
+        <>
+          <Row label="Search" icon={<FaSearch />} onClick={onSearch} />
+          <Row label="Quick browse" icon={<FaListUl />} onClick={onBrowse} />
+          <Row label="Collections" icon={<FaLayerGroup />} onClick={onCollections} />
+        </>
+      )}
     </PanelSection>
   )
 }

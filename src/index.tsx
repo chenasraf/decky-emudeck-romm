@@ -8,8 +8,8 @@ import {
   staticClasses,
   ToggleField,
 } from '@decky/ui'
-import { useEffect, useState } from 'react'
-import { FaCompactDisc } from 'react-icons/fa'
+import { type ReactNode, useEffect, useState } from 'react'
+import { FaCog, FaCompactDisc, FaServer } from 'react-icons/fa'
 
 import {
   BACKEND_STATUS_EVENT,
@@ -27,17 +27,19 @@ import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
 import { watchDownloads } from './downloads'
 import { rescanFor, useESDENotice, watchESDE } from './esde'
 import {
+  Back,
   CollectionsView,
   DownloadsSection,
   type GameSource,
   GamesView,
   GameView,
+  IconLabel,
   LibrarySection,
   PlatformsView,
   SearchView,
 } from './library/Library'
 import { LibraryPage } from './library/LibraryPage'
-import type { GameFilter, Preferences } from './rpc/schema.gen'
+import type { GameFilter, InstallState, Preferences } from './rpc/schema.gen'
 import { useSaveActivity, useSaveSummary, watchSaves } from './saves'
 import { asRpcError } from './setup/common'
 import { SetupPage } from './setup/SetupPage'
@@ -50,6 +52,31 @@ const STATE_LABELS: Record<BackendState, string> = {
   down: 'Stopped',
   refused: 'Incompatible',
   stopped: 'Stopped',
+}
+
+const DOT_COLORS = { ok: '#59bf40', warn: '#e0a030', bad: '#d94141' }
+
+/** A status word led by a dot in its color. */
+function StatusDot({ tone, children }: { tone: keyof typeof DOT_COLORS; children: ReactNode }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: '50%',
+          background: DOT_COLORS[tone],
+          flexShrink: 0,
+        }}
+      />
+      {children}
+    </span>
+  )
+}
+
+/** A server URL, broken anywhere: it has no spaces to wrap at. */
+function ServerURL({ url }: { url?: string }) {
+  return <span style={{ wordBreak: 'break-all' }}>{url}</span>
 }
 
 function openSetup() {
@@ -87,11 +114,14 @@ function ServerSection() {
       <PanelSection title="RomM">
         <PanelSectionRow>
           <Field
-            label="Signed out"
+            label="Status"
             description="RomM no longer accepts this Deck's sign-in. Work with RomM is paused until you sign in again."
           >
-            {status.serverUrl}
+            <StatusDot tone="bad">Signed out</StatusDot>
           </Field>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <Field label="Server" description={<ServerURL url={status.serverUrl} />} />
         </PanelSectionRow>
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={openSetup}>
@@ -107,12 +137,14 @@ function ServerSection() {
     <PanelSection title="RomM">
       <PanelSectionRow>
         <Field label="Status" description={status.problem?.message}>
-          {connected ? 'Connected' : 'Offline'}
+          <StatusDot tone={connected ? 'ok' : 'warn'}>
+            {connected ? 'Connected' : 'Offline'}
+          </StatusDot>
         </Field>
       </PanelSectionRow>
       <PanelSectionRow>
-        <Field label="Server" description={connected ? `RomM ${status.version}` : undefined}>
-          {status.serverUrl}
+        <Field label="Server" description={<ServerURL url={status.serverUrl} />}>
+          {connected && status.version ? `RomM ${status.version}` : undefined}
         </Field>
       </PanelSectionRow>
       {status.disabledFeatures?.map((d) => (
@@ -122,11 +154,6 @@ function ServerSection() {
           </Field>
         </PanelSectionRow>
       ))}
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={openSetup}>
-          Server settings
-        </ButtonItem>
-      </PanelSectionRow>
     </PanelSection>
   )
 }
@@ -309,7 +336,52 @@ function RecentSaveActivity({ onOpen }: { onOpen: (id: number) => void }) {
   )
 }
 
-function SettingsSection() {
+/** Whether the EmuDeck section on the Settings page warns about something. */
+function setupNeedsAttention(state: InstallState | null, esdeRescan: boolean): boolean {
+  if (!state) return false
+  return (
+    !state.emudeck.found ||
+    (state.esde.settingsFound && !state.esde.romDirectoryMatches) ||
+    esdeRescan ||
+    state.esde.parseGamelistOnly
+  )
+}
+
+/** The way to the Settings page, saying so when EmuDeck's section there warns about something. */
+function SettingsLink({ onOpen }: { onOpen: () => void }) {
+  const state = useInstallState()
+  const esde = useESDENotice()
+  return (
+    <PanelSection>
+      {setupNeedsAttention(state, esde !== null) && (
+        <PanelSectionRow>
+          <Field
+            label="⚠ EmuDeck needs attention"
+            description="Settings says what, and how to fix it."
+          />
+        </PanelSectionRow>
+      )}
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={onOpen}>
+          <IconLabel icon={<FaCog />}>Settings</IconLabel>
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
+  )
+}
+
+/** The QAM's Settings page: preferences, then where EmuDeck and the backend stand. */
+function SettingsView({ onBack }: { onBack: () => void }) {
+  return (
+    <>
+      <SettingsSection onBack={onBack} />
+      <InstallSection />
+      <BackendSection />
+    </>
+  )
+}
+
+function SettingsSection({ onBack }: { onBack: () => void }) {
   const connection = useConnection()
   const [prefs, setPrefs] = useState<Preferences | null>(null)
 
@@ -317,10 +389,32 @@ function SettingsSection() {
     call('get_preferences').then(setPrefs, () => setPrefs(null))
   }, [])
 
-  if (!prefs || !connection || connection.state === 'not_set_up') return null
-
   return (
     <PanelSection title="Settings">
+      <Back onBack={onBack} />
+      {connection && connection.state !== 'not_set_up' && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={openSetup}>
+            <IconLabel icon={<FaServer />}>Server settings</IconLabel>
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
+      {prefs && connection && connection.state !== 'not_set_up' && (
+        <SettingsToggles prefs={prefs} setPrefs={setPrefs} />
+      )}
+    </PanelSection>
+  )
+}
+
+function SettingsToggles({
+  prefs,
+  setPrefs,
+}: {
+  prefs: Preferences
+  setPrefs: (p: Preferences) => void
+}) {
+  return (
+    <>
       <PanelSectionRow>
         <ToggleField
           label="Download BIOS with games"
@@ -354,7 +448,7 @@ function SettingsSection() {
           }}
         />
       </PanelSectionRow>
-    </PanelSection>
+    </>
   )
 }
 
@@ -400,6 +494,7 @@ type View =
   | { name: 'games'; source: GameSource; filter: GameFilter; game?: number }
   | { name: 'search'; query: string; game?: number }
   | { name: 'game'; id: number }
+  | { name: 'settings' }
 
 function Content() {
   const [view, setView] = useState<View>({ name: 'home' })
@@ -474,19 +569,20 @@ function Content() {
   if (view.name === 'game') {
     return <GameView id={view.id} onBack={() => setView({ name: 'home' })} />
   }
+  if (view.name === 'settings') {
+    return <SettingsView onBack={() => setView({ name: 'home' })} />
+  }
   return (
     <>
-      <ServerSection />
-      <DownloadsSection onOpen={(id) => setView({ name: 'game', id })} />
       <LibrarySection
         onBrowse={() => setView({ name: 'platforms' })}
         onCollections={() => setView({ name: 'collections' })}
         onSearch={() => setView({ name: 'search', query: '' })}
       />
+      <ServerSection />
+      <DownloadsSection onOpen={(id) => setView({ name: 'game', id })} />
       <SaveSyncSection onOpen={(id) => setView({ name: 'game', id })} />
-      <SettingsSection />
-      <InstallSection />
-      <BackendSection />
+      <SettingsLink onOpen={() => setView({ name: 'settings' })} />
     </>
   )
 }
