@@ -107,6 +107,9 @@ export interface Methods {
   cancel_device_pairing: Method<CancelDevicePairingParams, CancelDevicePairingResult>;
   move_server: Method<MoveServerParams, MoveServerResult>;
   forget_server: Method<ForgetServerParams, ConnectionStatus>;
+  sign_out: Method<SignOutParams, ConnectionStatus>;
+  clear_cache: Method<ClearCacheParams, ClearCacheResult>;
+  restore_state_backup: Method<RestoreStateBackupParams, RestoreStateBackupResult>;
   install_state: Method<InstallStateParams, InstallState>;
   catalog_status: Method<CatalogStatusParams, CatalogStatus>;
   refresh_catalog: Method<RefreshCatalogParams, CatalogStatus>;
@@ -313,6 +316,29 @@ export interface MoveServerResult {
  * cancelling queued downloads. Files on disk stay, User-managed.
  */
 export interface ForgetServerParams {
+}
+/**
+ * SignOutParams drops the token, keeping the server, its Device and every record tied to it, so
+ * signing in again carries on where this left off.
+ */
+export interface SignOutParams {
+}
+/**
+ * ClearCacheParams empties the library cache and the cover cache, then refreshes the library from
+ * RomM. Records of downloaded games, settings and saves stay.
+ */
+export interface ClearCacheParams {
+}
+export interface ClearCacheResult {
+}
+/**
+ * RestoreStateBackupParams puts back the newest backup of the plugin's records this version reads,
+ * when they're from a newer version (newer_data). The newer file is kept aside. Changes since that
+ * backup are lost. Restart the backend after to use it.
+ */
+export interface RestoreStateBackupParams {
+}
+export interface RestoreStateBackupResult {
 }
 export interface StartDevicePairingParams {
   server: Server;

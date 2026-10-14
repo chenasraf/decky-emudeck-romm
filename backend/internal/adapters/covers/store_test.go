@@ -77,6 +77,31 @@ func TestReopenKeepsIndex(t *testing.T) {
 	}
 }
 
+func TestClear(t *testing.T) {
+	dir := t.TempDir()
+	s := open(t, dir)
+	for id := 1; id <= 2; id++ {
+		if err := s.Put(id, domain.CoverSmall, "/a.png", []byte("cover")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Clear(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Stale(1, domain.CoverSmall); ok || s.Size() != 0 {
+		t.Fatalf("after clear: %v, size %d", ok, s.Size())
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("files left: %v", entries)
+	}
+	if err := s.Put(1, domain.CoverSmall, "/a.png", []byte("again")); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, _ := s.Get(1, domain.CoverSmall, "/a.png"); !ok || string(got) != "again" {
+		t.Fatalf("after refill: %q, %v", got, ok)
+	}
+}
+
 func TestTrimEvictsLeastRecentlyUsed(t *testing.T) {
 	s := open(t, t.TempDir())
 	for id := 1; id <= 4; id++ {

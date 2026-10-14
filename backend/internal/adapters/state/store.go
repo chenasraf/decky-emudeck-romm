@@ -272,6 +272,50 @@ func Backups(path string) ([]Backup, error) {
 	return out, nil
 }
 
+// RestoreBackup puts the newest backup this binary can read in place of the state.db at path,
+// which must be closed. The file it replaces, from a newer version of the plugin, is kept beside it
+// as state.db.newer-<version> with its journal, for a later update to pick up by hand.
+func RestoreBackup(path string) (Backup, error) {
+	backups, err := Backups(path)
+	if err != nil {
+		return Backup{}, err
+	}
+	i := slices.IndexFunc(backups, func(b Backup) bool { return b.Version <= SchemaVersion() })
+	if i < 0 {
+		return Backup{}, &domain.Error{Kind: domain.KindNotFound, Message: "There's no backup of the plugin's data this version can read."}
+	}
+	b := backups[i]
+	aside := path + ".newer"
+	if v, err := schemaOf(path); err == nil {
+		aside = fmt.Sprintf("%s.newer-%d", path, v)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(path+suffix, aside+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return Backup{}, fmt.Errorf("set aside state.db: %w", err)
+		}
+	}
+	data, err := os.ReadFile(b.Path)
+	if err != nil {
+		return Backup{}, err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return Backup{}, fmt.Errorf("restore state.db: %w", err)
+	}
+	return b, nil
+}
+
+// schemaOf reads the schema version of the state.db at path without changing it.
+func schemaOf(path string) (int, error) {
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = db.Close() }()
+	var v int
+	err = db.QueryRow("PRAGMA user_version").Scan(&v)
+	return v, err
+}
+
 func (s *Store) Close() error { return s.db.Close() }
 
 // SaveOwned writes the record of a ROM the plugin placed, replacing any earlier one.

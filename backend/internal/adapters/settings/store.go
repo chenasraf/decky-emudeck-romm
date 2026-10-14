@@ -203,7 +203,8 @@ type fileServer struct {
 	SignedOut       bool     `json:"signedOut,omitempty"`
 }
 
-// SignIn returns the saved sign-in, or nil when there is no server or no token.
+// SignIn returns the saved sign-in, or nil when there is no server, or no token while signed in. A
+// sign-in the user signed out of keeps its server and has no token.
 func (s *Store) SignIn() (*domain.SignIn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -212,7 +213,7 @@ func (s *Store) SignIn() (*domain.SignIn, error) {
 		return nil, err
 	}
 	token, err := s.token()
-	if err != nil || token == "" {
+	if err != nil || token == "" && !f.Server.SignedOut {
 		return nil, err
 	}
 	return &domain.SignIn{
@@ -243,6 +244,40 @@ func (s *Store) SaveSignIn(in domain.SignIn) error {
 		SignedOut:       in.SignedOut,
 	}
 	return s.save(f)
+}
+
+// SignOut drops the token and marks the sign-in Signed out, keeping its server and Device so the
+// user can sign in to it again.
+func (s *Store) SignOut() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil || f.Server == nil {
+		return err
+	}
+	f.Server.SignedOut = true
+	if err := s.save(f); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(s.dir, tokenFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove token: %w", err)
+	}
+	return nil
+}
+
+// Reset deletes every setting and the token.
+func (s *Store) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.checkDir(); err != nil {
+		return err
+	}
+	for _, name := range []string{settingsFile, tokenFile} {
+		if err := os.Remove(filepath.Join(s.dir, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // ForgetSignIn drops the saved server and its token. Every other setting stays.

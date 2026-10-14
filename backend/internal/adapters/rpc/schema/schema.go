@@ -83,6 +83,9 @@ type Methods struct {
 	CancelDevicePairing Method[CancelDevicePairingParams, CancelDevicePairingResult] `json:"cancel_device_pairing"`
 	MoveServer          Method[MoveServerParams, MoveServerResult]                   `json:"move_server"`
 	ForgetServer        Method[ForgetServerParams, ConnectionStatus]                 `json:"forget_server"`
+	SignOut             Method[SignOutParams, ConnectionStatus]                      `json:"sign_out"`
+	ClearCache          Method[ClearCacheParams, ClearCacheResult]                   `json:"clear_cache"`
+	RestoreStateBackup  Method[RestoreStateBackupParams, RestoreStateBackupResult]   `json:"restore_state_backup"`
 	InstallState        Method[InstallStateParams, InstallState]                     `json:"install_state"`
 	CatalogStatus       Method[CatalogStatusParams, CatalogStatus]                   `json:"catalog_status"`
 	RefreshCatalog      Method[RefreshCatalogParams, CatalogStatus]                  `json:"refresh_catalog"`
@@ -258,6 +261,23 @@ type MoveServerResult struct {
 // ForgetServerParams drops the sign-in, the library and every record tied to the server,
 // cancelling queued downloads. Files on disk stay, User-managed.
 type ForgetServerParams struct{}
+
+// SignOutParams drops the token, keeping the server, its Device and every record tied to it, so
+// signing in again carries on where this left off.
+type SignOutParams struct{}
+
+// ClearCacheParams empties the library cache and the cover cache, then refreshes the library from
+// RomM. Records of downloaded games, settings and saves stay.
+type ClearCacheParams struct{}
+
+type ClearCacheResult struct{}
+
+// RestoreStateBackupParams puts back the newest backup of the plugin's records this version reads,
+// when they're from a newer version (newer_data). The newer file is kept aside. Changes since that
+// backup are lost. Restart the backend after to use it.
+type RestoreStateBackupParams struct{}
+
+type RestoreStateBackupResult struct{}
 
 type StartDevicePairingParams struct {
 	Server Server `json:"server"`

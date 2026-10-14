@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -45,6 +46,8 @@ type CoverCache interface {
 	// Trim evicts the least recently used covers down to limit bytes, never those of ROMs keep
 	// holds on to.
 	Trim(limit int64, keep func(romID int) bool)
+	// Clear deletes every cover.
+	Clear() error
 }
 
 // Covers fetches covers from the Server on first display and serves them from a disk cache after,
@@ -209,6 +212,15 @@ func (c *Covers) Prefetch(ids ...int) {
 		}
 		wg.Wait()
 	}()
+}
+
+// Clear deletes every cached cover, then fetches those of Plugin-owned ROMs again.
+func (c *Covers) Clear() error {
+	if err := c.cache.Clear(); err != nil {
+		return fmt.Errorf("clear covers: %w", err)
+	}
+	c.PrefetchOwned()
+	return nil
 }
 
 // PrefetchOwned fetches the covers of every Plugin-owned ROM the cache lacks.

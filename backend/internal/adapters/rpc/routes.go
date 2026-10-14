@@ -22,6 +22,9 @@ type Services struct {
 	Servers    *app.ServerSwitch
 	Media      *app.Media
 	Saves      *app.Saves
+	// RestoreState puts back the newest state.db backup this version reads. It's nil unless
+	// state.db was refused as newer, the only time it's closed and may be replaced.
+	RestoreState func() error
 }
 
 // Routes registers a handler for every method in schema.Methods.
@@ -110,6 +113,35 @@ func Routes(s *Server, version string, svc Services) {
 
 	Register(s, "forget_server", func(ctx context.Context, _ schema.ForgetServerParams) (schema.ConnectionStatus, error) {
 		status, err := svc.Servers.Forget(ctx)
+		if err != nil {
+			return schema.ConnectionStatus{}, wireError(err)
+		}
+		return toWireStatus(status), nil
+	})
+
+	Register(s, "clear_cache", func(ctx context.Context, _ schema.ClearCacheParams) (schema.ClearCacheResult, error) {
+		if err := svc.Catalog.Clear(ctx); err != nil {
+			return schema.ClearCacheResult{}, wireError(err)
+		}
+		if err := svc.Covers.Clear(); err != nil {
+			return schema.ClearCacheResult{}, wireError(err)
+		}
+		svc.Catalog.Refresh(true)
+		return schema.ClearCacheResult{}, nil
+	})
+
+	Register(s, "restore_state_backup", func(_ context.Context, _ schema.RestoreStateBackupParams) (schema.RestoreStateBackupResult, error) {
+		if svc.RestoreState == nil {
+			return schema.RestoreStateBackupResult{}, wireError(&domain.Error{Kind: domain.KindInvalidInput, Message: "The plugin's data is readable, so there's nothing to restore."})
+		}
+		if err := svc.RestoreState(); err != nil {
+			return schema.RestoreStateBackupResult{}, wireError(err)
+		}
+		return schema.RestoreStateBackupResult{}, nil
+	})
+
+	Register(s, "sign_out", func(_ context.Context, _ schema.SignOutParams) (schema.ConnectionStatus, error) {
+		status, err := conn.SignOut()
 		if err != nil {
 			return schema.ConnectionStatus{}, wireError(err)
 		}

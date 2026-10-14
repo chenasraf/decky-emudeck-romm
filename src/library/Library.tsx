@@ -39,7 +39,7 @@ import {
   FaTrashAlt,
 } from 'react-icons/fa'
 
-import { call } from '../backend'
+import { call, restartBackend } from '../backend'
 import { usePlatformBios } from '../bios'
 import { formatSize, LIBRARY_ROUTE, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
@@ -1336,6 +1336,27 @@ function DownloadDetail({ d }: { d: DownloadItem }) {
   )
 }
 
+/**
+ * Asks before going back to the plugin's data from before its last update, then restores it and
+ * restarts the backend to use it.
+ */
+function confirmRestoreState() {
+  showModal(
+    <ConfirmModal
+      strTitle="Restore backup?"
+      strDescription="The plugin's records are from a newer version of the plugin. Restoring brings back the copy it kept before that update: games downloaded or changed since may no longer be managed. The newer records are kept aside, for updating the plugin again."
+      strOKButtonText="Restore"
+      onOK={() => {
+        call('restore_state_backup').then(
+          () => restartBackend(),
+          (err: unknown) =>
+            toaster.toast({ title: "Couldn't restore", body: asRpcError(err).message }),
+        )
+      }}
+    />,
+  )
+}
+
 /** The download queue on the QAM home, or why downloading is off. Hidden while there's neither. */
 export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
   const downloads = useDownloads()
@@ -1345,6 +1366,13 @@ export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
       {downloads.problem && (
         <PanelSectionRow>
           <Field label="⚠ Downloads are off" description={downloads.problem.message} />
+        </PanelSectionRow>
+      )}
+      {downloads.problem?.data?.kind === 'newer_data' && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={confirmRestoreState}>
+            Restore backup
+          </ButtonItem>
         </PanelSectionRow>
       )}
       {downloads.held && (

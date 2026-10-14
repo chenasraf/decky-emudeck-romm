@@ -39,6 +39,8 @@ type Dialer func(server domain.Server, token string) RomM
 type Settings interface {
 	SignIn() (*domain.SignIn, error)
 	SaveSignIn(domain.SignIn) error
+	// SignOut drops the token, keeping the server as Signed out.
+	SignOut() error
 	// ForgetSignIn drops the saved server and its token.
 	ForgetSignIn() error
 }
@@ -226,6 +228,29 @@ func (c *Connection) signOut(in domain.SignIn) {
 
 	c.log.Warn("signed out", "url", out.Server.URL, "device_id", out.DeviceID, "reason", "RomM rejected the token")
 	c.events.Changed(signedOutStatus(out))
+}
+
+// SignOut signs the user out of the Server: the token goes, while the Server, its Device and every
+// record tied to them stay, so signing in again carries on where this left off. Work that needs
+// RomM pauses until then.
+func (c *Connection) SignOut() (ConnectionStatus, error) {
+	c.CancelDevicePairing(c.pairing())
+	c.mu.Lock()
+	in, err := c.settings.SignIn()
+	if err == nil && in != nil {
+		err = c.settings.SignOut()
+	}
+	c.mu.Unlock()
+	if err != nil {
+		return ConnectionStatus{}, fmt.Errorf("sign out: %w", err)
+	}
+	if in == nil {
+		return ConnectionStatus{State: NotSetUp}, nil
+	}
+	c.log.Info("signed out", "url", in.Server.URL, "reason", "the user signed out")
+	status := signedOutStatus(*in)
+	c.events.Changed(status)
+	return status, nil
 }
 
 // saveSignIn stores in, replacing any earlier sign-in, and resumes work paused while signed out.

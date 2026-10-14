@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -273,6 +274,50 @@ func TestMigrationBacksUpAndKeepsThree(t *testing.T) {
 	if _, ok, _ := b.Owned(ctx, 1); !ok {
 		t.Fatal("backup lost the record")
 	}
+}
+
+// Going back to an older version, the backup the newer one took restores, and the newer file stays
+// aside.
+func TestRestoreBackupAfterDowngrade(t *testing.T) {
+	saved := migrations
+	t.Cleanup(func() { migrations = saved })
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	s := open(t, path)
+	if err := s.SaveOwned(ctx, domain.OwnedROM{ROMID: 1, PlatformID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	if _, err := RestoreBackup(path); kindOf(err) != domain.KindNotFound {
+		t.Fatalf("with no backup: %v", err)
+	}
+
+	migrations = append(slices.Clone(saved), "CREATE TABLE extra (id INTEGER)")
+	_ = open(t, path).Close()
+	migrations = saved
+	if _, err := Open(ctx, path, discard); kindOf(err) != domain.KindNewerData {
+		t.Fatalf("want newer_data, got %v", err)
+	}
+
+	b, err := RestoreBackup(path)
+	if err != nil || b.Version != len(saved) {
+		t.Fatalf("restore %+v, %v", b, err)
+	}
+	s = open(t, path)
+	defer func() { _ = s.Close() }()
+	if _, ok, _ := s.Owned(ctx, 1); !ok {
+		t.Fatal("restored file lost the record")
+	}
+	if _, err := os.Stat(fmt.Sprintf("%s.newer-%d", path, len(saved)+1)); err != nil {
+		t.Fatalf("newer file: %v", err)
+	}
+}
+
+func kindOf(err error) domain.Kind {
+	if de, ok := errors.AsType[*domain.Error](err); ok {
+		return de.Kind
+	}
+	return ""
 }
 
 func TestForgetServerDropsEveryRecord(t *testing.T) {

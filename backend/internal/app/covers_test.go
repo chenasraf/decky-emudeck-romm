@@ -86,6 +86,14 @@ func (m *memCoverCache) Trim(_ int64, keep func(int) bool) {
 	}
 }
 
+func (m *memCoverCache) Clear() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	clear(m.covers)
+	clear(m.stale)
+	return nil
+}
+
 type coverFixture struct {
 	covers *Covers
 	server *fakeCovers

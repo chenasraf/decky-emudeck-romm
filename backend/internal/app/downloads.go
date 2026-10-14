@@ -1313,8 +1313,12 @@ func (d *Downloads) received(j *job) int64 {
 
 // staging is the folder a game's download lands in.
 func (d *Downloads) staging(id int) string {
-	return filepath.Join(d.install.State(false).EmuDeck.Root, stagingDir, strconv.Itoa(id))
+	return filepath.Join(StagingFolder(d.install.State(false).EmuDeck.Root), strconv.Itoa(id))
 }
+
+// StagingFolder is where downloads land before they go into place, in the Emulation folder at
+// root: on the same drive as the ROM folders, so placing a game is a rename.
+func StagingFolder(root string) string { return filepath.Join(root, stagingDir) }
 
 // save writes a download to state.db's queue. A download whose write fails still runs; it just
 // won't outlive the backend.

@@ -52,6 +52,18 @@ func main() {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
+	// main.py runs these with the backend stopped, so no file they delete is open.
+	switch flag.Arg(0) {
+	case "uninstall", "reset":
+		do := map[string]func(dataDirs) error{"uninstall": uninstall, "reset": reset}[flag.Arg(0)]
+		if err := do(dataDirsFromEnv(log)); err != nil {
+			log.Error(flag.Arg(0), "err", err)
+			os.Exit(1)
+		}
+		log.Info(flag.Arg(0) + " done")
+		return
+	}
+
 	if err := run(log); err != nil {
 		log.Error("exiting", "err", err)
 		os.Exit(1)
@@ -184,9 +196,19 @@ func run(log *slog.Logger) error {
 	}, runningGame,
 		filepath.Join(runtimeDir, "backups"), rpc.SaveEvents(srv), log.With("component", "saves"))
 	downloads.KeepSavesWith(saves)
+	var restoreState func() error
+	if de, ok := errors.AsType[*domain.Error](stateErr); ok && de.Kind == domain.KindNewerData {
+		restoreState = func() error {
+			b, err := statedb.RestoreBackup(filepath.Join(runtimeDir, "state.db"))
+			if err == nil {
+				stateLog.Info("restored state.db backup", "version", b.Version)
+			}
+			return err
+		}
+	}
 	rpc.Routes(srv, version, rpc.Services{
 		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde, Media: media,
-		Saves: saves,
+		Saves: saves, RestoreState: restoreState,
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)

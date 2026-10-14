@@ -1,15 +1,23 @@
-import { addEventListener, definePlugin, removeEventListener, routerHook } from '@decky/api'
+import {
+  addEventListener,
+  definePlugin,
+  removeEventListener,
+  routerHook,
+  toaster,
+} from '@decky/api'
 import {
   ButtonItem,
+  ConfirmModal,
   Field,
   Navigation,
   PanelSection,
   PanelSectionRow,
+  showModal,
   staticClasses,
   ToggleField,
 } from '@decky/ui'
 import { type ReactNode, useEffect, useState } from 'react'
-import { FaCog, FaCompactDisc, FaExchangeAlt, FaServer } from 'react-icons/fa'
+import { FaCog, FaCompactDisc, FaExchangeAlt, FaServer, FaSignOutAlt } from 'react-icons/fa'
 
 import {
   BACKEND_STATUS_EVENT,
@@ -17,10 +25,11 @@ import {
   type BackendStatus,
   backendStatus,
   call,
+  resetPluginData,
   restartBackend,
 } from './backend'
 import { watchBios } from './bios'
-import { LIBRARY_ROUTE, timeAgo } from './catalog'
+import { LIBRARY_ROUTE, refreshLibrary, timeAgo } from './catalog'
 import { SETUP_ROUTE, useConnection, watchConnection } from './connection'
 import { disabledReason, featureLabel } from './features'
 import { loadInstallState, STATUS_ROUTE, useInstallState } from './install'
@@ -116,7 +125,7 @@ function ServerSection() {
         <PanelSectionRow>
           <Field
             label="Status"
-            description="RomM no longer accepts this Deck's sign-in. Work with RomM is paused until you sign in again."
+            description="This Deck isn't signed in to RomM. Work with RomM is paused until you sign in again."
           >
             <StatusDot tone="bad">Signed out</StatusDot>
           </Field>
@@ -388,7 +397,72 @@ function SettingsView({ onBack }: { onBack: () => void }) {
       <SettingsSection onBack={onBack} />
       <InstallSection />
       <BackendSection />
+      <DataSection />
     </>
+  )
+}
+
+/** Clearing what rebuilds on its own, and resetting the plugin. */
+function DataSection() {
+  const [busy, setBusy] = useState(false)
+  const run = async (title: string, done: string, action: () => Promise<unknown>) => {
+    setBusy(true)
+    try {
+      await action()
+      void refreshLibrary()
+      toaster.toast({ title, body: done })
+    } catch (err) {
+      toaster.toast({ title, body: asRpcError(err).message })
+    }
+    setBusy(false)
+  }
+  const clearCache = () =>
+    void run('Clear cache', 'The library and covers reload from RomM.', () => call('clear_cache'))
+  const confirmReset = () =>
+    showModal(
+      <ConfirmModal
+        strTitle="Reset plugin data?"
+        strDescription={
+          <>
+            <p>
+              The plugin forgets everything: its settings, its sign-in, which games it downloaded,
+              their save backups, and downloads not yet finished. Games and saves stay on this Deck,
+              but the plugin no longer manages them: it won&apos;t update or delete them, and their
+              saves stop syncing until you link them again.
+            </p>
+            <p>This Deck stays a device on RomM. You can remove it there.</p>
+          </>
+        }
+        strOKButtonText="Reset"
+        bDestructiveWarning
+        onOK={() =>
+          void run(
+            'Reset plugin data',
+            'The plugin starts afresh. Set up RomM to use it again.',
+            () => resetPluginData(),
+          )
+        }
+      />,
+    )
+
+  return (
+    <PanelSection title="Plugin data">
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          disabled={busy}
+          onClick={clearCache}
+          description="Reloads the library and covers from RomM. Downloads, saves and settings stay."
+        >
+          Clear cache
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" disabled={busy} onClick={confirmReset}>
+          Reset plugin data
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
   )
 }
 
@@ -410,10 +484,33 @@ function SettingsSection({ onBack }: { onBack: () => void }) {
           </ButtonItem>
         </PanelSectionRow>
       )}
+      {connection && (connection.state === 'connected' || connection.state === 'offline') && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={confirmSignOut}>
+            <IconLabel icon={<FaSignOutAlt />}>Sign out</IconLabel>
+          </ButtonItem>
+        </PanelSectionRow>
+      )}
       {prefs && connection && connection.state !== 'not_set_up' && (
         <SettingsToggles prefs={prefs} setPrefs={setPrefs} />
       )}
     </PanelSection>
+  )
+}
+
+/** Asks before signing out of RomM, then signs out. */
+function confirmSignOut() {
+  showModal(
+    <ConfirmModal
+      strTitle="Sign out of RomM?"
+      strDescription="This Deck forgets its sign-in, and downloads, save sync and library refreshes pause until you sign in again. The server, your games and their records stay, so signing in again carries on where you left off."
+      strOKButtonText="Sign out"
+      onOK={() => {
+        call('sign_out').catch((err: unknown) =>
+          toaster.toast({ title: "Couldn't sign out", body: asRpcError(err).message }),
+        )
+      }}
+    />,
   )
 }
 

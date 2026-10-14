@@ -176,6 +176,20 @@ func (s *Store) Trim(limit int64, keep func(romID int) bool) {
 	}
 }
 
+// Clear deletes every cached cover.
+func (s *Store) Clear() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name := range s.files {
+		if err := os.Remove(filepath.Join(s.dir, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		s.total -= s.files[name].bytes
+		delete(s.files, name)
+	}
+	return nil
+}
+
 // Size is how many bytes the cached covers take.
 func (s *Store) Size() int64 {
 	s.mu.Lock()

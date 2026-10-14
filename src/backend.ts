@@ -20,6 +20,8 @@ const relay = callable<[method: string, params?: unknown], unknown>('call')
 
 export const backendStatus = callable<[], BackendStatus>('backend_status')
 export const restartBackend = callable<[], void>('restart_backend')
+/** Stops the backend, deletes everything the plugin knows (never games or saves), and restarts. */
+export const resetPluginData = callable<[], void>('reset_plugin_data')
 
 /** Calls a backend method through main.py's relay. */
 export async function call<M extends keyof Methods>(

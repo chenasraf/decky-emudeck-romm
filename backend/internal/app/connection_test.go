@@ -33,6 +33,17 @@ func (f *fakeSettings) SaveSignIn(in domain.SignIn) error {
 	return nil
 }
 
+func (f *fakeSettings) SignOut() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.in != nil {
+		out := *f.in
+		out.Token, out.SignedOut = "", true
+		f.in = &out
+	}
+	return nil
+}
+
 func (f *fakeSettings) ForgetSignIn() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -422,6 +433,31 @@ func TestRevokedTokenSignsOutOnce(t *testing.T) {
 	}
 	// Only the lapse itself is reported, not every check after it.
 	events.none(t)
+}
+
+// Signing out drops the token and keeps the Server and Device to sign in to again.
+func TestSignOut(t *testing.T) {
+	n := &fakeNet{heartbeats: map[string]func(domain.Server) (string, error){"https://romm.lan": version("5.4.0")}}
+	server := domain.Server{URL: "https://romm.lan"}
+	settings := &fakeSettings{in: &domain.SignIn{Server: server, Token: "rmm_x", DeviceID: "dev-1"}}
+	c, events := newConnectionWithEvents(t, settings, n)
+
+	s, err := c.SignOut()
+	if err != nil || s.State != SignedOut || s.ServerURL != server.URL {
+		t.Fatalf("sign out %+v, %v", s, err)
+	}
+	if got := events.next(t); got.State != SignedOut {
+		t.Fatalf("event %+v", got)
+	}
+	if settings.in.Token != "" || settings.in.DeviceID != "dev-1" || settings.in.Server != server {
+		t.Fatalf("saved %+v", settings.in)
+	}
+	if s, _ := c.Status(context.Background()); s.State != SignedOut {
+		t.Fatalf("status %+v", s)
+	}
+	if in, _ := c.activeSignIn(); in != nil {
+		t.Fatalf("active %+v", in)
+	}
 }
 
 func TestWatchNoticesRevokedToken(t *testing.T) {

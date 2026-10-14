@@ -22,6 +22,7 @@ PROTOCOL_VERSION = 1
 CALL_TIMEOUT = 15.0
 READY_TIMEOUT = 10.0
 STOP_TIMEOUT = 3.0  # Decky SIGKILLs the plugin 5 s after asking it to stop.
+COMMAND_TIMEOUT = 30.0
 BACKOFF_START = 1.0
 BACKOFF_MAX = 30.0
 CRASH_LIMIT = 5
@@ -49,7 +50,45 @@ def binary_path() -> str:
     arch = ARCHES.get(machine)
     if arch is None:
         raise RuntimeError(f"unsupported architecture: {machine}")
-    return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", f"backend-{arch}")
+    path = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", f"backend-{arch}")
+    try:
+        # Decky normally sets this on install; dev deploys copied by hand may not.
+        os.chmod(path, 0o755)
+    except OSError:
+        pass
+    return path
+
+
+def backend_env() -> dict:
+    env = dict(os.environ)
+    # Decky's bundled libraries; anything the backend execs must use the system ones.
+    env.pop("LD_LIBRARY_PATH", None)
+    # Where EmuDeck and ES-DE live, whichever user the plugin runs as.
+    env["DECKY_USER_HOME"] = decky.DECKY_USER_HOME
+    return env
+
+
+async def run_command(command: str) -> None:
+    """Runs the backend binary's command (uninstall, reset) to completion. The backend must be
+    stopped: the command deletes files it keeps open."""
+    proc = await asyncio.create_subprocess_exec(
+        binary_path(),
+        command,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+        env=backend_env(),
+    )
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), COMMAND_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise RuntimeError(f"backend {command} timed out") from None
+    for line in err.decode(errors="replace").splitlines():
+        decky.logger.info(f"[backend {command}] {line}")
+    if proc.returncode != 0:
+        raise RuntimeError(f"backend {command} failed with code {proc.returncode}")
 
 
 class Backend:
@@ -67,6 +106,9 @@ class Backend:
         self.crashes: list[float] = []
         self.restart_requested = False
         self.stopping = False
+        # A command for the backend binary to run before the next start, while nothing has its
+        # files open, and the future it settles.
+        self.command: Optional[tuple[str, asyncio.Future]] = None
 
     def status(self) -> dict:
         return {"state": self.state, "version": self.version, "reason": self.reason}
@@ -117,24 +159,22 @@ class Backend:
         self.ready.clear()
         self.version = None
         await self._set_state("starting")
-        try:
-            path = binary_path()
+        if self.command is not None:
+            command, done = self.command
+            self.command = None
             try:
-                # Decky normally sets this on install; dev deploys copied by hand may not.
-                os.chmod(path, 0o755)
-            except OSError:
-                pass
-            env = dict(os.environ)
-            # Decky's bundled libraries; anything the backend execs must use the system ones.
-            env.pop("LD_LIBRARY_PATH", None)
-            # Where EmuDeck and ES-DE live, whichever user the plugin runs as.
-            env["DECKY_USER_HOME"] = decky.DECKY_USER_HOME
+                await run_command(command)
+                done.set_result(None)
+            except Exception as e:  # noqa: BLE001 - handed to whoever asked for the command
+                decky.logger.error(f"backend {command}: {e}")
+                done.set_exception(e)
+        try:
             self.proc = await asyncio.create_subprocess_exec(
-                path,
+                binary_path(),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=env,
+                env=backend_env(),
                 limit=MAX_LINE,
             )
         except (OSError, RuntimeError) as e:
@@ -287,6 +327,15 @@ class Backend:
         else:
             self.wake.set()
 
+    async def run_stopped(self, command: str) -> None:
+        """Stops the backend, runs its command, and starts it again."""
+        if self.command is not None:
+            raise RuntimeError("another backend command is running")
+        done = asyncio.get_running_loop().create_future()
+        self.command = (command, done)
+        await self.restart()
+        await done
+
     async def stop(self) -> None:
         self.stopping = True
         self.wake.set()
@@ -327,3 +376,15 @@ class Plugin:
 
     async def restart_backend(self) -> None:
         await self.backend.restart()
+
+    async def reset_plugin_data(self) -> None:
+        """Deletes everything the plugin knows, never games or saves, and starts afresh."""
+        await self.backend.run_stopped("reset")
+
+    async def _uninstall(self):
+        # Best effort: whatever can't be removed stays, and the uninstall goes on.
+        await self.backend.stop()
+        try:
+            await run_command("uninstall")
+        except (OSError, RuntimeError) as e:
+            decky.logger.error(f"uninstall cleanup: {e}")

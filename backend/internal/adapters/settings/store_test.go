@@ -87,6 +87,28 @@ func TestForgetSignInKeepsOtherSettings(t *testing.T) {
 	}
 }
 
+func TestSignOutKeepsTheServer(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if err := s.SignOut(); err != nil {
+		t.Fatalf("with nothing saved: %v", err)
+	}
+	server := domain.Server{URL: "https://romm.lan", CertFingerprint: "AA"}
+	if err := s.SaveSignIn(domain.SignIn{Server: server, Token: "rmm_x", DeviceID: "dev-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+	in, err := New(dir).SignIn()
+	if err != nil || in == nil || !in.SignedOut || in.Token != "" || in.Server != server || in.DeviceID != "dev-1" {
+		t.Fatalf("sign-in %+v, %v", in, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, tokenFile)); !os.IsNotExist(err) {
+		t.Fatalf("token file: %v", err)
+	}
+}
+
 func TestInstallTo(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
