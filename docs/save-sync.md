@@ -22,7 +22,8 @@ The emulator is the one ES-DE launches the game with, so changing a system's or 
 ES-DE changes which saves sync. Games played in other emulators, such as Dolphin, PCSX2, PPSSPP or
 Ryujinx, don't sync their saves; their page says so.
 
-Save states sync too, for Game Boy Advance games: see [Save states](#save-states).
+Save states sync too, for Game Boy, Game Boy Color and Game Boy Advance games: see
+[Save states](#save-states).
 
 ### Game Boy and Game Boy Color
 
@@ -85,10 +86,21 @@ uploads, downloads, conflicts, restores and more.
 
 ## Save states
 
-Save states of Game Boy Advance games sync with RomM when the game is played in RetroArch's mGBA
-core (EmuDeck's default) or in mGBA. They work with RomM's web player both ways: a state saved in
-the browser loads on the Deck, and one saved on the Deck loads in the browser. The plugin converts
-each state to what the emulator it goes to loads.
+Save states sync with RomM for these games:
+
+| Systems                     | Played in                                                           |
+| --------------------------- | ------------------------------------------------------------------- |
+| Game Boy Advance            | RetroArch's mGBA core (EmuDeck's default), or mGBA                  |
+| Game Boy and Game Boy Color | RetroArch's Gambatte core (EmuDeck's default) or mGBA core, or mGBA |
+
+They work with RomM's web player both ways: a state saved in the browser loads on the Deck, and one
+saved on the Deck loads in the browser. The plugin converts each state to what the emulator it goes
+to loads.
+
+A save state is a snapshot of one emulator core, so it loads only where the game runs in the same
+core. RomM's web player plays Game Boy games in Gambatte unless you pick mGBA, and keeps each core's
+states apart. A game's states sync with the web player's states of the core the Deck plays it in;
+those of the other core are left alone.
 
 States sync whenever saves do:
 

@@ -19,8 +19,8 @@ Quick Access Menu, without leaving Gaming Mode.
 - **Save sync.** Saves from RetroArch, melonDS, mGBA, RMG and DuckStation upload to RomM as you play
   and download on your other devices. Conflicts are never resolved behind your back, and overwritten
   saves are kept as backups. Game Boy saves convert between emulators, cartridge clock included.
-- **Save state sync.** Game Boy Advance save states sync with RomM both ways, so a game started in
-  RomM's web player picks up on the Deck, and back.
+- **Save state sync.** Game Boy, Game Boy Color and Game Boy Advance save states sync with RomM both
+  ways, so a game started in RomM's web player picks up on the Deck, and back.
 - **Updates.** When a game's files change on RomM, the plugin offers the update, and your save
   follows the game even when its name changes.
 - **Games you already have.** Find my games matches the ROMs already on your Deck against RomM, so

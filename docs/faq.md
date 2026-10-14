@@ -118,9 +118,10 @@ each game are kept, and RomM keeps its own history of each slot.
 
 ### Do save states sync?
 
-For Game Boy Advance games, yes, both ways with RomM's web player: a state saved in the browser
-loads on the Deck, and one saved on the Deck loads in the browser. Other systems sync in-game saves
-only. See [Save states](save-sync.md#save-states).
+For Game Boy, Game Boy Color and Game Boy Advance games, yes, both ways with RomM's web player: a
+state saved in the browser loads on the Deck, and one saved on the Deck loads in the browser, as
+long as both play the game in the same emulator core. Other systems sync in-game saves only. See
+[Save states](save-sync.md#save-states).
 
 ### A game started somewhere other than where I left it
 

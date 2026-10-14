@@ -12,6 +12,7 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/adapters/romm"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/app"
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
+	"github.com/chenasraf/saveporter"
 )
 
 // The live tests run against the real server in ROMM_URL (see `make test-live`) and are skipped
@@ -79,8 +80,8 @@ func TestLiveStartDeviceAuth(t *testing.T) {
 	t.Logf("user code %s, expires in %v, poll every %v", p.UserCode, p.ExpiresIn, p.Interval)
 }
 
-// TestLiveStates reads the save states of the game in ROMM_STATES_ROM: a game with GBA states saved
-// in RomM's web player.
+// TestLiveStates reads the save states of the game in ROMM_STATES_ROM: a game with GB, GBC or GBA
+// states saved in RomM's web player.
 func TestLiveStates(t *testing.T) {
 	c := liveClient(t)
 	id, err := strconv.Atoi(os.Getenv("ROMM_STATES_ROM"))
@@ -104,7 +105,7 @@ func TestLiveStates(t *testing.T) {
 	if err != nil || int64(len(data)) != s.SizeBytes {
 		t.Fatalf("downloaded %d bytes, %v", len(data), err)
 	}
-	if _, err := domain.GBAStateForRetroArch(data); err != nil {
+	if _, err := saveporter.Convert(data, saveporter.Target{Emulator: saveporter.RetroArch}); err != nil {
 		t.Fatalf("convert for RetroArch: %v", err)
 	}
 	if s.Screenshot != "" {

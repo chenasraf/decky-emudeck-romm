@@ -28,7 +28,11 @@ type stateTarget struct {
 	// emulator plays the game, and kind is the format its states take.
 	emulator domain.Emulator
 	kind     saveporter.Emulator
-	dir      string
+	// system is the game's EmuDeck folder, core the emulator core it plays in, which is also the tag
+	// its states are kept under on RomM.
+	system string
+	core   string
+	dir    string
 	// base is the states' name without the slot's extension, as the game's save is named.
 	base string
 }
@@ -72,30 +76,30 @@ func toSlot(slot string) saveporter.Slot {
 	return saveporter.Slot(n)
 }
 
-// gbaSystem is the EmuDeck folder of the Game Boy Advance, the system whose states sync.
-const gbaSystem = "gba"
-
 // stateTarget finds where the save states of the game t syncs the save of are. why says why they
 // don't sync.
 func (s *Saves) stateTarget(state domain.InstallState, t saveTarget) (stateTarget, string) {
-	if t.system != gbaSystem {
-		return stateTarget{}, "Save states sync for Game Boy Advance games."
+	gb := slices.Contains(domain.GBSystems, t.system)
+	if !gb && t.system != "gba" {
+		return stateTarget{}, "Save states sync for Game Boy, Game Boy Color and Game Boy Advance games."
 	}
-	var kind saveporter.Emulator
-	switch {
-	case t.rule.Emulator.ID == domain.RetroArchID && t.emulator == "mgba":
-		kind = saveporter.RetroArch
-	case t.rule.Emulator.ID == "mgba":
-		kind = saveporter.MGBA
-	default:
+	core, ok := domain.StateCore(t.system, t.rule.Emulator.ID, t.emulator)
+	if !ok {
+		if gb {
+			return stateTarget{}, "Save states sync for games played in RetroArch's Gambatte or mGBA core, or in mGBA."
+		}
 		return stateTarget{}, "Save states sync for games played in RetroArch's mGBA core or in mGBA."
+	}
+	kind := saveporter.RetroArch
+	if t.rule.Emulator.ID == "mgba" {
+		kind = saveporter.MGBA
 	}
 	dir, why := s.stateDir(state, t.rule.Emulator)
 	if why != "" {
 		return stateTarget{}, why
 	}
 	return stateTarget{
-		romID: t.romID, name: t.name, emulator: t.rule.Emulator, kind: kind, dir: dir,
+		romID: t.romID, name: t.name, emulator: t.rule.Emulator, kind: kind, system: t.system, core: core, dir: dir,
 		base: strings.TrimSuffix(filepath.Base(t.path), t.rule.Ext),
 	}, ""
 }
@@ -257,7 +261,7 @@ func (s *Saves) syncGameStates(ctx context.Context, in domain.SignIn, server Sav
 	}
 	var newest *domain.ServerState
 	for i, x := range list {
-		if x.Emulator == domain.StateEmulator && !ours[x.ID] && (newest == nil || x.CreatedAt.After(newest.CreatedAt)) {
+		if x.Emulator == st.core && !ours[x.ID] && (newest == nil || x.CreatedAt.After(newest.CreatedAt)) {
 			newest = &list[i]
 		}
 	}
@@ -330,7 +334,7 @@ func (s *Saves) seenStates(ctx context.Context, id int) (map[string]string, erro
 // states, with the emulator's screenshot of it.
 func (s *Saves) uploadState(ctx context.Context, server SaveServer, st stateTarget, path string, data []byte) (domain.ServerState, error) {
 	hash := domain.ContentHash(data)
-	web, err := domain.GBAStateForWeb(data)
+	web, err := domain.StateFor(data, st.system, st.core, saveporter.EmulatorJS)
 	if err != nil {
 		// Unreadable as it is, it stays so until the emulator writes it again.
 		_ = s.store.PutStateFile(context.WithoutCancel(ctx), domain.StateFile{ROMID: st.romID, Path: path, Hash: hash})
@@ -343,7 +347,7 @@ func (s *Saves) uploadState(ctx context.Context, server SaveServer, st stateTarg
 		written = info.ModTime()
 	}
 	up := domain.StateUpload{
-		ROMID: st.romID, Emulator: domain.StateEmulator, Data: web, Screenshot: stateScreenshot(st, path, data),
+		ROMID: st.romID, Emulator: st.core, Data: web, Screenshot: stateScreenshot(st, path, data),
 		FileName: fmt.Sprintf("%s [%s].state", st.base, written.Local().Format("2006-01-02 15-04-05-000")),
 	}
 	got, err := server.UploadState(ctx, up)
@@ -390,13 +394,7 @@ func (s *Saves) placeState(ctx context.Context, server SaveServer, st stateTarge
 	if err != nil {
 		return err
 	}
-	var out []byte
-	switch st.kind {
-	case saveporter.MGBA:
-		out, err = domain.GBAStateForMGBA(data)
-	default:
-		out, err = domain.GBAStateForRetroArch(data)
-	}
+	out, err := domain.StateFor(data, st.system, st.core, st.kind)
 	if err != nil {
 		return fmt.Errorf("RomM's state isn't one %s can load: %w", st.emulator.Name, err)
 	}
@@ -596,6 +594,17 @@ func (s *Saves) States(ctx context.Context, id int) ([]StateEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	t, why, err := s.target(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if why != "" {
+		return nil, &domain.Error{Kind: domain.KindInvalidInput, Message: why}
+	}
+	st, why := s.stateTarget(s.install.State(false), t)
+	if why != "" {
+		return nil, &domain.Error{Kind: domain.KindInvalidInput, Message: why}
+	}
 	list, err := s.dial(in.Server, in.Token).States(ctx, id)
 	if err != nil {
 		return nil, s.conn.observe(*in, err)
@@ -614,7 +623,8 @@ func (s *Saves) States(ctx context.Context, id int) ([]StateEntry, error) {
 	}
 	out := []StateEntry{}
 	for _, x := range list {
-		if x.Emulator != domain.StateEmulator {
+		// A state of another core than the Deck plays the game in doesn't load on the Deck.
+		if x.Emulator != st.core {
 			continue
 		}
 		slot, ours := from[x.ID]

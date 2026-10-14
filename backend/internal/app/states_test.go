@@ -56,11 +56,16 @@ func (f *fakeRomMSaves) addState(romID int, emulator string, at time.Time, data,
 	return s
 }
 
-// otherState is a state another device or the web player put on RomM at at.
+// otherState is a state of mGBA's another device or the web player put on RomM at at.
 func (f *fakeRomMSaves) otherState(romID int, at time.Time, data, shot []byte) domain.ServerState {
+	return f.otherStateOf(romID, "mgba", at, data, shot)
+}
+
+// otherStateOf is a state of core's another device or the web player put on RomM at at.
+func (f *fakeRomMSaves) otherStateOf(romID int, core string, at time.Time, data, shot []byte) domain.ServerState {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.addState(romID, domain.StateEmulator, at, data, shot)
+	return f.addState(romID, core, at, data, shot)
 }
 
 func (f *fakeRomMSaves) DownloadState(_ context.Context, id int) ([]byte, error) {
@@ -511,7 +516,7 @@ func TestStatesOffWhenTurnedOff(t *testing.T) {
 	}
 }
 
-func TestStatesOnlyForGBA(t *testing.T) {
+func TestStatesOnlyForGameBoys(t *testing.T) {
 	f := newSaveFixture(t)
 	states := filepath.Join(f.root, "saves", "retroarch", "states")
 	writeFile(t, filepath.Join(states, "Chrono Trigger (USA).state"), gbaState(9, 1))

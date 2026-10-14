@@ -11,10 +11,6 @@ import (
 // as one list per game, with no slots or devices, so which states this Deck uploaded is the plugin's
 // own record.
 
-// StateEmulator is the tag RomM's web player keeps GBA states under, and the plugin uploads them
-// with, so the web player lists them.
-const StateEmulator = "mgba"
-
 // StateSlotAuto is the state slot an emulator writes and loads by itself: RetroArch's .state.auto,
 // the mGBA app's slot 0.
 const StateSlotAuto = "auto"

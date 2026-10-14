@@ -588,7 +588,7 @@ function StateSettingsFields({
       <PanelSectionRow>
         <ToggleField
           label="Sync save states"
-          description="Save states of Game Boy Advance games sync with RomM, so you can pick up where you left off in RomM's web player or on another device, and back. A game's page can set its own."
+          description="Save states of Game Boy, Game Boy Color and Game Boy Advance games sync with RomM, so you can pick up where you left off in RomM's web player or on another device, and back. A game's page can set its own."
           checked={states.sync}
           onChange={(sync) => change({ sync })}
         />
