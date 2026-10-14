@@ -50,7 +50,7 @@ var saveRules = func() []SaveRule {
 		return r
 	}
 	return []SaveRule{
-		rule(RetroArchID, SaveRule{Ext: ".srm", esdeVar: "%EMULATOR_RETROARCH%"}),
+		rule(RetroArchID, SaveRule{Ext: ".srm", Archives: ArchiveNamingOuter, esdeVar: "%EMULATOR_RETROARCH%"}),
 		rule("melonds", SaveRule{Ext: ".sav", Archives: ArchiveNamingInner, Tag: "melonds", esdeVar: "%EMULATOR_MELONDS%", label: "melonDS (Standalone)"}),
 		rule("mgba", SaveRule{Ext: ".sav", Archives: ArchiveNamingOuter, Tag: "mgba", esdeVar: "%EMULATOR_MGBA%", label: "mGBA (Standalone)"}),
 		rule("rmg", SaveRule{

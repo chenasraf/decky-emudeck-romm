@@ -14,9 +14,6 @@ import (
 var (
 	melonDS = domain.GameLauncher{ESDECommand: domain.ESDECommand{Label: "melonDS (Standalone)", Command: "%EMULATOR_MELONDS% -f %ROM%"}, Known: true}
 	mGBA    = domain.GameLauncher{ESDECommand: domain.ESDECommand{Label: "mGBA (Standalone)", Command: "%EMULATOR_MGBA% -f %ROM%"}, Known: true}
-	mgbaRA  = domain.GameLauncher{ESDECommand: domain.ESDECommand{
-		Label: "mGBA", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mgba_libretro.so %ROM%",
-	}, Known: true}
 )
 
 // ownGame records the game with id as downloaded by the plugin into the ROM folder of the platform
@@ -101,14 +98,25 @@ func TestStandaloneArchiveNames(t *testing.T) {
 	}
 }
 
-// RetroArch's name for an archive's save isn't known, so such games don't sync with it.
-func TestRetroArchArchiveDoesntSync(t *testing.T) {
+// RetroArch names the save of a game kept as an archive after the archive.
+func TestRetroArchArchiveSyncs(t *testing.T) {
 	f := newSaveFixture(t)
-	f.launchers["gba"] = mgbaRA
-	f.saves = f.newSaves()
-	f.ownGame(t, 51, 10, "gba", "Metroid Fusion (USA).zip", "mfusion.gba")
-	if st := f.statusOf(t, 51); st.Syncs || !strings.Contains(st.Why, "RetroArch") {
+	f.ownGame(t, 54, 1, "snes", "Super Metroid (USA).zip", "sm.sfc")
+	save := filepath.Join(f.raSaves, "Super Metroid (USA).srm")
+	if st := f.statusOf(t, 54); !st.Syncs || st.Path != save || st.Emulator != "snes9x" {
 		t.Fatalf("status %+v", st)
+	}
+
+	writeFile(t, save, []byte("zebes"))
+	if s, err := f.saves.Sync(context.Background(), []int{54}); err != nil || s.Uploaded != 1 {
+		t.Fatalf("upload %+v, %v", s, err)
+	}
+	f.romm.otherDevice(54, "snes9x", []byte("zebes elsewhere"))
+	if s, _ := f.saves.Sync(context.Background(), []int{54}); s.Downloaded != 1 {
+		t.Fatalf("download %+v", s)
+	}
+	if got := readFile(t, save); got != "zebes elsewhere" {
+		t.Fatalf("save holds %q", got)
 	}
 }
 
