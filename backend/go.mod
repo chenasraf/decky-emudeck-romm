@@ -10,6 +10,7 @@ require (
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/klauspost/compress v1.19.0
 	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.59.0
 )
@@ -25,7 +26,6 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
-	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mewkiz/flac v1.0.12 // indirect
 	github.com/mewkiz/pkg v0.0.0-20230226050401-4010bf0fec14 // indirect
