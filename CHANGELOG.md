@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.1.0...v0.1.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **saves:** negotiate syncs in batches RomM accepts ([7927361](https://github.com/chenasraf/decky-emudeck-romm/commit/7927361bc5f96c5aaa795737cfebf53b6f77b0c7))
+
 ## 0.1.0 (2026-10-14)
 
 
