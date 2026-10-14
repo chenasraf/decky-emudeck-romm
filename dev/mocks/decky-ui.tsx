@@ -323,6 +323,34 @@ export function showModal(modal: ReactElement<{ closeModal?: () => void }>) {
   return { Close: closeModal }
 }
 
+/** The frame of a custom modal; showModal passes closeModal, and Escape calls it as B does. */
+export function ModalRoot({
+  children,
+  closeModal,
+}: {
+  children?: ReactNode
+  closeModal?: () => void
+}) {
+  return (
+    <div
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') closeModal?.()
+      }}
+      style={{
+        background: '#23262e',
+        padding: 24,
+        maxWidth: 'calc(100vw - 64px)',
+        maxHeight: 'calc(100vh - 64px)',
+        overflowY: 'auto',
+        borderRadius: 4,
+        color: '#dcdedf',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function ConfirmModal({
   strTitle,
   strDescription,
