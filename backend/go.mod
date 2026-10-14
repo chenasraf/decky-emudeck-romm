@@ -9,8 +9,8 @@ require (
 	github.com/ZaparooProject/go-gameid v0.2.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/chenasraf/saveporter v0.1.0
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/klauspost/compress v1.19.0
 	golang.org/x/sync v0.22.0
 	modernc.org/sqlite v1.59.0
 )
@@ -25,7 +25,8 @@ require (
 	github.com/gzuidhof/tygo v0.2.21 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
-	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mewkiz/flac v1.0.12 // indirect
 	github.com/mewkiz/pkg v0.0.0-20230226050401-4010bf0fec14 // indirect
@@ -35,8 +36,8 @@ require (
 	github.com/rasky/go-lzo v0.0.0-20200203143853-96a758eda86e // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/afero v1.15.0 // indirect
-	github.com/spf13/cobra v1.3.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stangelandcl/ppmd v0.1.1 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
