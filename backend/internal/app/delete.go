@@ -32,6 +32,30 @@ type DeleteListener func(DeleteUpdate)
 // It returns how many games it will delete; games the plugin doesn't own, or that are downloading
 // or already being deleted, are skipped, and asking for a single such game fails.
 func (d *Downloads) Delete(ctx context.Context, ids []int, platformID int) (int, error) {
+	return d.delete(ctx, ids, platformID, false)
+}
+
+// KeepSavesWith makes saves the save sync DeleteWithSaves sets games' saves aside with.
+func (d *Downloads) KeepSavesWith(saves *Saves) { d.saves = saves }
+
+// DeleteWithSaves deletes a Plugin-owned game as Delete does, and its save with it: into the
+// game's backups, and only when RomM holds the save as it is on this Deck.
+func (d *Downloads) DeleteWithSaves(ctx context.Context, id int) error {
+	if d.saves == nil {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: "Save sync is off, so saves can't be deleted with the game."}
+	}
+	del, err := d.saves.Deletion(ctx, id)
+	if err != nil {
+		return err
+	}
+	if del.Why != "" {
+		return &domain.Error{Kind: domain.KindInvalidInput, Message: del.Why}
+	}
+	_, err = d.delete(ctx, []int{id}, 0, true)
+	return err
+}
+
+func (d *Downloads) delete(ctx context.Context, ids []int, platformID int, withSaves bool) (int, error) {
 	if d.store == nil {
 		return 0, d.problem
 	}
@@ -61,7 +85,7 @@ func (d *Downloads) Delete(ctx context.Context, ids []int, platformID int) (int,
 	for _, u := range queued {
 		d.onDelete(u)
 	}
-	go d.runDeletes(queued)
+	go d.runDeletes(queued, withSaves)
 	return len(queued), nil
 }
 
@@ -106,13 +130,13 @@ func (d *Downloads) gameName(ctx context.Context, id int) string {
 	return "Game " + strconv.Itoa(id)
 }
 
-func (d *Downloads) runDeletes(games []DeleteUpdate) {
+func (d *Downloads) runDeletes(games []DeleteUpdate, withSaves bool) {
 	// One delete at a time, across requests: each re-hashes its files, and hashing several large
 	// games at once only makes all of them slower.
 	d.deleteMu.Lock()
 	defer d.deleteMu.Unlock()
 	for _, u := range games {
-		err := d.deleteGame(d.base, u.ROMID)
+		err := d.deleteGame(d.base, u.ROMID, withSaves)
 		d.mu.Lock()
 		delete(d.deleting, u.ROMID)
 		d.mu.Unlock()
@@ -134,10 +158,11 @@ func (d *Downloads) runDeletes(games []DeleteUpdate) {
 	}
 }
 
-// deleteGame removes the files recorded for a Plugin-owned game, then its record. Before removing
-// anything it checks every file still matches what the plugin placed; when one doesn't, the user
-// changed it, so nothing is removed and the plugin stops managing the game instead.
-func (d *Downloads) deleteGame(ctx context.Context, id int) error {
+// deleteGame removes the files recorded for a Plugin-owned game, then its record, and with
+// withSaves sets its save aside. Before removing anything it checks every file still matches what
+// the plugin placed; when one doesn't, the user changed it, so nothing is removed and the plugin
+// stops managing the game instead. A save that changed since it was asked for keeps the game too.
+func (d *Downloads) deleteGame(ctx context.Context, id int, withSaves bool) error {
 	rec, ok, err := d.store.Owned(ctx, id)
 	if err != nil || !ok {
 		return err
@@ -158,6 +183,13 @@ func (d *Downloads) deleteGame(ctx context.Context, id int) error {
 			}
 		}
 	}
+	// The save is found from the game's files, so it's looked for before they go.
+	var setAside func() error
+	if withSaves && d.saves != nil {
+		if setAside, err = d.saves.setAside(ctx, id); err != nil {
+			return err
+		}
+	}
 	for _, f := range rec.Files {
 		if err := os.Remove(f.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("delete %s: %w", f.Path, err)
@@ -166,7 +198,15 @@ func (d *Downloads) deleteGame(ctx context.Context, id int) error {
 		removeEmptyDirs(filepath.Dir(f.Path), d.dirHolding(ctx, rec.PlatformID, f.Path))
 	}
 	d.removeMedia(rec.Media)
-	return d.store.DeleteOwned(ctx, id)
+	if err := d.store.DeleteOwned(ctx, id); err != nil {
+		return err
+	}
+	if setAside != nil {
+		if err := setAside(); err != nil {
+			return fmt.Errorf("the game is deleted, but its save couldn't be: %w", err)
+		}
+	}
+	return nil
 }
 
 // unchanged says whether a placed file is still what the plugin placed. A file that's already

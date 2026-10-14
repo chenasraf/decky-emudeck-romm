@@ -183,6 +183,7 @@ func run(log *slog.Logger) error {
 		PSX: psxdisc.Discs{}, DuckStation: emudeck.NewDuckStation(home),
 	}, runningGame,
 		filepath.Join(runtimeDir, "backups"), rpc.SaveEvents(srv), log.With("component", "saves"))
+	downloads.KeepSavesWith(saves)
 	rpc.Routes(srv, version, rpc.Services{
 		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde, Media: media,
 		Saves: saves,

@@ -60,6 +60,7 @@ import type {
   PlatformSummary,
   Error as RpcError,
   SaveChoice,
+  SaveDeletion,
   SearchGamesResult,
   SearchHit,
 } from '../rpc/schema.gen'
@@ -693,6 +694,8 @@ export function ActivityIcon({ kind }: { kind: string }) {
       return <FaHistory style={plain} />
     case 'slot':
       return <FaBookmark style={plain} />
+    case 'deleted':
+      return <FaTrashAlt style={plain} />
     default:
       return <FaExchangeAlt style={plain} />
   }
@@ -1161,6 +1164,62 @@ function confirmDelete(what: string, params: DeleteGamesParams, onError: (e: Rpc
   )
 }
 
+/**
+ * Asks before deleting one game, then deletes it. Its save can go too, into the game's backups, but
+ * only once RomM holds it as it is on this Deck.
+ */
+function DeleteGameModal({
+  id,
+  name,
+  onError,
+  closeModal,
+}: {
+  id: number
+  name: string
+  onError: (e: RpcError) => void
+  closeModal?: () => void
+}) {
+  const [deletion, setDeletion] = useState<SaveDeletion | null>(null)
+  const [withSaves, setWithSaves] = useState(false)
+  useEffect(() => {
+    call('save_deletion', { id }).then(setDeletion, () => setDeletion(null))
+  }, [id])
+
+  return (
+    <ConfirmModal
+      strTitle={`Delete ${name}?`}
+      strDescription={
+        <>
+          <p>
+            The plugin deletes only files it downloaded and that are unchanged since.
+            {withSaves ? '' : ' Saves are kept.'}
+          </p>
+          {deletion?.has && (
+            <ToggleField
+              label="Delete saves too"
+              description={
+                deletion.why ?? "The save moves into this game's backups. RomM keeps its copy."
+              }
+              checked={withSaves}
+              disabled={!!deletion.why}
+              onChange={setWithSaves}
+            />
+          )}
+          <p>{ESDE_CLEANUP_TIP}</p>
+        </>
+      }
+      strOKButtonText="Delete"
+      bDestructiveWarning
+      closeModal={closeModal}
+      onOK={() => {
+        call('delete_games', { ids: [id], saves: withSaves || undefined }).catch((err: unknown) =>
+          onError(asRpcError(err)),
+        )
+      }}
+    />
+  )
+}
+
 /** Asks before the plugin stops managing a game, then stops. */
 function confirmStopManaging(name: string, id: number, onError: (e: RpcError) => void) {
   showModal(
@@ -1428,7 +1487,7 @@ export function useGameDetail(id: number): GameDetail {
     },
     {
       label: 'Delete ROM',
-      run: () => confirmDelete(game.name, { ids: [id] }, setError),
+      run: () => showModal(<DeleteGameModal id={id} name={game.name} onError={setError} />),
       disabled: downloadOff,
       destructive: true,
     },

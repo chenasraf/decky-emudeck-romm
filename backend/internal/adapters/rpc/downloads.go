@@ -22,6 +22,15 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 	})
 
 	Register(s, "delete_games", func(ctx context.Context, p schema.DeleteGamesParams) (schema.DeleteGamesResult, error) {
+		if p.Saves {
+			if len(p.IDs) != 1 || p.PlatformID != 0 {
+				return schema.DeleteGamesResult{}, wireError(&domain.Error{Kind: domain.KindInvalidInput, Message: "Saves are deleted with one game at a time."})
+			}
+			if err := downloads.DeleteWithSaves(ctx, p.IDs[0]); err != nil {
+				return schema.DeleteGamesResult{}, wireError(err)
+			}
+			return schema.DeleteGamesResult{Count: 1}, nil
+		}
 		n, err := downloads.Delete(ctx, p.IDs, p.PlatformID)
 		if err != nil {
 			return schema.DeleteGamesResult{}, wireError(err)

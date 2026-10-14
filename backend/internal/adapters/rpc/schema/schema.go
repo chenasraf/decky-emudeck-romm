@@ -118,6 +118,7 @@ type Methods struct {
 	SyncSaves           Method[SyncSavesParams, SyncSavesResult]                     `json:"sync_saves"`
 	SaveStatus          Method[SaveStatusParams, SaveStatus]                         `json:"save_status"`
 	SaveSummary         Method[SaveSummaryParams, SaveSummary]                       `json:"save_summary"`
+	SaveDeletion        Method[SaveDeletionParams, SaveDeletion]                     `json:"save_deletion"`
 	ResolveSaveConflict Method[ResolveSaveConflictParams, SaveStatus]                `json:"resolve_save_conflict"`
 	SaveActivity        Method[SaveActivityParams, SaveActivity]                     `json:"save_activity"`
 	SaveBackups         Method[SaveBackupsParams, SaveBackups]                       `json:"save_backups"`
@@ -916,6 +917,9 @@ type DownloadAllResult struct {
 type DeleteGamesParams struct {
 	IDs        []int `json:"ids,omitempty"`
 	PlatformID int   `json:"platformId,omitempty"`
+	// Saves deletes the game's save too, into its backups; only with one game in IDs, and only when
+	// save_deletion allows it.
+	Saves bool `json:"saves,omitempty"`
 }
 
 type DeleteGamesResult struct {
@@ -1134,6 +1138,7 @@ const (
 	ActivityRemovedOnServer ActivityKind = "removed_on_server"
 	ActivityRestored        ActivityKind = "restored"
 	ActivitySlot            ActivityKind = "slot"
+	ActivityDeleted         ActivityKind = "deleted"
 )
 
 // SaveActivityEntry is something save sync did to a game's save.
@@ -1206,6 +1211,18 @@ type SwitchSaveSlotParams struct {
 }
 
 type SaveSummaryParams struct{}
+
+type SaveDeletionParams struct {
+	ID int `json:"id"`
+}
+
+// SaveDeletion is whether a game's save can be deleted with it.
+type SaveDeletion struct {
+	// Has is set when the game has a save on this Deck the plugin syncs.
+	Has bool `json:"has"`
+	// Why says why the save can't be deleted, empty when it can.
+	Why string `json:"why,omitempty"`
+}
 
 // SaveCounts counts what a sync did, or where save sync stands across games.
 type SaveCounts struct {

@@ -103,6 +103,14 @@ func saveRoutes(s *Server, saves *app.Saves) {
 		return status(ctx, p.ID)
 	})
 
+	Register(s, "save_deletion", func(ctx context.Context, p schema.SaveDeletionParams) (schema.SaveDeletion, error) {
+		d, err := saves.Deletion(ctx, p.ID)
+		if err != nil {
+			return schema.SaveDeletion{}, wireError(err)
+		}
+		return schema.SaveDeletion{Has: d.Has, Why: d.Why}, nil
+	})
+
 	Register(s, "save_summary", func(ctx context.Context, _ schema.SaveSummaryParams) (schema.SaveSummary, error) {
 		counts, last, syncing, err := saves.Summary(ctx)
 		if err != nil {

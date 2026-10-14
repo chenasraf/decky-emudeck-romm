@@ -158,7 +158,9 @@ type Downloads struct {
 	prefs   DownloadPrefs
 	games   *Games
 	// media is nil when no art is placed for ES-DE.
-	media    *Media
+	media *Media
+	// saves sets aside the saves of games deleted with them; nil until KeepSavesWith.
+	saves    *Saves
 	limit    int
 	onChange DownloadListener
 	onDelete DeleteListener

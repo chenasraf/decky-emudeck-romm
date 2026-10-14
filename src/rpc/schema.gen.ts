@@ -142,6 +142,7 @@ export interface Methods {
   sync_saves: Method<SyncSavesParams, SyncSavesResult>;
   save_status: Method<SaveStatusParams, SaveStatus>;
   save_summary: Method<SaveSummaryParams, SaveSummary>;
+  save_deletion: Method<SaveDeletionParams, SaveDeletion>;
   resolve_save_conflict: Method<ResolveSaveConflictParams, SaveStatus>;
   save_activity: Method<SaveActivityParams, SaveActivity>;
   save_backups: Method<SaveBackupsParams, SaveBackups>;
@@ -1150,6 +1151,11 @@ export interface DownloadAllResult {
 export interface DeleteGamesParams {
   ids?: number /* int */[];
   platformId?: number /* int */;
+  /**
+   * Saves deletes the game's save too, into its backups; only with one game in IDs, and only when
+   * save_deletion allows it.
+   */
+  saves?: boolean;
 }
 export interface DeleteGamesResult {
   /**
@@ -1422,6 +1428,7 @@ export const ActivityFailed: ActivityKind = "failed";
 export const ActivityRemovedOnServer: ActivityKind = "removed_on_server";
 export const ActivityRestored: ActivityKind = "restored";
 export const ActivitySlot: ActivityKind = "slot";
+export const ActivityDeleted: ActivityKind = "deleted";
 /**
  * SaveActivityEntry is something save sync did to a game's save.
  */
@@ -1506,6 +1513,22 @@ export interface SwitchSaveSlotParams {
   slot: string;
 }
 export interface SaveSummaryParams {
+}
+export interface SaveDeletionParams {
+  id: number /* int */;
+}
+/**
+ * SaveDeletion is whether a game's save can be deleted with it.
+ */
+export interface SaveDeletion {
+  /**
+   * Has is set when the game has a save on this Deck the plugin syncs.
+   */
+  has: boolean;
+  /**
+   * Why says why the save can't be deleted, empty when it can.
+   */
+  why?: string;
 }
 /**
  * SaveCounts counts what a sync did, or where save sync stands across games.
