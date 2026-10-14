@@ -101,6 +101,10 @@ func (c *Client) NegotiateSync(ctx context.Context, req domain.SyncRequest) (dom
 	if err == nil && status == http.StatusNotFound {
 		return domain.SyncPlan{}, &domain.Error{Kind: domain.KindNotFound, Message: "RomM no longer knows this Deck's Device. Pair the Deck again to sync saves."}
 	}
+	if err == nil && status == http.StatusUnprocessableEntity {
+		// RomM's detail names the field it refused.
+		return domain.SyncPlan{}, fmt.Errorf("sync saves: RomM refused the request: %v", body.Detail)
+	}
 	if err := statusError("sync saves", status, err); err != nil {
 		return domain.SyncPlan{}, err
 	}

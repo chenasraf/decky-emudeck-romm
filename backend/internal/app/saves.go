@@ -570,11 +570,27 @@ func (s *Saves) Sync(ctx context.Context, ids []int) (SaveSummary, error) {
 		}
 	}
 	targets = s.dropShared(ctx, targets, records)
-	if len(targets) == 0 {
-		return SaveSummary{}, nil
+	server := s.dial(in.Server, in.Token)
+	var total SaveSummary
+	for batch := range slices.Chunk(targets, domain.SyncBatch) {
+		p := &savePass{Saves: s, in: *in, server: server, records: records, local: map[int]localSave{}}
+		summary, err := p.run(ctx, batch)
+		total.add(summary)
+		if err != nil {
+			return total, err
+		}
 	}
-	p := &savePass{Saves: s, in: *in, server: s.dial(in.Server, in.Token), records: records, local: map[int]localSave{}}
-	return p.run(ctx, targets)
+	return total, nil
+}
+
+// add counts what another sync did into s.
+func (s *SaveSummary) add(o SaveSummary) {
+	s.Games += o.Games
+	s.Uploaded += o.Uploaded
+	s.Downloaded += o.Downloaded
+	s.Conflicts += o.Conflicts
+	s.Waiting += o.Waiting
+	s.Failed += o.Failed
 }
 
 // records returns what save sync knows of each game, by ROM id.

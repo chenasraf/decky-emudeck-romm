@@ -3,10 +3,13 @@ package app
 import (
 	"archive/zip"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
@@ -162,6 +165,39 @@ func TestEmulatorSettingsMoveSaves(t *testing.T) {
 	}
 	if p := f.saves.Paused(); len(p) != 0 {
 		t.Fatalf("paused %+v", p)
+	}
+}
+
+// A library bigger than RomM takes in one negotiation syncs in several, each within its limit.
+func TestSyncBatchesManyGames(t *testing.T) {
+	f := newSaveFixture(t)
+	ids := []int{1}
+	for i := range domain.SyncBatch {
+		id := 1000 + i
+		f.ownGame(t, id, 1, "snes", fmt.Sprintf("Game %d.sfc", i), "")
+		ids = append(ids, id)
+	}
+	last := ids[len(ids)-1]
+	f.writeSave(t, "chrono", time.Now())
+	writeFile(t, filepath.Join(f.raSaves, fmt.Sprintf("Game %d.srm", domain.SyncBatch-1)), []byte("last"))
+
+	s, err := f.saves.Sync(context.Background(), nil)
+	if err != nil || s.Games != len(ids) || s.Uploaded != 2 {
+		t.Fatalf("sync %+v, %v", s, err)
+	}
+	f.romm.mu.Lock()
+	requests := slices.Clone(f.romm.requests)
+	f.romm.mu.Unlock()
+	if len(requests) != 2 {
+		t.Fatalf("%d negotiations", len(requests))
+	}
+	for _, r := range requests {
+		if len(r.ROMIDs) > domain.SyncBatch {
+			t.Fatalf("negotiation of %d ROMs", len(r.ROMIDs))
+		}
+	}
+	if head, _ := f.romm.head(last); string(head.data) != "last" {
+		t.Fatalf("RomM holds %q for the last game", head.data)
 	}
 }
 

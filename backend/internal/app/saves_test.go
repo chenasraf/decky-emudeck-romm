@@ -95,6 +95,9 @@ func (f *fakeRomMSaves) NegotiateSync(_ context.Context, req domain.SyncRequest)
 	if f.failWith != nil {
 		return domain.SyncPlan{}, f.failWith
 	}
+	if len(req.ROMIDs) > domain.SyncBatch {
+		return domain.SyncPlan{}, errors.New("sync saves: RomM refused the request: rom_ids holds more than 500 items")
+	}
 	inScope := map[int]bool{}
 	for _, id := range req.ROMIDs {
 		inScope[id] = true

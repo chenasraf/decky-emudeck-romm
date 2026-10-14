@@ -134,6 +134,9 @@ type ClientSave struct {
 }
 
 // SyncRequest asks RomM what a sync of ROMIDs takes, given the Deck's saves of them.
+// SyncBatch is how many ROMs one sync asks RomM about: RomM refuses a negotiation listing more.
+const SyncBatch = 500
+
 type SyncRequest struct {
 	DeviceID string
 	Saves    []ClientSave
