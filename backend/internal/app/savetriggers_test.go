@@ -4,8 +4,11 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
 // fakeWatch reports the paths sent to it as written.
@@ -208,4 +211,48 @@ func TestQueuedSyncsGather(t *testing.T) {
 		t.Fatalf("second covers %v, not every game", e.ROMIDs)
 	}
 	f.quiet(t, 100*time.Millisecond)
+}
+
+// changingConfigs are emulator settings a test changes while syncs run, kept in file.
+type changingConfigs struct {
+	file string
+	mu   sync.Mutex
+	cfg  map[string]domain.SaveConfig
+}
+
+func (c *changingConfigs) SaveConfig(id string) domain.SaveConfig {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg[id]
+}
+
+func (c *changingConfigs) Files() []string { return []string{c.file} }
+
+func (c *changingConfigs) set(id string, cfg domain.SaveConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cfg[id] = cfg
+}
+
+// A settings change that moves an emulator's saves or stops them syncing syncs every game; one that
+// doesn't, as RetroArch writing its settings whenever it closes, syncs nothing.
+func TestSettingsChangeSyncs(t *testing.T) {
+	f := newSaveFixture(t)
+	configs := &changingConfigs{file: filepath.Join(f.root, "mgba", "config.ini"), cfg: map[string]domain.SaveConfig{}}
+	writeFile(t, configs.file, []byte("[ports.qt]\n"))
+	f.saves.configs = configs
+	w := newFakeWatch()
+	f.run(t, w)
+	if dirs := <-w.dirs; !slices.Contains(dirs, filepath.Dir(configs.file)) {
+		t.Fatalf("watching %v", dirs)
+	}
+
+	w.changes <- configs.file
+	f.quiet(t, 100*time.Millisecond)
+
+	configs.set("mgba", domain.SaveConfig{Problem: "mGBA uses player 2's save files."})
+	w.changes <- configs.file
+	if e := f.ended(t); !e.Auto || len(e.ROMIDs) != 0 {
+		t.Fatalf("sync %+v", e)
+	}
 }

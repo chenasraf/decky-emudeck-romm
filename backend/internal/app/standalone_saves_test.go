@@ -130,11 +130,30 @@ func TestDefaultEmulatorWithoutESDE(t *testing.T) {
 func TestEmulatorSettingsCanStopSync(t *testing.T) {
 	f := newSaveFixture(t)
 	f.launchers["gba"] = mGBA
-	f.configs["mgba"] = "mGBA uses player 2's save files."
+	f.configs["mgba"] = domain.SaveConfig{Problem: "mGBA uses player 2's save files."}
 	f.saves = f.newSaves()
 	f.ownGame(t, 53, 10, "gba", "Golden Sun (USA).gba", "")
 	if st := f.statusOf(t, 53); st.Syncs || st.Why != "mGBA uses player 2's save files." {
 		t.Fatalf("status %+v", st)
+	}
+	if p := f.saves.Paused(); len(p) != 1 || p[0].Emulator.ID != "mgba" || p[0].Why != "mGBA uses player 2's save files." {
+		t.Fatalf("paused %+v", p)
+	}
+}
+
+// Saves follow the folder an emulator's settings move them to.
+func TestEmulatorSettingsMoveSaves(t *testing.T) {
+	f := newSaveFixture(t)
+	f.launchers["gba"] = mGBA
+	moved := filepath.Join(f.root, "elsewhere")
+	f.configs["mgba"] = domain.SaveConfig{Dir: moved}
+	f.saves = f.newSaves()
+	f.ownGame(t, 53, 10, "gba", "Golden Sun (USA).gba", "")
+	if st := f.statusOf(t, 53); !st.Syncs || st.Path != filepath.Join(moved, "Golden Sun (USA).sav") {
+		t.Fatalf("status %+v", st)
+	}
+	if p := f.saves.Paused(); len(p) != 0 {
+		t.Fatalf("paused %+v", p)
 	}
 }
 

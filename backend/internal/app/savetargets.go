@@ -12,11 +12,12 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
-// SaveConfigs reads emulators' own settings for what stops their saves from syncing.
+// SaveConfigs reads emulators' own settings for where they keep their saves and what stops those
+// from syncing.
 type SaveConfigs interface {
-	// SaveProblem says why the saves of the emulator with id don't sync as the plugin names them,
-	// empty when nothing in its settings stops them.
-	SaveProblem(id string) string
+	SaveConfig(id string) domain.SaveConfig
+	// Files are the settings files SaveConfig reads.
+	Files() []string
 }
 
 // N64Database is the ROM database RMG names N64 saves from.
@@ -154,12 +155,9 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 	if why != "" {
 		return saveTarget{}, why, nil
 	}
-	if why := s.configs.SaveProblem(rule.Emulator.ID); why != "" {
+	saves, why := s.saveDir(state, rule.Emulator)
+	if why != "" {
 		return saveTarget{}, why, nil
-	}
-	saves, ok := saveDir(state, rule.Emulator.ID)
-	if !ok {
-		return saveTarget{}, rule.Emulator.Name + "'s saves folder wasn't found. Set it up in EmuDeck, then check Setup status again.", nil
 	}
 	slot, err := s.slotOf(ctx, id)
 	if err != nil {
@@ -267,13 +265,22 @@ func (s *Saves) launch(folder, rel string, state domain.InstallState) (domain.Sa
 	return domain.SaveRule{}, "", "Which RetroArch core runs this game can't be told."
 }
 
-// saveDir is the folder the emulator with id keeps its saves in, links followed.
-func saveDir(state domain.InstallState, id string) (string, bool) {
-	i := slices.IndexFunc(state.Emulators, func(e domain.EmulatorState) bool { return e.ID == id })
-	if i < 0 || !state.Emulators[i].SaveSyncReady() {
-		return "", false
+// saveDir is the folder the emulator keeps its saves in, links followed: the one its own settings
+// name, else EmuDeck's. why says why its saves don't sync, its settings having moved them where
+// the plugin can't follow.
+func (s *Saves) saveDir(state domain.InstallState, e domain.Emulator) (dir, why string) {
+	cfg := s.configs.SaveConfig(e.ID)
+	switch {
+	case cfg.Problem != "":
+		return "", cfg.Problem
+	case cfg.Dir != "":
+		return cfg.Dir, ""
 	}
-	return state.Emulators[i].Saves[0].Resolved, true
+	i := slices.IndexFunc(state.Emulators, func(es domain.EmulatorState) bool { return es.ID == e.ID })
+	if i < 0 || !state.Emulators[i].SaveSyncReady() {
+		return "", e.Name + "'s saves folder wasn't found. Set it up in EmuDeck, then check Setup status again."
+	}
+	return state.Emulators[i].Saves[0].Resolved, ""
 }
 
 // folderHolding is the ROM folder of system's that path is in, by its folder name and path.

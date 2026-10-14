@@ -112,9 +112,14 @@ func saveRoutes(s *Server, saves *app.Saves) {
 		if err != nil {
 			return schema.SaveSummary{}, wireError(err)
 		}
-		out := schema.SaveSummary{Counts: toWireCounts(counts), LastCheckedAt: rfc3339(last), Syncing: syncing, Conflicts: []schema.SaveConflictGame{}}
+		out := schema.SaveSummary{
+			Counts: toWireCounts(counts), LastCheckedAt: rfc3339(last), Syncing: syncing, Conflicts: []schema.SaveConflictGame{}, Paused: []schema.PausedEmulator{},
+		}
 		for _, c := range conflicts {
 			out.Conflicts = append(out.Conflicts, schema.SaveConflictGame{ID: c.ROMID, Name: c.Name})
+		}
+		for _, p := range saves.Paused() {
+			out.Paused = append(out.Paused, schema.PausedEmulator{ID: p.Emulator.ID, Name: p.Emulator.Name, Why: p.Why})
 		}
 		return out, nil
 	})

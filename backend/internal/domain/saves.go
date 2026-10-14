@@ -189,6 +189,15 @@ type SaveUpload struct {
 	Overwrite bool
 }
 
+// SaveConfig is what an emulator's own settings say of its saves.
+type SaveConfig struct {
+	// Dir is the folder its settings keep saves in, links followed; empty when they don't say, and
+	// EmuDeck's saves folder stands.
+	Dir string
+	// Problem says why its saves don't sync, empty when nothing in its settings stops them.
+	Problem string
+}
+
 // ServerSave is a save as RomM keeps it.
 type ServerSave struct {
 	ID          int

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -306,10 +307,13 @@ type SaveWatch interface {
 }
 
 // Run trims the activity log, then syncs saves on their own until ctx ends: every game's at start
-// and every pullEvery, a game's once its save settles after its emulator writes it, and a download
-// that waits for an emulator once it closes. A nil watch leaves out the syncs on writes.
+// and every pullEvery, a game's once its save settles after its emulator writes it, every game's
+// once an emulator's settings move its saves or stop them syncing, and a download that waits for
+// an emulator once it closes. A nil watch leaves out the syncs on writes and settings changes.
 func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
 	s.pruneActivity(ctx)
+	configs := s.configs.Files()
+	seen := s.saveConfigs()
 	s.request(nil, false)
 	pull := time.NewTicker(s.pullEvery)
 	defer pull.Stop()
@@ -328,7 +332,7 @@ func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
 	}
 	watched := ""
 	for {
-		if dirs := saveDirs(s.install.State(false)); watch != nil && len(dirs) > 0 && strings.Join(dirs, "\n") != watched {
+		if dirs := s.watchDirs(configs); watch != nil && len(dirs) > 0 && strings.Join(dirs, "\n") != watched {
 			if err := watch.Watch(dirs...); err != nil {
 				s.log.Warn("watch saves", "dirs", dirs, "err", err)
 			} else {
@@ -358,11 +362,42 @@ func (s *Saves) Run(ctx context.Context, watch SaveWatch) {
 			})
 		case p := <-settled:
 			delete(timers, p)
-			s.saveWritten(ctx, p)
+			if !slices.Contains(configs, p) {
+				s.saveWritten(ctx, p)
+				continue
+			}
+			if now := s.saveConfigs(); !maps.Equal(now, seen) {
+				seen = now
+				s.log.Info("emulator save settings changed", "path", p)
+				s.request(nil, false)
+			}
 		case <-poll.C:
 			s.retryWaiting(ctx)
 		}
 	}
+}
+
+// saveConfigs is what each emulator's settings say of its saves, by its id.
+func (s *Saves) saveConfigs() map[string]domain.SaveConfig {
+	out := map[string]domain.SaveConfig{}
+	for _, r := range domain.SaveRules() {
+		out[r.Emulator.ID] = s.configs.SaveConfig(r.Emulator.ID)
+	}
+	return out
+}
+
+// watchDirs are the folders the watch covers: those saves are in, and those holding the emulators'
+// settings files, of which only the files among configs count.
+func (s *Saves) watchDirs(configs []string) []string {
+	dirs := s.saveDirs(s.install.State(false))
+	for _, f := range configs {
+		if dir := filepath.Dir(f); !slices.Contains(dirs, dir) {
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	return dirs
 }
 
 // saveWritten syncs the game whose save was just written, unless the plugin wrote it.
@@ -462,7 +497,7 @@ func (s *Saves) ready() (*domain.SignIn, error) {
 			}
 		}
 	}
-	if len(saveDirs(s.install.State(false))) == 0 {
+	if len(s.saveDirs(s.install.State(false))) == 0 {
 		return nil, &domain.Error{
 			Kind:    domain.KindInvalidInput,
 			Message: "No emulator's saves folder was found. Set your emulators up in EmuDeck, then check Setup status again.",
@@ -472,11 +507,33 @@ func (s *Saves) ready() (*domain.SignIn, error) {
 }
 
 // saveDirs are the folders the emulators whose saves sync keep them in.
-func saveDirs(state domain.InstallState) []string {
+func (s *Saves) saveDirs(state domain.InstallState) []string {
 	var out []string
 	for _, r := range domain.SaveRules() {
-		if dir, ok := saveDir(state, r.Emulator.ID); ok {
+		if dir, why := s.saveDir(state, r.Emulator); why == "" {
 			out = append(out, dir)
+		}
+	}
+	return out
+}
+
+// PausedEmulator is an installed emulator whose saves don't sync because of its own settings.
+type PausedEmulator struct {
+	Emulator domain.Emulator
+	Why      string
+}
+
+// Paused lists the installed emulators whose own settings stop their saves from syncing.
+func (s *Saves) Paused() []PausedEmulator {
+	out := []PausedEmulator{}
+	state := s.install.State(false)
+	for _, r := range domain.SaveRules() {
+		i := slices.IndexFunc(state.Emulators, func(e domain.EmulatorState) bool { return e.ID == r.Emulator.ID })
+		if i < 0 || !state.Emulators[i].Installed {
+			continue
+		}
+		if cfg := s.configs.SaveConfig(r.Emulator.ID); cfg.Problem != "" {
+			out = append(out, PausedEmulator{Emulator: r.Emulator, Why: cfg.Problem})
 		}
 	}
 	return out

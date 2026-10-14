@@ -127,7 +127,7 @@ func TestDuckStationCantTellTheCard(t *testing.T) {
 	}
 	f.psx["Crash.chd"] = domain.PSXDisc{Read: true, Serial: "SCUS-94154"}
 	f.psxGame(t, 74, "Crash", "Crash.chd")
-	f.configs["duckstation"] = "Card 1 isn't per game."
+	f.configs["duckstation"] = domain.SaveConfig{Problem: "Card 1 isn't per game."}
 	if st := f.statusOf(t, 74); st.Syncs || st.Why != "Card 1 isn't per game." {
 		t.Fatalf("settings %+v", st)
 	}

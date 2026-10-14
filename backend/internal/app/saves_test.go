@@ -460,10 +460,12 @@ func (d fakeDuckStation) Game(path string, disc domain.PSXDisc) (domain.DuckStat
 	return domain.DuckStationGame{Title: domain.FileTitle(path)}, "", nil
 }
 
-// fakeConfigs reports each emulator's settings problem, by its id.
-type fakeConfigs map[string]string
+// fakeConfigs answers what each emulator's settings say of its saves, by its id.
+type fakeConfigs map[string]domain.SaveConfig
 
-func (c fakeConfigs) SaveProblem(id string) string { return c[id] }
+func (c fakeConfigs) SaveConfig(id string) domain.SaveConfig { return c[id] }
+
+func (c fakeConfigs) Files() []string { return nil }
 
 func (f *saveFixture) chronoSave() string {
 	return filepath.Join(f.raSaves, "Chrono Trigger (USA).srm")

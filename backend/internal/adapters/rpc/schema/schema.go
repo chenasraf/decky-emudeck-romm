@@ -1225,6 +1225,14 @@ type SaveSummary struct {
 	Syncing       bool   `json:"syncing"`
 	// Conflicts are the games whose saves are in conflict.
 	Conflicts []SaveConflictGame `json:"conflicts"`
+	// Paused are the installed emulators whose own settings stop their saves from syncing.
+	Paused []PausedEmulator `json:"paused"`
+}
+
+type PausedEmulator struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Why  string `json:"why"`
 }
 
 type SaveSyncEvent struct {

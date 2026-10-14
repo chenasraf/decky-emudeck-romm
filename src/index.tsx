@@ -280,6 +280,11 @@ function SaveSyncSection({ onOpen }: { onOpen: (id: number) => void }) {
           ))}
         </>
       )}
+      {summary.paused.map((p) => (
+        <PanelSectionRow key={p.id}>
+          <Field label={`⚠ ${p.name} sync paused`} description={p.why} />
+        </PanelSectionRow>
+      ))}
       {waiting > 0 && (
         <PanelSectionRow>
           <Field

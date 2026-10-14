@@ -1532,6 +1532,15 @@ export interface SaveSummary {
    * Conflicts are the games whose saves are in conflict.
    */
   conflicts: SaveConflictGame[];
+  /**
+   * Paused are the installed emulators whose own settings stop their saves from syncing.
+   */
+  paused: PausedEmulator[];
+}
+export interface PausedEmulator {
+  id: string;
+  name: string;
+  why: string;
 }
 export interface SaveSyncEvent {
   syncing: boolean;

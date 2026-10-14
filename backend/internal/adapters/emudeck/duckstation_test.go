@@ -106,7 +106,7 @@ func TestDuckStationCardSettings(t *testing.T) {
 		problem string
 	}{
 		"no config":            {"", ""},
-		"EmuDeck's":            {"[MemoryCards]\nCard1Type = PerGameTitle\nCard2Type = None\nUsePlaylistTitle = true\n", ""},
+		"EmuDeck's":            {"[MemoryCards]\nCard1Type = PerGameTitle\nCard2Type = None\nUsePlaylistTitle = true\nDirectory = memcards\n", ""},
 		"by serial":            {"[MemoryCards]\nCard1Type = PerGame\n", "Card 1"},
 		"shared":               {"[MemoryCards]\nCard1Type = Shared\n", "Card 1"},
 		"a card for each disc": {"[MemoryCards]\nUsePlaylistTitle = false\n", "Multi-Disc"},
@@ -116,8 +116,11 @@ func TestDuckStationCardSettings(t *testing.T) {
 			home := t.TempDir()
 			if c.config != "" {
 				put(t, filepath.Join(home, duckStationData, "settings.ini"), c.config)
+				if err := os.MkdirAll(filepath.Join(home, duckStationData, "memcards"), 0o755); err != nil {
+					t.Fatal(err)
+				}
 			}
-			got := NewSaveConfigs(home).SaveProblem("duckstation")
+			got := NewSaveConfigs(home).SaveConfig("duckstation").Problem
 			if (got != "") != (c.problem != "") || !strings.Contains(got, c.problem) {
 				t.Fatalf("got %q", got)
 			}

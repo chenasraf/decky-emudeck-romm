@@ -99,7 +99,7 @@ func TestRMGSaveFilenameFormat(t *testing.T) {
 		if err := os.WriteFile(cfg, []byte("[Rosalie's Mupen GUI Core Overlay]\nSaveFilenameFormat = "+format+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if got := c.SaveProblem("rmg"); (got != "") != problem {
+		if got := c.SaveConfig("rmg").Problem; (got != "") != problem {
 			t.Fatalf("format %s: %q", format, got)
 		}
 	}
