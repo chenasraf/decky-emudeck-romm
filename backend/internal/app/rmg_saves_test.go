@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,6 +139,45 @@ func TestRMGDownloadsIntoItsFiles(t *testing.T) {
 				t.Fatalf("second sync %+v", s)
 			}
 		})
+	}
+}
+
+// A save kept in several files goes to RomM as one zip and comes back into the same files.
+func TestRMGSeveralFilesRoundTrip(t *testing.T) {
+	f := newSaveFixture(t)
+	base := f.rmgGame(t)
+	pak := bytes.Repeat([]byte{0x00}, 0x8000)
+	for at := 0x10A; at < 0x200; at += 2 {
+		binary.BigEndian.PutUint16(pak[at:], 0x0003)
+	}
+	binary.BigEndian.PutUint16(pak[0x10A:], 0x0005)
+	copy(pak[0x300:], "pak note")
+	writeFile(t, base+".eep", eeprom("mario"))
+	writeFile(t, base+".mpk", pak)
+
+	if s := f.syncGame(t, 60); s.Uploaded != 1 {
+		t.Fatalf("upload %+v", s)
+	}
+	head, _ := f.romm.head(60)
+	if members := zipMembers(t, head.data); len(members) != 2 || !bytes.Equal(members["eeprom"], eeprom("mario")) || !bytes.Equal(members["pak1"], pak) {
+		t.Fatalf("RomM holds %d members", len(members))
+	}
+
+	for _, ext := range []string{".eep", ".mpk"} {
+		if err := os.Remove(base + ext); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.romm.otherDevice(60, "rmg", head.data)
+	if s := f.syncGame(t, 60); s.Downloaded != 1 {
+		t.Fatalf("download %+v", s)
+	}
+	// RMG keeps an EEPROM at 16 Kbit whichever size the game uses.
+	if got := readFile(t, base+".eep"); len(got) != 0x800 || got[:0x200] != string(eeprom("mario")) {
+		t.Fatalf(".eep holds %d bytes", len(got))
+	}
+	if got := readFile(t, base+".mpk"); len(got) != 4*0x8000 || got[:0x8000] != string(pak) {
+		t.Fatalf(".mpk holds %d bytes", len(got))
 	}
 }
 
