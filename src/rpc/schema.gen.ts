@@ -145,6 +145,8 @@ export interface Methods {
   save_activity: Method<SaveActivityParams, SaveActivity>;
   save_backups: Method<SaveBackupsParams, SaveBackups>;
   restore_save_backup: Method<RestoreSaveBackupParams, SaveStatus>;
+  save_slots: Method<SaveSlotsParams, SaveSlots>;
+  switch_save_slot: Method<SwitchSaveSlotParams, SaveStatus>;
 }
 /**
  * Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1318,6 +1320,10 @@ export interface SaveStatus {
   emulator?: string;
   saver?: string;
   /**
+   * Slot is the RomM slot the save syncs in.
+   */
+  slot?: string;
+  /**
    * State is unset until a sync looks at the game.
    */
   state?: SaveState;
@@ -1387,6 +1393,7 @@ export const ActivityResolved: ActivityKind = "resolved";
 export const ActivityFailed: ActivityKind = "failed";
 export const ActivityRemovedOnServer: ActivityKind = "removed_on_server";
 export const ActivityRestored: ActivityKind = "restored";
+export const ActivitySlot: ActivityKind = "slot";
 /**
  * SaveActivityEntry is something save sync did to a game's save.
  */
@@ -1435,6 +1442,40 @@ export interface SaveBackups {
 export interface RestoreSaveBackupParams {
   id: number /* int */;
   name: string;
+}
+export interface SaveSlotsParams {
+  id: number /* int */;
+}
+/**
+ * SaveSlot is one of a game's save slots on RomM.
+ */
+export interface SaveSlot {
+  name: string;
+  count: number /* int */;
+  /**
+   * LatestAt is when its newest save was written, as RFC 3339.
+   */
+  latestAt?: string;
+}
+/**
+ * SaveSlots lists a game's save slots on RomM, and names the one its save syncs in.
+ */
+export interface SaveSlots {
+  slots: SaveSlot[];
+  current: string;
+  /**
+   * Default is the slot a save syncs in unless the user picks another.
+   */
+  default: string;
+}
+/**
+ * SwitchSaveSlotParams makes a game's save sync in slot. The save syncs in the slot it leaves first;
+ * then the newest save in slot replaces this Deck's, which is backed up, or an empty slot starts
+ * from this Deck's save.
+ */
+export interface SwitchSaveSlotParams {
+  id: number /* int */;
+  slot: string;
 }
 export interface SaveSummaryParams {
 }

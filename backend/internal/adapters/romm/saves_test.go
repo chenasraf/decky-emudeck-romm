@@ -115,6 +115,31 @@ func TestUploadSave(t *testing.T) {
 	}
 }
 
+func TestSaveSlots(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.RequestURI()
+		_, _ = w.Write([]byte(`{"total_count": 4, "slots": [
+			{"slot": "autosave", "count": 2, "latest": {"id": 71, "rom_id": 7, "file_name": "Chrono.srm", "slot": "autosave",
+				"content_hash": "abc", "updated_at": "2026-10-13T11:00:00Z"}},
+			{"slot": null, "count": 1, "latest": {"id": 60, "rom_id": 7, "file_name": "Chrono [conflict].srm", "slot": null}},
+			{"slot": "deck", "count": 1, "latest": {"id": 80, "rom_id": 7, "file_name": "Chrono.srm", "slot": "deck",
+				"updated_at": "2026-10-13T12:00:00Z"}}]}`))
+	}))
+	defer srv.Close()
+
+	slots, err := New(domain.Server{URL: srv.URL}, "rmm_x", ver).SaveSlots(context.Background(), 7)
+	if err != nil || path != "/api/saves/summary?rom_id=7" || len(slots) != 2 {
+		t.Fatalf("got %+v from %s, %v", slots, path, err)
+	}
+	if s := slots[0]; s.Name != "autosave" || s.Count != 2 || s.Latest.ID != 71 || s.Latest.ContentHash != "abc" {
+		t.Fatalf("autosave %+v", s)
+	}
+	if s := slots[1]; s.Name != "deck" || !s.Latest.UpdatedAt.Equal(time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)) {
+		t.Fatalf("deck %+v", s)
+	}
+}
+
 func TestDownloadAndConfirmSave(t *testing.T) {
 	var confirmed map[string]string
 	var optimistic string

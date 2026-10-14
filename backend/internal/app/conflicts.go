@@ -85,7 +85,7 @@ func (s *Saves) Resolve(ctx context.Context, id int, keep domain.SaveChoice, see
 	// RomM plans by time and refuses the upload rather than planning a conflict when another
 	// device's save is the slot's newest, so what's left to choose is read from the save the plan
 	// names, not from its action.
-	op, ok := ownOperation(plan, id)
+	op, ok := ownOperation(plan, t)
 	switch {
 	case !ok:
 		r := p.record(records, t)

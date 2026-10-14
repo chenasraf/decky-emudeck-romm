@@ -152,10 +152,13 @@ func TestOwnOperationIgnoresOtherSlots(t *testing.T) {
 		{Action: domain.SyncDownload, ROMID: 1, SaveID: 8, Slot: "manual"},
 		{Action: domain.SyncNoOp, ROMID: 1, SaveID: 7, Slot: domain.AutosaveSlot},
 	}}
-	if op, ok := ownOperation(plan, 1); !ok || op.SaveID != 7 {
+	if op, ok := ownOperation(plan, saveTarget{romID: 1, slot: domain.AutosaveSlot}); !ok || op.SaveID != 7 {
 		t.Fatalf("got %+v, %v", op, ok)
 	}
-	if _, ok := ownOperation(plan, 2); ok {
+	if op, ok := ownOperation(plan, saveTarget{romID: 1, slot: "manual"}); !ok || op.SaveID != 8 {
+		t.Fatalf("picked slot: got %+v, %v", op, ok)
+	}
+	if _, ok := ownOperation(plan, saveTarget{romID: 2, slot: domain.AutosaveSlot}); ok {
 		t.Fatal("found an operation for another game")
 	}
 }

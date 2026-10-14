@@ -27,7 +27,7 @@ func saveRoutes(s *Server, saves *app.Saves) {
 			return schema.SaveStatus{}, wireError(err)
 		}
 		out := schema.SaveStatus{
-			ID: st.ROMID, Syncs: st.Syncs, Why: st.Why, Path: st.Path, Emulator: st.Emulator, Saver: st.Saver, State: schema.SaveState(st.State),
+			ID: st.ROMID, Syncs: st.Syncs, Why: st.Why, Path: st.Path, Emulator: st.Emulator, Saver: st.Saver, Slot: st.Slot, State: schema.SaveState(st.State),
 			Problem: st.Problem, CheckedAt: rfc3339(st.CheckedAt), Syncing: st.Syncing,
 		}
 		if c := st.Conflict; c != nil {
@@ -79,6 +79,25 @@ func saveRoutes(s *Server, saves *app.Saves) {
 
 	Register(s, "restore_save_backup", func(ctx context.Context, p schema.RestoreSaveBackupParams) (schema.SaveStatus, error) {
 		if err := saves.RestoreBackup(ctx, p.ID, p.Name); err != nil {
+			return schema.SaveStatus{}, wireError(err)
+		}
+		return status(ctx, p.ID)
+	})
+
+	Register(s, "save_slots", func(ctx context.Context, p schema.SaveSlotsParams) (schema.SaveSlots, error) {
+		slots, current, err := saves.Slots(ctx, p.ID)
+		if err != nil {
+			return schema.SaveSlots{}, wireError(err)
+		}
+		out := schema.SaveSlots{Slots: []schema.SaveSlot{}, Current: current, Default: domain.AutosaveSlot}
+		for _, sl := range slots {
+			out.Slots = append(out.Slots, schema.SaveSlot{Name: sl.Name, Count: sl.Count, LatestAt: rfc3339(sl.Latest.UpdatedAt)})
+		}
+		return out, nil
+	})
+
+	Register(s, "switch_save_slot", func(ctx context.Context, p schema.SwitchSaveSlotParams) (schema.SaveStatus, error) {
+		if err := saves.SwitchSlot(ctx, p.ID, p.Slot); err != nil {
 			return schema.SaveStatus{}, wireError(err)
 		}
 		return status(ctx, p.ID)

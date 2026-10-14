@@ -167,6 +167,30 @@ func (c *Client) UploadSave(ctx context.Context, u domain.SaveUpload) (domain.Se
 	return body.save(), nil
 }
 
+// SaveSlots lists the ROM with id's save slots, each with its newest save. Saves in no slot are left
+// out: they're no timeline a save syncs in.
+func (c *Client) SaveSlots(ctx context.Context, id int) ([]domain.SaveSlot, error) {
+	var body struct {
+		Slots []struct {
+			Slot   *string  `json:"slot"`
+			Count  int      `json:"count"`
+			Latest wireSave `json:"latest"`
+		} `json:"slots"`
+	}
+	status, err := c.do(ctx, http.MethodGet, "/api/saves/summary?rom_id="+strconv.Itoa(id), nil, &body)
+	if err := statusError("list the save slots", status, err); err != nil {
+		return nil, err
+	}
+	out := []domain.SaveSlot{}
+	for _, s := range body.Slots {
+		if deref(s.Slot) == "" {
+			continue
+		}
+		out = append(out, domain.SaveSlot{Name: *s.Slot, Count: s.Count, Latest: s.Latest.save()})
+	}
+	return out, nil
+}
+
 // DownloadSave fetches a save's content. RomM records this Device as synced to it only once
 // ConfirmSaveDownload says the bytes arrived.
 func (c *Client) DownloadSave(ctx context.Context, id int, deviceID string, sessionID int) ([]byte, error) {

@@ -293,6 +293,9 @@ func TestForgetServerDropsEveryRecord(t *testing.T) {
 	if err := s.PutSaveRecord(ctx, domain.SaveRecord{ROMID: 1, Path: "/e/saves/a.srm"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.SetSaveSlot(ctx, 1, "deck"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := s.ForgetServer(ctx); err != nil {
 		t.Fatal(err)
@@ -300,8 +303,28 @@ func TestForgetServerDropsEveryRecord(t *testing.T) {
 	var rows int
 	if err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM owned_roms) + (SELECT COUNT(*) FROM owned_files) +
 		(SELECT COUNT(*) FROM linked_games) + (SELECT COUNT(*) FROM download_queue) + (SELECT COUNT(*) FROM owned_bios) +
-		(SELECT COUNT(*) FROM save_records)`).Scan(&rows); err != nil || rows != 0 {
+		(SELECT COUNT(*) FROM save_records) + (SELECT COUNT(*) FROM save_slots)`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("%d rows left, %v", rows, err)
+	}
+}
+
+func TestSaveSlot(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "state.db"))
+	if slot, err := s.SaveSlot(ctx, 7); err != nil || slot != "" {
+		t.Fatalf("unpicked: %q, %v", slot, err)
+	}
+	if err := s.SetSaveSlot(ctx, 7, "deck"); err != nil {
+		t.Fatal(err)
+	}
+	if slot, err := s.SaveSlot(ctx, 7); err != nil || slot != "deck" {
+		t.Fatalf("picked: %q, %v", slot, err)
+	}
+	if err := s.SetSaveSlot(ctx, 7, domain.AutosaveSlot); err != nil {
+		t.Fatal(err)
+	}
+	if slot, err := s.SaveSlot(ctx, 7); err != nil || slot != "" {
+		t.Fatalf("back to autosave: %q, %v", slot, err)
 	}
 }
 

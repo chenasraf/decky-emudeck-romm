@@ -149,6 +149,12 @@ CREATE TABLE save_activity (
 CREATE INDEX save_activity_by_rom ON save_activity (rom_id, at);
 CREATE INDEX save_activity_by_at ON save_activity (at);
 `,
+	`
+CREATE TABLE save_slots (
+	rom_id INTEGER PRIMARY KEY,
+	slot   TEXT NOT NULL
+);
+`,
 }
 
 // metaLastSweep is when the last sweep of every Plugin-owned ROM for updates finished.
@@ -599,7 +605,7 @@ func (s *Store) ForgetServer(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records", "save_activity"} {
+	for _, table := range []string{"owned_roms", "owned_bios", "linked_games", "download_queue", "save_records", "save_activity", "save_slots"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
 		}
@@ -640,6 +646,28 @@ func (s *Store) SaveRecords(ctx context.Context) ([]domain.SaveRecord, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// SaveSlot returns the RomM slot the user picked for the ROM with id's save, empty when they picked
+// none.
+func (s *Store) SaveSlot(ctx context.Context, id int) (string, error) {
+	var slot string
+	err := s.db.QueryRowContext(ctx, "SELECT slot FROM save_slots WHERE rom_id = ?", id).Scan(&slot)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return slot, err
+}
+
+// SetSaveSlot records the RomM slot the ROM with id's save syncs in; domain.AutosaveSlot clears the
+// pick.
+func (s *Store) SetSaveSlot(ctx context.Context, id int, slot string) error {
+	if slot == domain.AutosaveSlot {
+		_, err := s.db.ExecContext(ctx, "DELETE FROM save_slots WHERE rom_id = ?", id)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, "INSERT OR REPLACE INTO save_slots (rom_id, slot) VALUES (?, ?)", id, slot)
+	return err
 }
 
 // AddActivity appends an entry to the activity log.

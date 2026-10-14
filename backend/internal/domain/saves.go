@@ -7,9 +7,20 @@ import (
 	"time"
 )
 
-// AutosaveSlot is the RomM save slot a game's live save syncs in: the one RomM's web player and
-// its other clients use, so they all share one timeline.
+// AutosaveSlot is the RomM save slot a game's live save syncs in unless the user picks another: the
+// one RomM's web player and its other clients use, so they all share one timeline.
 const AutosaveSlot = "autosave"
+
+// MaxSlotName bounds the name of a save slot the user types.
+const MaxSlotName = 64
+
+// SaveSlot is one of a ROM's save slots on RomM: a timeline of versions, of which the newest is
+// Latest.
+type SaveSlot struct {
+	Name   string
+	Count  int
+	Latest ServerSave
+}
 
 // SaveState is where a game's save stands after the last sync that looked at it.
 type SaveState string
@@ -73,6 +84,7 @@ const (
 	ActivityFailed          ActivityKind = "failed"
 	ActivityRemovedOnServer ActivityKind = "removed_on_server"
 	ActivityRestored        ActivityKind = "restored"
+	ActivitySlot            ActivityKind = "slot"
 )
 
 // SaveActivity is one entry of the activity log: something save sync did to a game's save.

@@ -70,12 +70,17 @@ func (f *fakeRomMSaves) heads() map[[2]any]fakeVersion {
 	return out
 }
 
-// otherDevice stores a save as another device would.
+// otherDevice stores an autosave as another device would.
 func (f *fakeRomMSaves) otherDevice(romID int, emulator string, data []byte) fakeVersion {
+	return f.otherDeviceIn(romID, domain.AutosaveSlot, emulator, data)
+}
+
+// otherDeviceIn stores a save in slot as another device would.
+func (f *fakeRomMSaves) otherDeviceIn(romID int, slot, emulator string, data []byte) fakeVersion {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	v := fakeVersion{ServerSave: domain.ServerSave{
-		ID: f.nextID, ROMID: romID, FileName: "save.srm", Slot: domain.AutosaveSlot, Emulator: emulator,
+		ID: f.nextID, ROMID: romID, FileName: "save.srm", Slot: slot, Emulator: emulator,
 		ContentHash: domain.ContentHash(data), UpdatedAt: f.tick(),
 	}, data: data}
 	f.nextID++
@@ -215,6 +220,35 @@ func (f *fakeRomMSaves) CompleteSync(_ context.Context, session, completed, fail
 	return nil
 }
 
+func (f *fakeRomMSaves) SaveSlots(_ context.Context, id int) ([]domain.SaveSlot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	counts := map[string]int{}
+	for _, v := range f.versions {
+		if v.ROMID == id && v.Slot != "" {
+			counts[v.Slot]++
+		}
+	}
+	out := []domain.SaveSlot{}
+	for k, head := range f.heads() {
+		if k[0] == id {
+			out = append(out, domain.SaveSlot{Name: head.Slot, Count: counts[head.Slot], Latest: head.ServerSave})
+		}
+	}
+	return out, nil
+}
+
+// headIn returns the newest save of a ROM in slot.
+func (f *fakeRomMSaves) headIn(romID int, slot string) (fakeVersion, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.heads()[[2]any{romID, slot}]
+	return v, ok
+}
+
 // parked returns a ROM's saves in no slot.
 func (f *fakeRomMSaves) parked(romID int) []fakeVersion {
 	f.mu.Lock()
@@ -241,6 +275,27 @@ type memSaveStore struct {
 	mu       sync.Mutex
 	records  map[int]domain.SaveRecord
 	activity []domain.SaveActivity
+	slots    map[int]string
+}
+
+func (m *memSaveStore) SaveSlot(_ context.Context, id int) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.slots[id], nil
+}
+
+func (m *memSaveStore) SetSaveSlot(_ context.Context, id int, slot string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.slots == nil {
+		m.slots = map[int]string{}
+	}
+	if slot == domain.AutosaveSlot {
+		delete(m.slots, id)
+	} else {
+		m.slots[id] = slot
+	}
+	return nil
 }
 
 func (m *memSaveStore) AddActivity(_ context.Context, a domain.SaveActivity) error {

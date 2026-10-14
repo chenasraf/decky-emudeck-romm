@@ -121,6 +121,8 @@ type Methods struct {
 	SaveActivity        Method[SaveActivityParams, SaveActivity]                     `json:"save_activity"`
 	SaveBackups         Method[SaveBackupsParams, SaveBackups]                       `json:"save_backups"`
 	RestoreSaveBackup   Method[RestoreSaveBackupParams, SaveStatus]                  `json:"restore_save_backup"`
+	SaveSlots           Method[SaveSlotsParams, SaveSlots]                           `json:"save_slots"`
+	SwitchSaveSlot      Method[SwitchSaveSlotParams, SaveStatus]                     `json:"switch_save_slot"`
 }
 
 // Events maps each notification the backend sends, which main.py re-emits to the frontend as an
@@ -1045,6 +1047,8 @@ type SaveStatus struct {
 	Path     string `json:"path,omitempty"`
 	Emulator string `json:"emulator,omitempty"`
 	Saver    string `json:"saver,omitempty"`
+	// Slot is the RomM slot the save syncs in.
+	Slot string `json:"slot,omitempty"`
 	// State is unset until a sync looks at the game.
 	State   SaveState `json:"state,omitempty"`
 	Problem string    `json:"problem,omitempty"`
@@ -1106,6 +1110,7 @@ const (
 	ActivityFailed          ActivityKind = "failed"
 	ActivityRemovedOnServer ActivityKind = "removed_on_server"
 	ActivityRestored        ActivityKind = "restored"
+	ActivitySlot            ActivityKind = "slot"
 )
 
 // SaveActivityEntry is something save sync did to a game's save.
@@ -1147,6 +1152,34 @@ type SaveBackups struct {
 type RestoreSaveBackupParams struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+type SaveSlotsParams struct {
+	ID int `json:"id"`
+}
+
+// SaveSlot is one of a game's save slots on RomM.
+type SaveSlot struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	// LatestAt is when its newest save was written, as RFC 3339.
+	LatestAt string `json:"latestAt,omitempty"`
+}
+
+// SaveSlots lists a game's save slots on RomM, and names the one its save syncs in.
+type SaveSlots struct {
+	Slots   []SaveSlot `json:"slots"`
+	Current string     `json:"current"`
+	// Default is the slot a save syncs in unless the user picks another.
+	Default string `json:"default"`
+}
+
+// SwitchSaveSlotParams makes a game's save sync in slot. The save syncs in the slot it leaves first;
+// then the newest save in slot replaces this Deck's, which is backed up, or an empty slot starts
+// from this Deck's save.
+type SwitchSaveSlotParams struct {
+	ID   int    `json:"id"`
+	Slot string `json:"slot"`
 }
 
 type SaveSummaryParams struct{}

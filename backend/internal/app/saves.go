@@ -27,6 +27,7 @@ type SaveServer interface {
 	DownloadSave(ctx context.Context, id int, deviceID string, sessionID int) ([]byte, error)
 	ConfirmSaveDownload(ctx context.Context, id int, deviceID, hash string) error
 	CompleteSync(ctx context.Context, sessionID, completed, failed int) error
+	SaveSlots(ctx context.Context, id int) ([]domain.SaveSlot, error)
 }
 
 // SaveDialer returns a SaveServer for server, authenticated with token.
@@ -45,6 +46,10 @@ type SaveStore interface {
 	// PruneActivity drops entries older than before, and all but the newest keep, except
 	// unresolved conflicts.
 	PruneActivity(ctx context.Context, before time.Time, keep int) (int64, error)
+	// SaveSlot is the RomM slot the user picked for the ROM with id, empty when they picked none.
+	SaveSlot(ctx context.Context, id int) (string, error)
+	// SetSaveSlot picks the ROM's slot; domain.AutosaveSlot clears the pick.
+	SetSaveSlot(ctx context.Context, id int, slot string) error
 }
 
 // Launchers finds the command ES-DE launches a game with, rel being its path under its system's
@@ -60,10 +65,12 @@ type SaveStatus struct {
 	Syncs bool
 	Why   string
 	// Path is the save file, Emulator the tag RomM keeps it under (a RetroArch core's name, or the
-	// standalone emulator's), and Saver the name of the emulator that writes it.
+	// standalone emulator's), and Saver the name of the emulator that writes it. Slot is the RomM
+	// slot it syncs in.
 	Path     string
 	Emulator string
 	Saver    string
+	Slot     string
 	// State is empty until a sync looks at the game.
 	State     domain.SaveState
 	Problem   string
@@ -545,11 +552,12 @@ func (s *Saves) dropShared(ctx context.Context, targets []saveTarget, records ma
 // record returns what save sync knows of t's game, set to where its save is now.
 func (s *Saves) record(records map[int]domain.SaveRecord, t saveTarget) domain.SaveRecord {
 	r, ok := records[t.romID]
-	if !ok || r.Path != t.path {
-		// A save that moved is a new file: what was known of the old one says nothing of it.
+	if !ok || r.Path != t.path || r.Slot != t.slot {
+		// A save that moved is a new file, and another slot another timeline: what was known of the
+		// old one says nothing of it.
 		r = domain.SaveRecord{ROMID: t.romID}
 	}
-	r.Path, r.Slot, r.Emulator, r.CheckedAt = t.path, domain.AutosaveSlot, t.emulator, s.now().UTC()
+	r.Path, r.Slot, r.Emulator, r.CheckedAt = t.path, t.slot, t.emulator, s.now().UTC()
 	return r
 }
 
@@ -574,12 +582,12 @@ func (s *Saves) Status(ctx context.Context, id int) (SaveStatus, error) {
 		out.Why = why
 		return out, nil
 	}
-	out.Syncs, out.Path, out.Emulator, out.Saver = true, t.path, t.emulator, t.rule.Emulator.Name
+	out.Syncs, out.Path, out.Emulator, out.Saver, out.Slot = true, t.path, t.emulator, t.rule.Emulator.Name, t.slot
 	records, err := s.records(ctx)
 	if err != nil {
 		return out, err
 	}
-	if r, ok := records[id]; ok && r.Path == t.path {
+	if r, ok := records[id]; ok && r.Path == t.path && r.Slot == t.slot {
 		out.State, out.Problem, out.CheckedAt = r.State, r.Problem, r.CheckedAt
 		if r.State == domain.SaveConflict {
 			c := &SaveConflict{ServerSaveID: r.ConflictSaveID, ServerAt: r.ConflictServerAt, Parked: r.ParkedHash != ""}
@@ -643,7 +651,7 @@ func (p *savePass) run(ctx context.Context, targets []saveTarget) (SaveSummary, 
 	}
 	acted := map[int]bool{}
 	for _, t := range targets {
-		if op, ok := ownOperation(plan, t.romID); ok {
+		if op, ok := ownOperation(plan, t); ok {
 			acted[t.romID] = true
 			p.step(ctx, t, op, plan.SessionID)
 		}
@@ -663,11 +671,11 @@ func (p *savePass) run(ctx context.Context, targets []saveTarget) (SaveSummary, 
 	return p.summary, nil
 }
 
-// ownOperation is the step RomM planned for the save the plugin syncs of the ROM with id. Other
-// slots, and saves in none, are other timelines: the plugin leaves them to their owners.
-func ownOperation(plan domain.SyncPlan, id int) (domain.SyncOperation, bool) {
+// ownOperation is the step RomM planned for t's save, in its slot. Other slots, and saves in none,
+// are other timelines: the plugin leaves them to their owners.
+func ownOperation(plan domain.SyncPlan, t saveTarget) (domain.SyncOperation, bool) {
 	for _, op := range plan.Operations {
-		if op.ROMID == id && op.Slot == domain.AutosaveSlot {
+		if op.ROMID == t.romID && op.Slot == t.slot {
 			return op, true
 		}
 	}
@@ -698,7 +706,7 @@ func (p *savePass) plan(ctx context.Context, targets []saveTarget) (domain.SyncP
 			continue
 		}
 		updated := local.mod
-		if r, ok := p.records[t.romID]; ok && r.Path == t.path && r.LocalHash != "" && !r.SyncedAt.IsZero() {
+		if r, ok := p.records[t.romID]; ok && r.Path == t.path && r.Slot == t.slot && r.LocalHash != "" && !r.SyncedAt.IsZero() {
 			if r.LocalHash == local.hash {
 				// RetroArch writes the save again whenever a game closes, changed or not. A save that
 				// still matches what was synced reports when it was synced, so it never reads as a new
@@ -711,7 +719,7 @@ func (p *savePass) plan(ctx context.Context, targets []saveTarget) (domain.SyncP
 			}
 		}
 		req.Saves = append(req.Saves, domain.ClientSave{
-			ROMID: t.romID, FileName: filepath.Base(t.path), Slot: domain.AutosaveSlot, Emulator: t.emulator,
+			ROMID: t.romID, FileName: filepath.Base(t.path), Slot: t.slot, Emulator: t.emulator,
 			ContentHash: local.hash, UpdatedAt: updated, SizeBytes: int64(len(local.data)),
 		})
 	}
@@ -781,7 +789,7 @@ func (p *savePass) upload(ctx context.Context, t saveTarget, local localSave, op
 		return errors.New("the save to upload is gone")
 	}
 	saved, err := p.server.UploadSave(ctx, domain.SaveUpload{
-		ROMID: t.romID, FileName: filepath.Base(t.path), Slot: domain.AutosaveSlot, Emulator: t.emulator,
+		ROMID: t.romID, FileName: filepath.Base(t.path), Slot: t.slot, Emulator: t.emulator,
 		DeviceID: p.in.DeviceID, ContentHash: local.hash, SessionID: session, Data: local.data, Overwrite: overwrite,
 	})
 	if kindOf(err) == domain.KindSaveConflict {

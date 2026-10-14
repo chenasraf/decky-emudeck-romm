@@ -57,6 +57,8 @@ type saveTarget struct {
 	// the save under.
 	rule     domain.SaveRule
 	emulator string
+	// slot is the RomM slot the save syncs in.
+	slot string
 	// format reads and writes the save, kept at path as RomM keeps it: for a save kept in several
 	// files, path names them all, and isn't a file itself.
 	format saveFormat
@@ -159,7 +161,11 @@ func (s *Saves) resolve(ctx context.Context, id int, shared bool) (saveTarget, s
 	if !ok {
 		return saveTarget{}, rule.Emulator.Name + "'s saves folder wasn't found. Set it up in EmuDeck, then check Setup status again.", nil
 	}
-	t := saveTarget{romID: id, name: name, rule: rule, emulator: tag}
+	slot, err := s.slotOf(ctx, id)
+	if err != nil {
+		return saveTarget{}, "", err
+	}
+	t := saveTarget{romID: id, name: name, rule: rule, emulator: tag, slot: slot}
 	switch rule.Kind {
 	case domain.SavePSXCard:
 		card, set, why := s.psxCardName(entry, saves)

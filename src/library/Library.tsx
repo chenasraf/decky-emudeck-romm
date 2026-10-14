@@ -57,6 +57,7 @@ import {
 } from '../saves'
 import { asRpcError } from '../setup/common'
 import { showFindGames } from './FindGames'
+import { showSaveSlots } from './SaveSlots'
 
 /** How many games each step of a list loads; "Show more" loads the next. */
 const PAGE_SIZE = 50
@@ -588,8 +589,22 @@ export function SavesSection({ id }: { id: number }) {
       </PanelSectionRow>
       <PanelSectionRow>
         <Field
+          label="Save slot"
+          description="The RomM slot this game's save syncs in. Others keep separate lines of saves."
+        >
+          <DialogButton
+            style={{ minWidth: 0 }}
+            disabled={busy || status.syncing}
+            onClick={() => showSaveSlots(id)}
+          >
+            {status.slot ?? 'autosave'}
+          </DialogButton>
+        </Field>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <Field
           label="Save file"
-          description={`Written by ${status.saver} · RomM slot autosave · tagged ${status.emulator}`}
+          description={`Written by ${status.saver} · tagged ${status.emulator}`}
         >
           <span style={{ wordBreak: 'break-all' }}>{status.path}</span>
         </Field>
