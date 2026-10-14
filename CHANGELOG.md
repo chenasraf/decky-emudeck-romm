@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.2.0...v0.3.0) (2026-10-14)
+
+
+### Features
+
+* **saves:** convert game boy saves between emulators with saveporter ([1c8fcfe](https://github.com/chenasraf/decky-emudeck-romm/commit/1c8fcfe91dd18366f2c7b0a538eca6c5a6a9312e))
+* **saves:** sync game boy and game boy color save states with RomM ([aa2c323](https://github.com/chenasraf/decky-emudeck-romm/commit/aa2c32327fff4c3ffefe2d9213472c7e92401455))
+
+
+### Bug Fixes
+
+* **saves:** keep backups taken in the same millisecond ([9da2966](https://github.com/chenasraf/decky-emudeck-romm/commit/9da296662ca9b59a896446dbfe1b4f66cc4acc37))
+
 ## [0.2.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.1.1...v0.2.0) (2026-10-14)
 
 
