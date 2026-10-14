@@ -20,8 +20,8 @@ function post(path: string) {
 }
 
 /**
- * Stands in for a full-screen route, which on a Deck replaces the whole Steam UI: as tall as the
- * Deck's screen, so a route scrolls inside itself as it does there.
+ * Stands in for a full-screen route, which on a Deck replaces the whole Steam UI: the size of the
+ * Deck's screen in CSS pixels, so a route lays out and scrolls inside itself as it does there.
  */
 function RouteView() {
   const path = useRoute()
@@ -30,9 +30,10 @@ function RouteView() {
   return (
     <div
       style={{
-        flex: 1,
+        flex: '0 0 auto',
         position: 'relative',
-        height: 800,
+        width: 854,
+        height: 454,
         background: '#0e141b',
         borderRadius: 4,
         overflow: 'hidden',
@@ -67,8 +68,16 @@ function RouteView() {
 function Shell() {
   return (
     <div style={{ display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start' }}>
-      {/* The Quick Access Menu is about this wide on a Deck. */}
-      <div style={{ width: 340, background: '#1a1d23', borderRadius: 4, overflow: 'hidden' }}>
+      {/* A Deck's Quick Access panel: 300px, rows inset 16px either side to 268px of content. */}
+      <div
+        style={{
+          width: 300,
+          flexShrink: 0,
+          background: '#1a1d23',
+          borderRadius: 4,
+          overflow: 'hidden',
+        }}
+      >
         <div
           style={{
             display: 'flex',

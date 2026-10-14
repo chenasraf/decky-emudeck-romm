@@ -320,16 +320,18 @@ function RecentSaveActivity({ onOpen }: { onOpen: (id: number) => void }) {
   if (!entries || entries.length === 0) return null
   return (
     <>
-      {entries.map((e, i) => (
+      <PanelSectionRow>
+        <Field label="Recent activity" bottomSeparator="none" />
+      </PanelSectionRow>
+      {/* The message is the description, not the value: a value gets only the right column. */}
+      {entries.map((e) => (
         <PanelSectionRow key={e.id}>
           <Field
-            label={i === 0 ? 'Recent activity' : undefined}
-            description={`${e.name} · ${timeAgo(e.at)}`}
+            label={e.name}
+            description={`${timeAgo(e.at)} · ${e.message}`}
             onActivate={() => onOpen(e.game)}
             focusable
-          >
-            {e.message}
-          </Field>
+          />
         </PanelSectionRow>
       ))}
     </>

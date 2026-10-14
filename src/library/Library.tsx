@@ -73,6 +73,14 @@ const count: CSSProperties = { color: '#8b929a', flexShrink: 0 }
 const name: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 
 const gameName: CSSProperties = { ...name, flex: '1 1 auto', textAlign: 'left' }
+const stacked: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  flex: '1 1 auto',
+  minWidth: 0,
+  textAlign: 'left',
+}
+const subline: CSSProperties = { ...name, color: '#8b929a', fontSize: 12, lineHeight: '16px' }
 
 const iconLabel: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10 }
 
@@ -101,14 +109,23 @@ function Row({
   onClick: () => void
 }) {
   const lead = cover !== undefined || icon !== undefined
+  // A game's state goes under its name: beside it, it leaves a QAM row little room for the name.
+  const below = cover !== undefined
   return (
     <PanelSectionRow>
       <ButtonItem layout="below" onClick={onClick}>
         <span style={lead ? { ...row, alignItems: 'center' } : row}>
           {cover && <Cover id={cover.id} size="small" hasCover={cover.hasCover} />}
           {icon}
-          <span style={lead ? gameName : name}>{label}</span>
-          {value !== undefined && <span style={count}>{value}</span>}
+          {below ? (
+            <span style={stacked}>
+              <span style={name}>{label}</span>
+              {value !== undefined && value !== null && <span style={subline}>{value}</span>}
+            </span>
+          ) : (
+            <span style={lead ? gameName : name}>{label}</span>
+          )}
+          {!below && value !== undefined && <span style={count}>{value}</span>}
         </span>
       </ButtonItem>
     </PanelSectionRow>
@@ -608,11 +625,12 @@ export function SavesSection({ id }: { id: number }) {
       </PanelSectionRow>
       <PanelSectionRow>
         <Field
+          childrenLayout="below"
           label="Save slot"
           description="The RomM slot this game's save syncs in. Others keep separate lines of saves."
         >
           <DialogButton
-            style={{ minWidth: 0 }}
+            style={{ minWidth: 0, width: '100%' }}
             disabled={busy || status.syncing}
             onClick={() => showSaveSlots(id)}
           >
@@ -622,6 +640,7 @@ export function SavesSection({ id }: { id: number }) {
       </PanelSectionRow>
       <PanelSectionRow>
         <Field
+          childrenLayout="below"
           label="Save file"
           description={`Written by ${status.saver} · tagged ${status.emulator}`}
         >
@@ -640,11 +659,13 @@ function SaveHistory({ id }: { id: number }) {
   if (!entries || entries.length === 0) return null
   return (
     <>
-      {entries.map((e, i) => (
+      <PanelSectionRow>
+        <Field label="Save history" bottomSeparator="none" />
+      </PanelSectionRow>
+      {/* No value beside the label, so the message under it gets the row's whole width. */}
+      {entries.map((e) => (
         <PanelSectionRow key={e.id}>
-          <Field label={i === 0 ? 'Save history' : undefined} description={e.message}>
-            {timeAgo(e.at)}
-          </Field>
+          <Field label={timeAgo(e.at)} description={e.message} />
         </PanelSectionRow>
       ))}
     </>
@@ -1199,6 +1220,7 @@ function DownloadDetail({ d }: { d: DownloadItem }) {
   return (
     <PanelSectionRow>
       <ProgressBarWithInfo
+        layout="below"
         nProgress={d.state === 'queued' || d.converting ? 0 : percent(d)}
         sOperationText={text}
       />
@@ -1500,6 +1522,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
           {download?.state === 'downloading' && !download.converting && (
             <PanelSectionRow>
               <ProgressBarWithInfo
+                layout="below"
                 nProgress={percent(download)}
                 sOperationText={`${formatSize(download.receivedBytes)} of ${formatSize(download.totalBytes)}`}
               />

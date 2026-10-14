@@ -124,6 +124,7 @@ function FindGamesModal({
         {outcome && <div style={muted}>{outcome}</div>}
         {running && status && (
           <ProgressBarWithInfo
+            layout="below"
             nProgress={status.total > 0 ? Math.floor((status.hashed / status.total) * 100) : 0}
             sOperationText={
               status.total > 0
@@ -145,6 +146,7 @@ function FindGamesModal({
         )}
         {adopting && status && (
           <ProgressBarWithInfo
+            layout="below"
             nProgress={
               status.adoptTotal > 0 ? Math.floor((status.adopted / status.adoptTotal) * 100) : 0
             }

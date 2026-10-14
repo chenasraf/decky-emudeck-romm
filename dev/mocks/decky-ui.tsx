@@ -14,7 +14,10 @@ import { createRoot } from 'react-dom/client'
 
 import { navigate } from './router'
 
-const muted = '#8b929a'
+// Sizes and colors are measured from the Deck's Quick Access Menu (CEF at 854×454 CSS px, 1.5×).
+const muted = 'rgb(184, 188, 191)'
+const text = 'rgb(220, 222, 223)'
+const separator = '1px solid rgba(255, 255, 255, 0.1)'
 
 export const Navigation = {
   Navigate: (path: string) => navigate(path),
@@ -30,11 +33,11 @@ export function PanelSection({ title, children }: { title?: ReactNode; children?
       {title && (
         <div
           style={{
-            color: muted,
-            fontSize: 12,
+            color: 'rgba(255, 255, 255, 0.7)',
+            fontSize: 16,
+            lineHeight: '22px',
             fontWeight: 600,
             textTransform: 'uppercase',
-            letterSpacing: 0.5,
             padding: '0 16px 4px',
           }}
         >
@@ -50,22 +53,79 @@ export function PanelSectionRow({ children }: { children?: ReactNode }) {
   return <div style={{ padding: '0 16px' }}>{children}</div>
 }
 
+interface ItemProps {
+  label?: ReactNode
+  description?: ReactNode
+  children?: ReactNode
+  /** Steam's default, inline, sets children in a column right of the label, even with no label. */
+  layout?: 'below' | 'inline'
+  icon?: ReactNode
+  bottomSeparator?: 'standard' | 'thick' | 'none'
+  focusable?: boolean
+  onActivate?: () => void
+}
+
+/** Field names it childrenLayout; the Item components built on it, layout. */
+type FieldProps = Omit<ItemProps, 'layout'> & { childrenLayout?: 'below' | 'inline' }
+
 export function Field({
   label,
   description,
   children,
-}: {
-  label?: ReactNode
-  description?: ReactNode
-  children?: ReactNode
-}) {
+  childrenLayout: layout = 'inline',
+  icon,
+  bottomSeparator = 'standard',
+  focusable,
+  onActivate,
+}: FieldProps) {
+  const head = (
+    <span
+      style={{ display: 'flex', alignItems: 'center', gap: 8, color: text, lineHeight: '20px' }}
+    >
+      {icon}
+      {label}
+    </span>
+  )
+  const desc = description && (
+    <div style={{ color: muted, fontSize: 12, lineHeight: '16px', marginTop: 4 }}>
+      {description}
+    </div>
+  )
   return (
-    <div style={{ padding: '10px 0', borderBottom: '1px solid #23262e' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ color: '#fff' }}>{label}</span>
-        <span>{children}</span>
-      </div>
-      {description && <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{description}</div>}
+    <div
+      tabIndex={focusable ? 0 : undefined}
+      onClick={onActivate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onActivate?.()
+      }}
+      style={{
+        padding: '10px 0',
+        borderBottom: bottomSeparator === 'none' ? undefined : separator,
+        cursor: onActivate ? 'pointer' : undefined,
+      }}
+    >
+      {layout === 'below' ? (
+        <>
+          {label !== undefined && head}
+          {children !== undefined && (
+            <div style={{ marginTop: label !== undefined ? 6 : 0 }}>{children}</div>
+          )}
+          {desc}
+        </>
+      ) : (
+        // Inline, the description wraps inside the label's column, not under the whole row.
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            {head}
+            {desc}
+          </div>
+          {children !== undefined && (
+            <div style={{ flex: '0 1 auto', minWidth: 0, maxWidth: '50%', textAlign: 'right' }}>
+              {children}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -73,26 +133,55 @@ export function Field({
 export function ProgressBarWithInfo({
   nProgress,
   sOperationText,
-}: {
+  sTimeRemaining,
+  layout,
+  bottomSeparator,
+  label,
+  description,
+}: ItemProps & {
   nProgress?: number
   sOperationText?: ReactNode
+  sTimeRemaining?: ReactNode
 }) {
   return (
-    <div style={{ padding: '8px 0' }}>
-      <div style={{ height: 6, background: '#23262e', borderRadius: 3 }}>
-        <div
-          style={{
-            width: `${nProgress ?? 0}%`,
-            height: '100%',
-            background: '#1a9fff',
-            borderRadius: 3,
-          }}
-        />
+    <Field
+      label={label}
+      description={description}
+      childrenLayout={layout}
+      bottomSeparator={bottomSeparator}
+    >
+      <div style={{ minWidth: 120 }}>
+        {(sOperationText || sTimeRemaining) && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              color: '#1a9fff',
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {sOperationText}
+            </span>
+            <span>{sTimeRemaining}</span>
+          </div>
+        )}
+        <div style={{ height: 6, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 3 }}>
+          <div
+            style={{
+              width: `${nProgress ?? 0}%`,
+              height: '100%',
+              background: '#1a9fff',
+              borderRadius: 3,
+            }}
+          />
+        </div>
       </div>
-      {sOperationText && (
-        <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>{sOperationText}</div>
-      )}
-    </div>
+    </Field>
   )
 }
 
@@ -156,34 +245,45 @@ export function DropdownItem({
 
 const button: CSSProperties = {
   width: '100%',
-  margin: '6px 0',
-  padding: '8px 12px',
-  background: '#3d4450',
-  color: '#fff',
+  minHeight: 40,
+  padding: '10px 24px',
+  background: 'rgba(255, 255, 255, 0.15)',
+  color: text,
   border: 'none',
-  borderRadius: 2,
+  borderRadius: 10,
   cursor: 'pointer',
-  fontSize: 14,
+  fontFamily: 'inherit',
+  fontSize: 16,
+  lineHeight: '20px',
 }
 
+/** A button in a Field row, as Steam lays it out: 10px above and below, a separator under. */
 export function ButtonItem({
   onClick,
   disabled,
   children,
-}: {
-  layout?: 'below' | 'inline'
+  label,
+  description,
+  bottomSeparator = 'standard',
+}: ItemProps & {
   onClick?: () => void
   disabled?: boolean
-  children?: ReactNode
 }) {
   return (
-    <button
-      style={{ ...button, opacity: disabled ? 0.5 : 1 }}
-      disabled={disabled}
-      onClick={onClick}
+    <Field
+      label={label}
+      description={description}
+      childrenLayout="below"
+      bottomSeparator={bottomSeparator}
     >
-      {children}
-    </button>
+      <button
+        style={{ ...button, opacity: disabled ? 0.5 : 1 }}
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    </Field>
   )
 }
 
@@ -200,7 +300,7 @@ export function DialogButton({
 }) {
   return (
     <button
-      style={{ ...button, width: 'auto', minWidth: 120, opacity: disabled ? 0.5 : 1, ...style }}
+      style={{ ...button, opacity: disabled ? 0.5 : 1, ...style }}
       disabled={disabled}
       onClick={onClick}
     >
