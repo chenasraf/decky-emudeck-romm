@@ -1139,6 +1139,7 @@ const (
 	ActivityRestored        ActivityKind = "restored"
 	ActivitySlot            ActivityKind = "slot"
 	ActivityDeleted         ActivityKind = "deleted"
+	ActivityMoved           ActivityKind = "moved"
 )
 
 // SaveActivityEntry is something save sync did to a game's save.

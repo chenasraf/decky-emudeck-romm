@@ -771,8 +771,13 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		return err
 	}
 	place := d.place
+	var carry func(context.Context)
 	if j.update {
 		place = func(staged []stagedFile, dir string) ([]domain.PlacedFile, error) { return d.swap(staged, dir, old) }
+		// The save is found from the old files, so it syncs and is looked for before they go.
+		if d.saves != nil {
+			carry = d.saves.carryOver(ctx, j.ROMID)
+		}
 	}
 	placed, err := place(staged, dir)
 	if err != nil {
@@ -807,6 +812,9 @@ func (d *Downloads) download(ctx context.Context, j *job) error {
 		d.removeFiles(placed, dir)
 		d.removeMedia(media)
 		return fmt.Errorf("record download: %w", err)
+	}
+	if carry != nil {
+		carry(ctx)
 	}
 	return nil
 }

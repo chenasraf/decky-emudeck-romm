@@ -86,6 +86,7 @@ const (
 	ActivityRestored        ActivityKind = "restored"
 	ActivitySlot            ActivityKind = "slot"
 	ActivityDeleted         ActivityKind = "deleted"
+	ActivityMoved           ActivityKind = "moved"
 )
 
 // SaveActivity is one entry of the activity log: something save sync did to a game's save.

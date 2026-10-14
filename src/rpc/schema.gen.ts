@@ -1429,6 +1429,7 @@ export const ActivityRemovedOnServer: ActivityKind = "removed_on_server";
 export const ActivityRestored: ActivityKind = "restored";
 export const ActivitySlot: ActivityKind = "slot";
 export const ActivityDeleted: ActivityKind = "deleted";
+export const ActivityMoved: ActivityKind = "moved";
 /**
  * SaveActivityEntry is something save sync did to a game's save.
  */
