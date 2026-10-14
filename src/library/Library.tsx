@@ -1415,6 +1415,15 @@ export function DownloadsSection({ onOpen }: { onOpen: (id: number) => void }) {
   )
 }
 
+/** Whether a game's page shows its saves: the plugin's own games, and games linked to RomM. */
+export function showsSaves(game: Game, state?: GameState): boolean {
+  return (
+    state === 'installed' ||
+    state === 'update_available' ||
+    (state === 'on_deck' && !!game.linkedPath && !game.removed)
+  )
+}
+
 /** Something a game's page offers to do with it. */
 export interface GameAction {
   label: string
@@ -1650,11 +1659,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
             </PanelSectionRow>
           )}
           <BiosSection platformId={game.platformId} nudge />
-          {(state === 'installed' ||
-            state === 'update_available' ||
-            (state === 'on_deck' && game.linkedPath && !game.removed)) && (
-            <SavesSection id={game.id} />
-          )}
+          {showsSaves(game, state) && <SavesSection id={game.id} />}
           {download?.state === 'downloading' && !download.converting && (
             <PanelSectionRow>
               <ProgressBarWithInfo
