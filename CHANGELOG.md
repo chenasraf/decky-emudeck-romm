@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.1.1...v0.2.0) (2026-10-14)
+
+
+### Features
+
+* **saves:** convert GBA save states between RetroArch, mGBA and RomM's web player ([3ebedec](https://github.com/chenasraf/decky-emudeck-romm/commit/3ebedec3385828274840880d017b256d8d83bcd2))
+* **saves:** sync GBA save states with RomM ([95c9cfc](https://github.com/chenasraf/decky-emudeck-romm/commit/95c9cfcfb0647ef42169e2621f502790d3944b55))
+
 ## [0.1.1](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.1.0...v0.1.1) (2026-10-14)
 
 
