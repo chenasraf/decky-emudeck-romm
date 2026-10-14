@@ -84,6 +84,15 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 		return toWireFind(downloads.FindStatus(ctx, p.PlatformID)), nil
 	})
 
+	Register(s, "adopt_found_games", func(ctx context.Context, p schema.AdoptFoundGamesParams) (schema.AdoptFoundGamesResult, error) {
+		adopted, failed := downloads.AdoptFound(ctx, p.PlatformID)
+		out := schema.AdoptFoundGamesResult{Adopted: adopted, Failed: []schema.AdoptFailure{}}
+		for _, f := range failed {
+			out.Failed = append(out.Failed, schema.AdoptFailure{Name: f.Name, Message: problemOf(f.Err).Message})
+		}
+		return out, nil
+	})
+
 	Register(s, "plan_download_all", func(ctx context.Context, p schema.PlanDownloadAllParams) (schema.DownloadAllPlan, error) {
 		plan, err := downloads.PlanAll(ctx, toBatch(p.PlatformID, p.Collection))
 		if err != nil {
@@ -171,6 +180,7 @@ func findEvents(s *Server) app.FindListener {
 func toWireFind(f app.FindStatus) schema.FindGamesStatus {
 	out := schema.FindGamesStatus{
 		PlatformID: f.PlatformID, Running: f.Running, Done: f.Done, Hashed: f.Hashed, Total: f.Total, Found: []schema.FoundGame{},
+		Adopting: f.Adopting, Adopted: f.Adopted, AdoptTotal: f.AdoptTotal,
 	}
 	for _, g := range f.Found {
 		out.Found = append(out.Found, schema.FoundGame{ID: g.ROMID, Name: g.Name, Path: g.Path})

@@ -130,6 +130,7 @@ export interface Methods {
   esde_notice: Method<ESDENoticeParams, ESDENotice>;
   find_games: Method<FindGamesParams, FindGamesStatus>;
   find_games_status: Method<FindGamesStatusParams, FindGamesStatus>;
+  adopt_found_games: Method<AdoptFoundGamesParams, AdoptFoundGamesResult>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
   download_all: Method<DownloadAllParams, DownloadAllResult>;
   set_keep_archives: Method<SetKeepArchivesParams, SetKeepArchivesResult>;
@@ -882,8 +883,8 @@ export interface IgnoreUpdateResult {
 }
 /**
  * FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
- * kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or
- * link_game.
+ * already there, under RomM's names or others. It changes nothing: what it finds becomes on_deck,
+ * for adopt_game, adopt_found_games or link_game.
  */
 export interface FindGamesParams {
   platformId: number /* int */;
@@ -914,9 +915,16 @@ export interface FindGamesStatus {
    * Problem says why the last run stopped short.
    */
   problem?: Error;
+  /**
+   * Adopting is set while adopt_found_games runs, which has adopted or failed adopted of
+   * adoptTotal games.
+   */
+  adopting: boolean;
+  adopted: number /* int */;
+  adoptTotal: number /* int */;
 }
 /**
- * FoundGame is a game of RomM's that Find my games found under another name.
+ * FoundGame is a game of RomM's that Find my games found on this Deck, matched by content.
  */
 export interface FoundGame {
   id: number /* int */;
@@ -925,6 +933,26 @@ export interface FoundGame {
    * Path is the file or folder holding it.
    */
   path: string;
+}
+/**
+ * AdoptFoundGamesParams adopts every game a platform's Find my games found and still lists.
+ */
+export interface AdoptFoundGamesParams {
+  platformId: number /* int */;
+}
+/**
+ * AdoptFailure is a found game adopt_found_games couldn't adopt, and why.
+ */
+export interface AdoptFailure {
+  name: string;
+  message: string;
+}
+/**
+ * AdoptFoundGamesResult counts the games adopted; one failing doesn't stop the rest.
+ */
+export interface AdoptFoundGamesResult {
+  adopted: number /* int */;
+  failed: AdoptFailure[];
 }
 /**
  * OwnershipKind is what changed a game's ownership.

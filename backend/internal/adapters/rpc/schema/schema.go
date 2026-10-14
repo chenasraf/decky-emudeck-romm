@@ -106,6 +106,7 @@ type Methods struct {
 	ESDENotice          Method[ESDENoticeParams, ESDENotice]                         `json:"esde_notice"`
 	FindGames           Method[FindGamesParams, FindGamesStatus]                     `json:"find_games"`
 	FindGamesStatus     Method[FindGamesStatusParams, FindGamesStatus]               `json:"find_games_status"`
+	AdoptFoundGames     Method[AdoptFoundGamesParams, AdoptFoundGamesResult]         `json:"adopt_found_games"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
 	DownloadAll         Method[DownloadAllParams, DownloadAllResult]                 `json:"download_all"`
 	SetKeepArchives     Method[SetKeepArchivesParams, SetKeepArchivesResult]         `json:"set_keep_archives"`
@@ -712,8 +713,8 @@ type IgnoreUpdateParams struct {
 type IgnoreUpdateResult struct{}
 
 // FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
-// kept under other names. It changes nothing: what it finds becomes on_deck, for adopt_game or
-// link_game.
+// already there, under RomM's names or others. It changes nothing: what it finds becomes on_deck,
+// for adopt_game, adopt_found_games or link_game.
 type FindGamesParams struct {
 	PlatformID int `json:"platformId"`
 }
@@ -735,14 +736,36 @@ type FindGamesStatus struct {
 	Found []FoundGame `json:"found"`
 	// Problem says why the last run stopped short.
 	Problem *Error `json:"problem,omitempty"`
+	// Adopting is set while adopt_found_games runs, which has adopted or failed adopted of
+	// adoptTotal games.
+	Adopting   bool `json:"adopting"`
+	Adopted    int  `json:"adopted"`
+	AdoptTotal int  `json:"adoptTotal"`
 }
 
-// FoundGame is a game of RomM's that Find my games found under another name.
+// FoundGame is a game of RomM's that Find my games found on this Deck, matched by content.
 type FoundGame struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 	// Path is the file or folder holding it.
 	Path string `json:"path"`
+}
+
+// AdoptFoundGamesParams adopts every game a platform's Find my games found and still lists.
+type AdoptFoundGamesParams struct {
+	PlatformID int `json:"platformId"`
+}
+
+// AdoptFailure is a found game adopt_found_games couldn't adopt, and why.
+type AdoptFailure struct {
+	Name    string `json:"name"`
+	Message string `json:"message"`
+}
+
+// AdoptFoundGamesResult counts the games adopted; one failing doesn't stop the rest.
+type AdoptFoundGamesResult struct {
+	Adopted int            `json:"adopted"`
+	Failed  []AdoptFailure `json:"failed"`
 }
 
 // OwnershipKind is what changed a game's ownership.

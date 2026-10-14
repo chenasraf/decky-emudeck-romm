@@ -28,9 +28,12 @@ type FindStatus struct {
 	Problem error
 	// Done is set once a run has finished, so Found is its answer.
 	Done bool
+	// Adopting is set while Adopt all runs, which has adopted or failed Adopted of AdoptTotal games.
+	Adopting            bool
+	Adopted, AdoptTotal int
 }
 
-// FoundGame is a game of RomM's that Find my games found under another name.
+// FoundGame is a game of RomM's that Find my games found on this Deck, matched by content.
 type FoundGame struct {
 	ROMID int
 	Name  string
@@ -56,8 +59,8 @@ type serverFile struct {
 
 // FindGames starts Find my games for a platform, unless it runs already, and returns how it stands.
 // It hashes the files in the folder the platform's games download to and matches them against
-// RomM's, so games kept under other names show as On Deck (not managed) for the user to Adopt or
-// Link. It never changes a file or a record.
+// RomM's, so the games already on this Deck, under RomM's names or others, show as On Deck (not
+// managed) for the user to Adopt or Link. It never changes a file or a record.
 func (d *Downloads) FindGames(ctx context.Context, platformID int) (FindStatus, error) {
 	if d.store == nil {
 		return FindStatus{}, d.problem
@@ -80,7 +83,7 @@ func (d *Downloads) FindGames(ctx context.Context, platformID int) (FindStatus, 
 	}
 
 	d.mu.Lock()
-	if s := d.finds[platformID]; s != nil && s.Running {
+	if s := d.finds[platformID]; s != nil && (s.Running || s.Adopting) {
 		d.mu.Unlock()
 		return d.FindStatus(ctx, platformID), nil
 	}
@@ -179,20 +182,20 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 	}
 	server := d.dial(in.Server, in.Token)
 
-	// The games already on this Deck where they belong, or the plugin's, aren't looked for, and
-	// their files aren't taken for another game's.
+	// Files that already sit where a game would go are looked at first, so a game kept both there
+	// and under another name is found where it belongs. Their names alone prove nothing: they're
+	// found only when their content matches, like any other file.
 	occupants, err := d.scan(ctx, platform)
 	if err != nil {
 		return nil, err
 	}
-	taken := map[string]bool{}
+	inPlace := map[string]bool{}
 	for _, p := range occupants {
-		taken[p] = true
+		inPlace[p] = true
 	}
+	// The plugin's games aren't looked for, and their files aren't taken for another game's.
+	taken := map[string]bool{}
 	skip := func(id int) bool {
-		if _, ok := occupants[id]; ok {
-			return true
-		}
 		if _, owned, err := d.store.Owned(ctx, id); err != nil || owned {
 			return true
 		}
@@ -241,6 +244,15 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 			total += len(files)
 		}
 	}
+	slices.SortStableFunc(work, func(a, b entry) int {
+		switch {
+		case inPlace[a.path] == inPlace[b.path]:
+			return 0
+		case inPlace[a.path]:
+			return -1
+		}
+		return 1
+	})
 	d.findProgress(ctx, platform.ID, 0, total)
 
 	var out []foundGame
@@ -457,6 +469,49 @@ func (d *Downloads) wholeGame(ctx context.Context, path string, hits map[int]map
 		return foundGame{FoundGame: FoundGame{ROMID: id, Name: rom.Name, Path: path}, files: files}, true
 	}
 	return foundGame{}, false
+}
+
+// AdoptFailure is a found game Adopt all couldn't adopt, and why.
+type AdoptFailure struct {
+	Name string
+	Err  error
+}
+
+// AdoptFound adopts every game Find my games found on a platform and still lists, returning how
+// many it adopted and the ones it couldn't. One failing doesn't stop the rest.
+func (d *Downloads) AdoptFound(ctx context.Context, platformID int) (int, []AdoptFailure) {
+	games := d.FindStatus(ctx, platformID).Found
+	d.adoptProgress(ctx, platformID, true, 0, len(games))
+	adopted := 0
+	var failed []AdoptFailure
+	last := time.Now()
+	for i, g := range games {
+		if err := ctx.Err(); err != nil {
+			failed = append(failed, AdoptFailure{Name: g.Name, Err: err})
+		} else if err := d.Adopt(ctx, g.ROMID); err != nil {
+			failed = append(failed, AdoptFailure{Name: g.Name, Err: err})
+		} else {
+			adopted++
+		}
+		if time.Since(last) >= progressEvery {
+			last = time.Now()
+			d.adoptProgress(ctx, platformID, true, i+1, len(games))
+		}
+	}
+	d.log.Info("adopted found games", "platform_id", platformID, "adopted", adopted, "failed", len(failed))
+	d.adoptProgress(ctx, platformID, false, len(games), len(games))
+	return adopted, failed
+}
+
+func (d *Downloads) adoptProgress(ctx context.Context, platformID int, adopting bool, done, total int) {
+	d.mu.Lock()
+	if d.finds[platformID] == nil {
+		d.finds[platformID] = &FindStatus{PlatformID: platformID}
+	}
+	s := d.finds[platformID]
+	s.Adopting, s.Adopted, s.AdoptTotal = adopting, done, total
+	d.mu.Unlock()
+	d.announceFind(ctx, platformID)
 }
 
 // foundAt returns where Find my games found a game, while it's still there.

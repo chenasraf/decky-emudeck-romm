@@ -106,19 +106,65 @@ func TestFindZippedAndFolderedCopies(t *testing.T) {
 	}
 }
 
-func TestFindSkipsGamesAlreadyThere(t *testing.T) {
+// A game kept under RomM's own name is found too when its content matches, so a whole library
+// copied over from elsewhere can be adopted at once. One that only shares the name isn't.
+func TestFindSameNamedGamesThatMatch(t *testing.T) {
 	f := newDownloadFixture(t, 2)
 	ctx := context.Background()
 	f.server.files[1][0].SHA1 = sha1Hex(string(chrono))
-	// Where it would go, it's On Deck by name already; a second copy isn't another find.
-	f.userFile(t, 1, "Chrono Trigger (USA).sfc", "Chrono Trigger (USA).sfc", chrono)
-	f.snesFile(t, "ct.sfc", chrono)
+	f.server.files[2][0].SHA1 = sha1Hex(string(metroid))
+	chronoPath := f.userFile(t, 1, "Chrono Trigger (USA).sfc", "Chrono Trigger (USA).sfc", chrono)
+	f.userFile(t, 2, "Super Metroid (USA).sfc", "Super Metroid (USA).sfc", []byte("a hack, not the game"))
 
-	if s := f.findDone(t); len(s.Found) != 0 {
+	s := f.findDone(t)
+	if len(s.Found) != 1 || s.Found[0].ROMID != 1 || s.Found[0].Path != chronoPath {
 		t.Fatalf("found %+v", s.Found)
+	}
+	if err := f.downloads.Adopt(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, owned, _ := f.owned.Owned(ctx, 1); !owned {
+		t.Fatal("not adopted")
 	}
 	if _, err := f.downloads.FindGames(ctx, 2); kindOf(err) != domain.KindCantDownload {
 		t.Fatalf("platform without a folder: %v", err)
+	}
+}
+
+// A second copy of a game is no second find: the one where the game belongs is the one found, even
+// when another sorts first.
+func TestFindPrefersTheCopyWhereTheGameBelongs(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	f.server.files[1][0].SHA1 = sha1Hex(string(chrono))
+	f.snesFile(t, "A copy.sfc", chrono)
+	chronoPath := f.userFile(t, 1, "Chrono Trigger (USA).sfc", "Chrono Trigger (USA).sfc", chrono)
+
+	if s := f.findDone(t); len(s.Found) != 1 || s.Found[0].Path != chronoPath {
+		t.Fatalf("found %+v", s.Found)
+	}
+}
+
+func TestAdoptEveryFoundGame(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	f.server.files[1][0].SHA1 = sha1Hex(string(chrono))
+	sum := md5.Sum(metroid) //nolint:gosec // see import
+	f.server.files[2][0].MD5 = hex.EncodeToString(sum[:])
+	f.userFile(t, 1, "Chrono Trigger (USA).sfc", "Chrono Trigger (USA).sfc", chrono)
+	f.snesFile(t, "sm.zip", zipOf(t, member{"sm.sfc", string(metroid)}))
+	f.findDone(t)
+
+	adopted, failed := f.downloads.AdoptFound(ctx, 1)
+	if adopted != 2 || len(failed) != 0 {
+		t.Fatalf("adopted %d, failed %v", adopted, failed)
+	}
+	for _, id := range []int{1, 2} {
+		if _, owned, _ := f.owned.Owned(ctx, id); !owned {
+			t.Fatalf("game %d not adopted", id)
+		}
+	}
+	if s := f.downloads.FindStatus(ctx, 1); len(s.Found) != 0 || s.Adopting || s.Adopted != 2 || s.AdoptTotal != 2 {
+		t.Fatalf("status %+v", s)
 	}
 }
 
