@@ -260,10 +260,9 @@ func (d *Downloads) Resume(ctx context.Context) {
 			d.dequeue(q.ROMID)
 			continue
 		}
-		j := &job{Download: Download{
+		j := &job{
 			ROMID: q.ROMID, PlatformID: q.PlatformID, PlatformName: q.PlatformName, Name: q.Name,
-			State: domain.StateQueued, Total: q.TotalBytes,
-		}, partial: q.Partial, update: q.Update}
+			State: domain.StateQueued, Total: q.TotalBytes, partial: q.Partial, update: q.Update}
 		if q.Problem != nil {
 			j.State, j.Problem = domain.StateFailed, q.Problem
 		}
@@ -388,10 +387,9 @@ func (d *Downloads) Queue(ctx context.Context, id int) (Download, error) {
 		j.State, j.Problem = domain.StateQueued, nil
 		d.log.Info("download retried", "rom_id", id)
 	default:
-		j = &job{Download: Download{
+		j = &job{
 			ROMID: id, PlatformID: rom.PlatformID, PlatformName: platform.Name, Name: rom.Name,
-			State: domain.StateQueued, Total: rom.SizeBytes,
-		}, update: update}
+			State: domain.StateQueued, Total: rom.SizeBytes, update: update}
 		d.jobs = append(d.jobs, j)
 		d.log.Info("download queued", "rom_id", id, "name", rom.Name, "update", update)
 	}

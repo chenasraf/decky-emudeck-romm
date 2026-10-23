@@ -468,7 +468,7 @@ func (d *Downloads) wholeGame(ctx context.Context, path string, hits map[int]map
 		if err != nil {
 			continue
 		}
-		return foundGame{FoundGame: FoundGame{ROMID: id, Name: rom.Name, Path: path}, files: files}, true
+		return foundGame{ROMID: id, Name: rom.Name, Path: path, files: files}, true
 	}
 	return foundGame{}, false
 }

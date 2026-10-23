@@ -53,10 +53,10 @@ func (c *Client) Collections(ctx context.Context) ([]domain.Collection, error) {
 		}
 		for _, b := range body {
 			out = append(out, domain.Collection{
-				CollectionRef: domain.CollectionRef{Kind: kind.kind, ID: b.ID},
-				Name:          b.Name,
-				Favorite:      b.IsFavorite,
-				ROMIDs:        b.ROMIDs,
+				Kind: kind.kind, ID: b.ID,
+				Name:     b.Name,
+				Favorite: b.IsFavorite,
+				ROMIDs:   b.ROMIDs,
 			})
 		}
 	}

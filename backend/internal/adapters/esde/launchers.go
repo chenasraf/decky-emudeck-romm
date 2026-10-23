@@ -48,7 +48,7 @@ func (l *Launchers) Launcher(system, rel string) (domain.GameLauncher, error) {
 	label := l.gamelist(system).labelFor(rel)
 	commands := systems[system]
 	if len(commands) == 0 {
-		return domain.GameLauncher{ESDECommand: domain.ESDECommand{Label: label}}, err
+		return domain.GameLauncher{Label: label}, err
 	}
 	if label == "" {
 		return domain.GameLauncher{ESDECommand: commands[0], Known: true}, nil
@@ -58,7 +58,7 @@ func (l *Launchers) Launcher(system, rel string) (domain.GameLauncher, error) {
 			return domain.GameLauncher{ESDECommand: c, Known: true}, nil
 		}
 	}
-	return domain.GameLauncher{ESDECommand: domain.ESDECommand{Label: label}}, nil
+	return domain.GameLauncher{Label: label}, nil
 }
 
 // fileStamp tells whether a file changed since it was read.

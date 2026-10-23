@@ -85,10 +85,9 @@ func (f *fakeRomMSaves) otherDevice(romID int, emulator string, data []byte) fak
 func (f *fakeRomMSaves) otherDeviceIn(romID int, slot, emulator string, data []byte) fakeVersion {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	v := fakeVersion{ServerSave: domain.ServerSave{
+	v := fakeVersion{
 		ID: f.nextID, ROMID: romID, FileName: "save.srm", Slot: slot, Emulator: emulator,
-		ContentHash: domain.ContentHash(data), UpdatedAt: f.tick(),
-	}, data: data}
+		ContentHash: domain.ContentHash(data), UpdatedAt: f.tick(), data: data}
 	f.nextID++
 	f.versions = append(f.versions, v)
 	return v
@@ -180,10 +179,9 @@ func (f *fakeRomMSaves) UploadSave(_ context.Context, u domain.SaveUpload) (doma
 			return domain.ServerSave{}, &domain.Error{Kind: domain.KindSaveConflict, Message: "newer"}
 		}
 	}
-	v := fakeVersion{ServerSave: domain.ServerSave{
+	v := fakeVersion{
 		ID: f.nextID, ROMID: u.ROMID, FileName: u.FileName, Slot: u.Slot, Emulator: u.Emulator,
-		ContentHash: domain.ContentHash(u.Data), UpdatedAt: f.tick(),
-	}, data: append([]byte{}, u.Data...)}
+		ContentHash: domain.ContentHash(u.Data), UpdatedAt: f.tick(), data: append([]byte{}, u.Data...)}
 	f.nextID++
 	f.versions = append(f.versions, v)
 	f.synced[v.ID] = fakeSync{at: v.UpdatedAt, hash: u.ContentHash, serverHash: v.ContentHash}
@@ -403,9 +401,8 @@ type saveFixture struct {
 	events  chan SaveSyncEvent
 }
 
-var snes9x = domain.GameLauncher{ESDECommand: domain.ESDECommand{
-	Label: "Snes9x - Current", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%",
-}, Known: true}
+var snes9x = domain.GameLauncher{
+	Label: "Snes9x - Current", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%", Known: true}
 
 // newSaveFixture is the download fixture with Chrono Trigger installed, signed in as a Device.
 func newSaveFixture(t *testing.T) *saveFixture {

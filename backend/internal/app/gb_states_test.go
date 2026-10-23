@@ -12,9 +12,8 @@ import (
 	"github.com/chenasraf/saveporter/retroarch"
 )
 
-var mgbaCore = domain.GameLauncher{ESDECommand: domain.ESDECommand{
-	Label: "mGBA", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mgba_libretro.so %ROM%",
-}, Known: true}
+var mgbaCore = domain.GameLauncher{
+	Label: "mGBA", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mgba_libretro.so %ROM%", Known: true}
 
 // gambatteState is a RetroArch Game Boy Color state of the Gambatte core, its work RAM marked with
 // mark: with the network link's records, as the Deck's build writes it, or without, as the web
@@ -120,9 +119,8 @@ func TestGBStatesInMGBA(t *testing.T) {
 
 func TestGBStatesNotInOtherCores(t *testing.T) {
 	f := newSaveFixture(t)
-	f.launchers["gbc"] = domain.GameLauncher{ESDECommand: domain.ESDECommand{
-		Label: "SameBoy", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/sameboy_libretro.so %ROM%",
-	}, Known: true}
+	f.launchers["gbc"] = domain.GameLauncher{
+		Label: "SameBoy", Command: "%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/sameboy_libretro.so %ROM%", Known: true}
 	f.saves = f.newSaves()
 	f.gbcGame(t, 82, 0x10, 0x03, f.raSaves)
 	st, err := f.saves.StateStatus(context.Background(), 82)

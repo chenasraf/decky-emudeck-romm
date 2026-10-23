@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	melonDS = domain.GameLauncher{ESDECommand: domain.ESDECommand{Label: "melonDS (Standalone)", Command: "%EMULATOR_MELONDS% -f %ROM%"}, Known: true}
-	mGBA    = domain.GameLauncher{ESDECommand: domain.ESDECommand{Label: "mGBA (Standalone)", Command: "%EMULATOR_MGBA% -f %ROM%"}, Known: true}
+	melonDS = domain.GameLauncher{Label: "melonDS (Standalone)", Command: "%EMULATOR_MELONDS% -f %ROM%", Known: true}
+	mGBA    = domain.GameLauncher{Label: "mGBA (Standalone)", Command: "%EMULATOR_MGBA% -f %ROM%", Known: true}
 )
 
 // ownGame records the game with id as downloaded by the plugin into the ROM folder of the platform

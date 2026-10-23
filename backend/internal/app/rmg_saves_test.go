@@ -15,9 +15,8 @@ import (
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
 
-var rmg = domain.GameLauncher{ESDECommand: domain.ESDECommand{
-	Label: "Rosalie's Mupen GUI (Standalone)", Command: "%EMULATOR_ROSALIES-MUPEN-GUI% --nogui -q %ROM%",
-}, Known: true}
+var rmg = domain.GameLauncher{
+	Label: "Rosalie's Mupen GUI (Standalone)", Command: "%EMULATOR_ROSALIES-MUPEN-GUI% --nogui -q %ROM%", Known: true}
 
 // n64ROM is a small ROM in .z64 byte order with name in its header.
 func n64ROM(name string) []byte {
