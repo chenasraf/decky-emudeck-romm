@@ -42,6 +42,16 @@ jobs:
             https://github.com/SteamDeckHomebrew/cli/releases/download/0.0.8/decky-linux-x86_64
           chmod +x "$RUNNER_TEMP/decky/decky"
           echo "$RUNNER_TEMP/decky" >> "$GITHUB_PATH"
+      # The decky CLI always builds the frontend in builder:latest, and builder images after
+      # this one ship pnpm 12, which can't create its global dir under the CLI's unprivileged
+      # user. docker run only pulls :latest when it's missing, so a local tag pins it.
+      - name: Pin the Decky builder image
+        env:
+          BUILDER: ghcr.io/steamdeckhomebrew/builder
+          DIGEST: sha256:03c1850fba3ed0f1f74828f64e8a103c11fbddc3273406affa893a977a10d28f
+        run: |
+          docker pull "$BUILDER@$DIGEST"
+          docker tag "$BUILDER@$DIGEST" "$BUILDER:latest"
       - name: Build
         run: decky plugin build -o out -s directory .
       - name: Check zip contents
