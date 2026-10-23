@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/chenasraf/decky-emudeck-romm.git"
   },
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@12.14.0",
   "scripts": {
     "dev": "vite --config dev/vite.config.ts",
     "build": "rollup -c",

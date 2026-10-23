@@ -1,0 +1,3 @@
+# The Decky builder image builds the frontend with whatever pnpm 12 it ships, as a user with no
+# writable home, so pnpm can't download the packageManager version when the two differ.
+pmOnFail: ignore
