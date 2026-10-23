@@ -1,6 +1,6 @@
 module github.com/chenasraf/decky-emudeck-romm/backend
 
-go 1.26.10
+go 1.27.3
 
 tool github.com/gzuidhof/tygo
 

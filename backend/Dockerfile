@@ -1,5 +1,5 @@
 # Used by `decky plugin build`, which mounts this folder at /backend and collects /backend/out into
 # the plugin's bin/.
-FROM golang:1.26
+FROM golang:1.27
 
 ENTRYPOINT [ "/backend/entrypoint.sh" ]
