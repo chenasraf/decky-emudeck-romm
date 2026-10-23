@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.3.0...v0.3.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **backend:** require go 1.26.10 ([d0b852f](https://github.com/chenasraf/decky-emudeck-romm/commit/d0b852f2f2c409cd3b15331d5af5fab00db63bdf))
+* **backend:** require go 1.27.3 ([097d140](https://github.com/chenasraf/decky-emudeck-romm/commit/097d140f037b0ec75db9355c4899bc5b8f6dbeea))
+* **build:** move to pnpm 12 and stop pnpm switching versions ([eda014e](https://github.com/chenasraf/decky-emudeck-romm/commit/eda014efc2e8382bfa5687a7756599f560097dd5))
+* **ci:** pin the decky builder image to pnpm 9 ([65e3cd1](https://github.com/chenasraf/decky-emudeck-romm/commit/65e3cd1abcadf4dc3fcab4444c70ca81730c6d4b))
+
 ## [0.3.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.2.0...v0.3.0) (2026-10-14)
 
 
