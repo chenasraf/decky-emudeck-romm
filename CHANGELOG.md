@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.3.1...v0.4.0) (2026-10-26)
+
+
+### Features
+
+* **find:** full-hash search for archived games, per game too ([ac2c7cd](https://github.com/chenasraf/decky-emudeck-romm/commit/ac2c7cdf6f82c1fcf5b6d46dfd3fe201fc85e43f))
+* **library:** open full page and sync saves from the qam game page ([a2054c8](https://github.com/chenasraf/decky-emudeck-romm/commit/a2054c8cba19e11a42d2ebc38566e83c936e2d46))
+
+
+### Bug Fixes
+
+* **backend:** match game folders whose names have a dot ([f670d97](https://github.com/chenasraf/decky-emudeck-romm/commit/f670d970b67409476ab84788209497883e3f7f14))
+* **saves:** read the disc a plain psx folder boots from ([5be50b7](https://github.com/chenasraf/decky-emudeck-romm/commit/5be50b7681f73c07e4913af701f0f6f173c5490c))
+
 ## [0.3.1](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.3.0...v0.3.1) (2026-10-23)
 
 
