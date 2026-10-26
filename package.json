@@ -1,6 +1,6 @@
 {
   "name": "decky-emudeck-romm",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Decky Loader plugin that turns a RomM server into a library for an EmuDeck install",
   "type": "module",
   "private": true,

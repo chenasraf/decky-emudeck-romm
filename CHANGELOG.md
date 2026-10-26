@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.4.0...v0.4.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **saves:** skip hidden files when picking a folder's disc ([a4939f4](https://github.com/chenasraf/decky-emudeck-romm/commit/a4939f470fa6eb17a7a168a44cd49336acb9cf6f))
+
 ## [0.4.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.3.1...v0.4.0) (2026-10-26)
 
 
