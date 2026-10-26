@@ -30,6 +30,7 @@ import {
   FaCloudUploadAlt,
   FaExchangeAlt,
   FaExclamationTriangle,
+  FaExpand,
   FaHistory,
   FaLayerGroup,
   FaListUl,
@@ -41,7 +42,14 @@ import {
 
 import { call, onEvent, restartBackend } from '../backend'
 import { usePlatformBios } from '../bios'
-import { formatSize, LIBRARY_ROUTE, refreshLibrary, timeAgo, useCatalog } from '../catalog'
+import {
+  formatSize,
+  LIBRARY_ROUTE,
+  openGamePage,
+  refreshLibrary,
+  timeAgo,
+  useCatalog,
+} from '../catalog'
 import { useConnection } from '../connection'
 import { Cover } from '../covers'
 import { type Downloads, percent, useDownloads } from '../downloads'
@@ -1666,6 +1674,55 @@ export function useGameDetail(id: number): GameDetail {
   return { game, download, state, stateText, actions, notice, removed, searchNote, error }
 }
 
+const quickButton: CSSProperties = { flex: 1, minWidth: 0 }
+
+/** Syncs a game's saves now, while the plugin syncs them. */
+function QuickSync({ id, onError }: { id: number; onError: (e: RpcError | null) => void }) {
+  const status = useSaveStatus(id)
+  const [busy, setBusy] = useState(false)
+  if (!status?.syncs) return null
+
+  const sync = async () => {
+    setBusy(true)
+    try {
+      await call('sync_saves', { ids: [id] })
+      onError(null)
+    } catch (err) {
+      onError(asRpcError(err))
+    }
+    setBusy(false)
+  }
+
+  return (
+    <DialogButton style={quickButton} disabled={busy || status.syncing} onClick={() => void sync()}>
+      <IconLabel icon={<FaExchangeAlt />}>{status.syncing ? 'Syncing…' : 'Sync saves'}</IconLabel>
+    </DialogButton>
+  )
+}
+
+/** The Quick Access Menu game page's shortcuts: its full page, and a sync of its saves when they sync. */
+function QuickActions({ id, syncs }: { id: number; syncs: boolean }) {
+  const [error, setError] = useState<RpcError | null>(null)
+
+  return (
+    <>
+      <PanelSectionRow>
+        <Focusable style={{ display: 'flex', gap: 4 }} flow-children="horizontal">
+          <DialogButton style={quickButton} onClick={() => openGamePage(id)}>
+            <IconLabel icon={<FaExpand />}>Full page</IconLabel>
+          </DialogButton>
+          {syncs && <QuickSync id={id} onError={setError} />}
+        </Focusable>
+      </PanelSectionRow>
+      {error && (
+        <PanelSectionRow>
+          <Field label="⚠ Couldn't sync saves" description={error.message} />
+        </PanelSectionRow>
+      )}
+    </>
+  )
+}
+
 export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
   const { game, download, state, stateText, actions, notice, removed, searchNote, error } =
     useGameDetail(id)
@@ -1683,6 +1740,7 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
               </div>
             </PanelSectionRow>
           )}
+          <QuickActions id={game.id} syncs={showsSaves(game, state)} />
           <PanelSectionRow>
             <Field label="State">{stateText}</Field>
           </PanelSectionRow>

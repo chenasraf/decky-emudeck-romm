@@ -1,4 +1,5 @@
 import { addEventListener, removeEventListener, useQuickAccessVisible } from '@decky/api'
+import { Navigation } from '@decky/ui'
 import { useEffect, useState } from 'react'
 
 import { BACKEND_STATUS_EVENT, type BackendStatus, call, onEvent } from './backend'
@@ -6,6 +7,34 @@ import type { CatalogStatus } from './rpc/schema.gen'
 
 /** Path of the full-screen library: shelves of games to browse with the gamepad. */
 export const LIBRARY_ROUTE = '/emudeck-romm/library'
+
+/** A game the library is asked to open, kept until the library mounts when none is open yet. */
+let pendingGame: number | null = null
+const gameListeners = new Set<(id: number) => void>()
+
+/** Opens a game's page in the full-screen library. */
+export function openGamePage(id: number) {
+  if (gameListeners.size > 0) {
+    for (const fn of gameListeners) fn(id)
+  } else {
+    pendingGame = id
+  }
+  Navigation.CloseSideMenus()
+  Navigation.Navigate(LIBRARY_ROUTE)
+}
+
+/** Takes the game openGamePage asked a library not yet open to show. */
+export function takePendingGame(): number | null {
+  const id = pendingGame
+  pendingGame = null
+  return id
+}
+
+/** Hears openGamePage while the library is open. */
+export function onOpenGame(fn: (id: number) => void): () => void {
+  gameListeners.add(fn)
+  return () => gameListeners.delete(fn)
+}
 
 type Listener = (status: CatalogStatus | null) => void
 

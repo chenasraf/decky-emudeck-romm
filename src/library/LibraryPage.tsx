@@ -2,7 +2,7 @@ import { DialogButton, Field, Focusable, Navigation, TextField } from '@decky/ui
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { call } from '../backend'
-import { refreshLibrary, useCatalog } from '../catalog'
+import { onOpenGame, refreshLibrary, takePendingGame, useCatalog } from '../catalog'
 import { SETUP_ROUTE, useConnection } from '../connection'
 import { percent, useDownloads } from '../downloads'
 import type {
@@ -240,7 +240,10 @@ function ServerLine() {
 export function LibraryPage() {
   const catalog = useCatalog()
   const connection = useConnection()
-  const [place, setPlace] = useState<Place>({ name: 'home' })
+  const [place, setPlace] = useState<Place>(() => {
+    const id = takePendingGame()
+    return id === null ? { name: 'home' } : { name: 'game', id }
+  })
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
   // Bumped by each Y press, so the search field mounts again and takes focus.
@@ -253,6 +256,18 @@ export function LibraryPage() {
   useEffect(() => {
     void refreshLibrary()
   }, [])
+
+  // A game opened from the Quick Access Menu replaces whatever the library shows, and Back goes home.
+  useEffect(
+    () =>
+      onOpenGame((id) => {
+        opener.current = []
+        setSearching(false)
+        setQuery('')
+        setPlace({ name: 'game', id })
+      }),
+    [],
+  )
 
   useEffect(() => {
     const el = refocus.current
