@@ -170,10 +170,9 @@ func (s *Saves) n64Base(entry, dir string) (string, string) {
 // psxCardName is the file DuckStation keeps the memory card of the game at entry in, in dir, and
 // whether the discs of a game on several share it.
 func (s *Saves) psxCardName(entry, dir string) (string, bool, string) {
-	// ES-DE launches a game kept in a folder by the file in it named like the folder.
-	path := entry
-	if info, err := os.Stat(entry); err == nil && info.IsDir() {
-		path = filepath.Join(entry, filepath.Base(entry))
+	path, err := psxBoot(entry)
+	if err != nil {
+		return "", false, "The game's disc couldn't be read to tell its memory card's name: " + err.Error()
 	}
 	disc, err := readCached(s, path, func() (domain.PSXDisc, error) { return s.psx.Disc(path) })
 	if err != nil {
@@ -191,6 +190,35 @@ func (s *Saves) psxCardName(entry, dir string) (string, bool, string) {
 		return err == nil
 	})
 	return card, game.DiscSet != "" && card == domain.DuckStationCardName(game.DiscSet), ""
+}
+
+// psxBootExts are the files a PlayStation game in a folder may boot from, the likeliest first.
+var psxBootExts = []string{".m3u", ".cue", ".chd", ".iso", ".bin", ".img"}
+
+// psxBoot is the file the PlayStation game at entry boots from. ES-DE launches a folder named like a
+// file by the file in it of the same name; a plain folder is browsed into, and its playlist or
+// disc launched, the first by name when there are several, which is the first disc.
+func psxBoot(entry string) (string, error) {
+	info, err := os.Stat(entry)
+	if err != nil || !info.IsDir() {
+		return entry, nil //nolint:nilerr // a file, or one gone, is read as it is
+	}
+	same := filepath.Join(entry, filepath.Base(entry))
+	if info, err := os.Stat(same); err == nil && !info.IsDir() {
+		return same, nil
+	}
+	entries, err := os.ReadDir(entry)
+	if err != nil {
+		return "", err
+	}
+	for _, ext := range psxBootExts {
+		for _, e := range entries {
+			if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ext) {
+				return filepath.Join(entry, e.Name()), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%s holds no disc", filepath.Base(entry))
 }
 
 // cardOwner is the name of the game with the lowest ID, below id, that syncs the memory card at

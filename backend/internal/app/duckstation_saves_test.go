@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chenasraf/decky-emudeck-romm/backend/internal/domain"
 )
@@ -130,5 +131,26 @@ func TestDuckStationCantTellTheCard(t *testing.T) {
 	f.configs["duckstation"] = domain.SaveConfig{Problem: "Card 1 isn't per game."}
 	if st := f.statusOf(t, 74); st.Syncs || st.Why != "Card 1 isn't per game." {
 		t.Fatalf("settings %+v", st)
+	}
+}
+
+// A game linked as a plain folder boots from the disc in it, which names its card, whatever the
+// folder is called.
+func TestDuckStationLinkedFolderCard(t *testing.T) {
+	f := newSaveFixture(t)
+	f.psx["Breath of Fire III (v1.1).cue"] = domain.PSXDisc{Read: true, Serial: "SLUS-00422"}
+	f.duck["SLUS-00422"] = domain.DuckStationGame{Title: "Breath of Fire III (USA)"}
+	folder := filepath.Join(f.root, "roms", "psx", "Breath of Fire III (v1.1)")
+	writeFile(t, filepath.Join(folder, "Breath of Fire III (v1.1) (Track 1).bin"), []byte("disc"))
+	writeFile(t, filepath.Join(folder, "Breath of Fire III (v1.1).cue"), []byte("cue"))
+	writeFile(t, filepath.Join(folder, "readme.html"), []byte("notes"))
+	f.catalog.mu.Lock()
+	f.catalog.roms[75] = domain.ROM{ID: 75, PlatformID: 3, Name: "Breath of Fire III", FileName: "Breath of Fire III (v1.1).7z"}
+	f.catalog.mu.Unlock()
+	if err := f.owned.SaveLinked(context.Background(), domain.LinkedGame{ROMID: 75, PlatformID: 3, Path: folder, LinkedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if st := f.statusOf(t, 75); !st.Syncs || st.Path != filepath.Join(f.duckSaves(), "Breath of Fire III (USA)_1.mcd") {
+		t.Fatalf("status %+v", st)
 	}
 }
