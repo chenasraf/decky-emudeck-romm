@@ -213,7 +213,8 @@ func psxBoot(entry string) (string, error) {
 	}
 	for _, ext := range psxBootExts {
 		for _, e := range entries {
-			if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ext) {
+			// A hidden file is no disc: macOS leaves a ._ file beside each one it copies.
+			if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") && strings.EqualFold(filepath.Ext(e.Name()), ext) {
 				return filepath.Join(entry, e.Name()), nil
 			}
 		}

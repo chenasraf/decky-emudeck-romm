@@ -143,6 +143,7 @@ func TestDuckStationLinkedFolderCard(t *testing.T) {
 	folder := filepath.Join(f.root, "roms", "psx", "Breath of Fire III (v1.1)")
 	writeFile(t, filepath.Join(folder, "Breath of Fire III (v1.1) (Track 1).bin"), []byte("disc"))
 	writeFile(t, filepath.Join(folder, "Breath of Fire III (v1.1).cue"), []byte("cue"))
+	writeFile(t, filepath.Join(folder, "._Breath of Fire III (v1.1).cue"), []byte("macOS metadata"))
 	writeFile(t, filepath.Join(folder, "readme.html"), []byte("notes"))
 	f.catalog.mu.Lock()
 	f.catalog.roms[75] = domain.ROM{ID: 75, PlatformID: 3, Name: "Breath of Fire III", FileName: "Breath of Fire III (v1.1).7z"}
