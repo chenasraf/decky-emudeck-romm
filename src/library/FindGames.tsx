@@ -1,4 +1,11 @@
-import { DialogButton, Focusable, ModalRoot, ProgressBarWithInfo, showModal } from '@decky/ui'
+import {
+  DialogButton,
+  Focusable,
+  ModalRoot,
+  ProgressBarWithInfo,
+  showModal,
+  ToggleField,
+} from '@decky/ui'
 import { type CSSProperties, useEffect, useState } from 'react'
 
 import { call, onEvent } from '../backend'
@@ -67,11 +74,12 @@ function FindGamesModal({
   const { status, setStatus, error, setError } = useFindStatus(platform.id)
   const [busy, setBusy] = useState<number | null>(null)
   const [outcome, setOutcome] = useState<string | null>(null)
+  const [full, setFull] = useState(false)
 
   const start = () => {
     setError(null)
     setOutcome(null)
-    call('find_games', { platformId: platform.id }).then(setStatus, (err: unknown) =>
+    call('find_games', { platformId: platform.id, full }).then(setStatus, (err: unknown) =>
       setError(asRpcError(err)),
     )
   }
@@ -101,12 +109,13 @@ function FindGamesModal({
   const running = status?.running ?? false
   const problem = error ?? status?.problem ?? null
   const found = status?.found ?? []
+  const adoptable = found.filter((g) => !g.linkOnly).length
   const adopting = busy === ALL || (status?.adopting ?? false)
-  const canAdoptAll = !running && !adopting && found.length > 1
+  const canAdoptAll = !running && !adopting && adoptable > 1
   const adoptAllButton = (
     <Focusable style={{ display: 'flex' }}>
       <DialogButton style={button} disabled={busy !== null} onClick={() => void adoptAll()}>
-        {`Adopt all ${found.length}`}
+        {`Adopt all ${adoptable}`}
       </DialogButton>
     </Focusable>
   )
@@ -128,7 +137,7 @@ function FindGamesModal({
             nProgress={status.total > 0 ? Math.floor((status.hashed / status.total) * 100) : 0}
             sOperationText={
               status.total > 0
-                ? `Hashing ${status.hashed} of ${status.total} files…`
+                ? `Hashing ${status.hashed} of ${status.total} files${status.full ? ' (full search)' : ''}…`
                 : 'Reading RomM’s files…'
             }
           />
@@ -170,6 +179,13 @@ function FindGamesModal({
         )}
         {/* Again below the list, which a finished search leaves scrolled to its end. */}
         {canAdoptAll && found.length > 3 && adoptAllButton}
+        <ToggleField
+          label="Full search"
+          description="Hashes every file, whatever its size, to find games RomM keeps as a .zip or .7z that you have extracted. Takes far longer."
+          checked={full}
+          disabled={running || adopting}
+          onChange={setFull}
+        />
         <Focusable style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <DialogButton style={button} disabled={running || adopting} onClick={start}>
             {status?.done ? 'Search again' : 'Search'}
@@ -199,10 +215,18 @@ function FoundRow({
       <div style={foundText}>
         <div>{game.name}</div>
         <div style={{ ...mono, color: '#8b929a' }}>{game.path}</div>
+        {game.linkOnly && (
+          <div style={muted}>
+            RomM keeps this game as an archive and hashes only one file in it, so it can be linked
+            but not adopted.
+          </div>
+        )}
       </div>
-      <DialogButton style={button} disabled={busy} onClick={onAdopt}>
-        Adopt
-      </DialogButton>
+      {!game.linkOnly && (
+        <DialogButton style={button} disabled={busy} onClick={onAdopt}>
+          Adopt
+        </DialogButton>
+      )}
       <DialogButton style={button} disabled={busy} onClick={onLink}>
         Link to RomM
       </DialogButton>

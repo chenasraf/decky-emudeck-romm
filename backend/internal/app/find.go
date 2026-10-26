@@ -21,8 +21,13 @@ type FindStatus struct {
 	PlatformID int
 	// Running is set while it hashes the platform's folder.
 	Running bool
-	// Hashed and Total count the files it hashes, the ones of a size one of RomM's has.
+	// Hashed and Total count the files it hashes, the ones of a size one of RomM's has, or every one
+	// in a full search.
 	Hashed, Total int
+	// Full is set when the run hashes every file, whatever its size.
+	Full bool
+	// ROMID is the one game the run looks for, 0 when it looks for all of the platform's.
+	ROMID int
 	// Found are the games it found that are still neither Plugin-owned nor Linked.
 	Found []FoundGame
 	// Problem says why the last run stopped short, nil when it finished.
@@ -40,6 +45,19 @@ type FoundGame struct {
 	Name  string
 	// Path is the file or folder holding it.
 	Path string
+	// LinkOnly is set when it was found by the one file RomM hashed inside its archive of the game:
+	// the rest of the archive's files are unknown, so the plugin can't vouch for them to Adopt.
+	LinkOnly bool
+}
+
+// findRun is what a run of Find my games looks for.
+type findRun struct {
+	// full hashes every file, not only those of a size one of RomM's files has. RomM hashes an
+	// archive by a file inside it, of a size it doesn't give, so only a full search finds that file
+	// extracted.
+	full bool
+	// romID limits the run to one game, 0 for all of the platform's.
+	romID int
 }
 
 // FindListener hears Find my games start, make progress and end.
@@ -61,8 +79,23 @@ type serverFile struct {
 // FindGames starts Find my games for a platform, unless it runs already, and returns how it stands.
 // It hashes the files in the folder the platform's games download to and matches them against
 // RomM's, so the games already on this Deck, under RomM's names or others, show as On Deck (not
-// managed) for the user to Adopt or Link. It never changes a file or a record.
-func (d *Downloads) FindGames(ctx context.Context, platformID int) (FindStatus, error) {
+// managed) for the user to Adopt or Link. A full search hashes every file there, which takes far
+// longer. It never changes a file or a record.
+func (d *Downloads) FindGames(ctx context.Context, platformID int, full bool) (FindStatus, error) {
+	return d.startFind(ctx, platformID, findRun{full: full})
+}
+
+// FindGame starts a full search of the folder a game's platform downloads to for that one game,
+// unless Find my games runs there already, and returns how the platform's search stands.
+func (d *Downloads) FindGame(ctx context.Context, id int) (FindStatus, error) {
+	rom, _, err := d.lookup(ctx, id)
+	if err != nil {
+		return FindStatus{}, err
+	}
+	return d.startFind(ctx, rom.PlatformID, findRun{full: true, romID: id})
+}
+
+func (d *Downloads) startFind(ctx context.Context, platformID int, run findRun) (FindStatus, error) {
 	if d.store == nil {
 		return FindStatus{}, d.problem
 	}
@@ -88,12 +121,12 @@ func (d *Downloads) FindGames(ctx context.Context, platformID int) (FindStatus, 
 		d.mu.Unlock()
 		return d.FindStatus(ctx, platformID), nil
 	}
-	d.finds[platformID] = &FindStatus{PlatformID: platformID, Running: true}
+	d.finds[platformID] = &FindStatus{PlatformID: platformID, Running: true, Full: run.full, ROMID: run.romID}
 	d.mu.Unlock()
 
-	d.log.Info("find my games started", "platform", platform.Slug)
+	d.log.Info("find my games started", "platform", platform.Slug, "full", run.full, "rom_id", run.romID)
 	d.announceFind(ctx, platformID)
-	go d.runFind(platform)
+	go d.runFind(platform, run)
 	return d.FindStatus(ctx, platformID), nil
 }
 
@@ -143,12 +176,15 @@ func (d *Downloads) announceFind(ctx context.Context, platformID int) {
 }
 
 // runFind runs Find my games for platform, recording what it finds and how it ended.
-func (d *Downloads) runFind(platform domain.Platform) {
-	found, err := d.findIn(d.base, platform)
+func (d *Downloads) runFind(platform domain.Platform, run findRun) {
+	found, err := d.findIn(d.base, platform, run)
 	d.mu.Lock()
 	for id, g := range d.found {
-		if g.platformID == platform.ID {
+		// A search for one game answers for that game only.
+		if g.platformID == platform.ID && (run.romID == 0 || id == run.romID) {
 			delete(d.found, id)
+			// A check that took its answer from the find goes with it.
+			delete(d.checks, id)
 		}
 	}
 	for _, g := range found {
@@ -169,7 +205,7 @@ func (d *Downloads) runFind(platform domain.Platform) {
 }
 
 // findIn hashes the files in platform's download folder and matches them against RomM's files.
-func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]foundGame, error) {
+func (d *Downloads) findIn(ctx context.Context, platform domain.Platform, run findRun) ([]foundGame, error) {
 	in, err := d.conn.activeSignIn()
 	if err != nil {
 		return nil, err
@@ -197,6 +233,9 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 	// The plugin's games aren't looked for, and their files aren't taken for another game's.
 	taken := map[string]bool{}
 	skip := func(id int) bool {
+		if run.romID != 0 && id != run.romID {
+			return true
+		}
 		if _, owned, err := d.store.Owned(ctx, id); err != nil || owned {
 			return true
 		}
@@ -210,12 +249,25 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 	if err := d.takenByRecords(ctx, taken); err != nil {
 		return nil, err
 	}
+	// A search for one game leaves alone what earlier ones found of the others.
+	if run.romID != 0 {
+		d.mu.Lock()
+		for id, g := range d.found {
+			if id != run.romID {
+				taken[g.Path] = true
+			}
+		}
+		d.mu.Unlock()
+	}
 
 	games, err := platformGames(ctx, server, platform.ID, skip)
 	if err != nil {
 		return nil, d.conn.observe(*in, err)
 	}
 	byHash, sizes := indexGames(games)
+	if run.full && archived(games) {
+		sizes = nil
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -284,6 +336,9 @@ func (d *Downloads) findIn(ctx context.Context, platform domain.Platform) ([]fou
 			g.platformID = platform.ID
 			claimed[g.ROMID] = true
 			out = append(out, g)
+			if run.romID != 0 {
+				break
+			}
 		}
 	}
 	d.findProgress(ctx, platform.ID, hashed, total)
@@ -327,6 +382,19 @@ func indexGames(games map[int][]domain.ROMFile) (map[string][]serverFile, map[in
 		}
 	}
 	return byHash, sizes
+}
+
+// archived says whether any of games' hashed files is an archive, whose hashes RomM takes from a
+// file inside it.
+func archived(games map[int][]domain.ROMFile) bool {
+	for _, game := range games {
+		for _, f := range game {
+			if f.Hashed() && domain.IsArchive(f.Name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // takenByRecords marks the files of every Plugin-owned and Linked game as taken.
@@ -388,7 +456,7 @@ func keysOf(sums domain.FileSums) []string {
 }
 
 // candidateFiles returns the files under path worth hashing: those of a size one of RomM's files
-// has, and archives, whose contents may be. A folder is walked whole.
+// has, and archives, whose contents may be; every file when sizes is nil. A folder is walked whole.
 func candidateFiles(path string, sizes map[int64]bool) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(path, func(p string, e fs.DirEntry, err error) error {
@@ -402,7 +470,7 @@ func candidateFiles(path string, sizes map[int64]bool) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if sizes[info.Size()] || domain.IsArchive(p) {
+		if sizes == nil || sizes[info.Size()] || domain.IsArchive(p) {
 			out = append(out, p)
 		}
 		return nil
@@ -428,7 +496,9 @@ func (d *Downloads) matchFile(path string, byHash map[string][]serverFile) []fil
 		for _, key := range keysOf(sums) {
 			for _, s := range byHash[key] {
 				if s.file.Matches(sums) {
-					hits = append(hits, fileHit{romID: s.romID, file: adoptFile{path: path, info: info, file: s.file, sums: own}})
+					// A file that isn't an archive holding RomM's archive is one file extracted from it.
+					member := domain.IsArchive(s.file.Name) && !domain.IsArchive(path)
+					hits = append(hits, fileHit{romID: s.romID, file: adoptFile{path: path, info: info, file: s.file, sums: own, member: member}})
 				}
 			}
 		}
@@ -468,7 +538,8 @@ func (d *Downloads) wholeGame(ctx context.Context, path string, hits map[int]map
 		if err != nil {
 			continue
 		}
-		return foundGame{ROMID: id, Name: rom.Name, Path: path, files: files}, true
+		linkOnly := slices.ContainsFunc(files, func(f adoptFile) bool { return f.member })
+		return foundGame{ROMID: id, Name: rom.Name, Path: path, LinkOnly: linkOnly, files: files}, true
 	}
 	return foundGame{}, false
 }
@@ -508,10 +579,11 @@ type AdoptFailure struct {
 	Err  error
 }
 
-// AdoptFound adopts every game Find my games found on a platform and still lists, returning how
-// many it adopted and the ones it couldn't. One failing doesn't stop the rest.
+// AdoptFound adopts every game Find my games found on a platform and still lists, those it can only
+// link aside, returning how many it adopted and the ones it couldn't. One failing doesn't stop the
+// rest.
 func (d *Downloads) AdoptFound(ctx context.Context, platformID int) (int, []AdoptFailure) {
-	games := d.FindStatus(ctx, platformID).Found
+	games := slices.DeleteFunc(d.FindStatus(ctx, platformID).Found, func(g FoundGame) bool { return g.LinkOnly })
 	d.adoptProgress(ctx, platformID, true, 0, len(games))
 	adopted := 0
 	var failed []AdoptFailure

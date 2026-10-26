@@ -15,8 +15,14 @@ import (
 // findDone runs Find my games on the SNES platform and waits for it to finish.
 func (f *downloadFixture) findDone(t *testing.T) FindStatus {
 	t.Helper()
+	return f.findWith(t, func(ctx context.Context) (FindStatus, error) { return f.downloads.FindGames(ctx, 1, false) })
+}
+
+// findWith starts a search of the SNES platform with start and waits for it to finish.
+func (f *downloadFixture) findWith(t *testing.T, start func(context.Context) (FindStatus, error)) FindStatus {
+	t.Helper()
 	ctx := context.Background()
-	if _, err := f.downloads.FindGames(ctx, 1); err != nil {
+	if _, err := start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -126,7 +132,7 @@ func TestFindSameNamedGamesThatMatch(t *testing.T) {
 	if _, owned, _ := f.owned.Owned(ctx, 1); !owned {
 		t.Fatal("not adopted")
 	}
-	if _, err := f.downloads.FindGames(ctx, 2); kindOf(err) != domain.KindCantDownload {
+	if _, err := f.downloads.FindGames(ctx, 2, false); kindOf(err) != domain.KindCantDownload {
 		t.Fatalf("platform without a folder: %v", err)
 	}
 }
@@ -223,5 +229,68 @@ func TestFoundAndLinkedStaysOnDeck(t *testing.T) {
 	}
 	if _, err := f.downloads.Queue(ctx, 1); kindOf(err) != domain.KindTargetExists {
 		t.Fatalf("queue: %v", err)
+	}
+}
+
+// RomM hashes a game it keeps as an archive by a file inside it, of a size it doesn't give. Only a
+// full search finds that file extracted, and since the rest of the archive's files are unknown,
+// the game can be linked but not adopted.
+func TestFullSearchFindsAnArchivedGameExtracted(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	ctx := context.Background()
+	f.server.mu.Lock()
+	f.server.files[1][0] = domain.ROMFile{ID: 10, Name: "Chrono Trigger (USA).7z", SizeBytes: 3, Category: "game", SHA1: sha1Hex(string(chrono))}
+	f.server.mu.Unlock()
+	f.snesFile(t, "Chrono/ct.sfc", chrono)
+	f.snesFile(t, "Chrono/readme.txt", []byte("notes"))
+	folder := filepath.Join(f.snes, "Chrono")
+
+	if s := f.findDone(t); len(s.Found) != 0 {
+		t.Fatalf("a search by size found %+v", s.Found)
+	}
+	s := f.findWith(t, func(ctx context.Context) (FindStatus, error) { return f.downloads.FindGames(ctx, 1, true) })
+	if !s.Full || len(s.Found) != 1 || s.Found[0].ROMID != 1 || s.Found[0].Path != folder || !s.Found[0].LinkOnly {
+		t.Fatalf("status %+v", s)
+	}
+	if c := f.checked(t, 1); c.Matches || c.Why != whyLinkOnly {
+		t.Fatalf("check %+v", c)
+	}
+	if err := f.downloads.Adopt(ctx, 1); kindOf(err) != domain.KindInvalidInput {
+		t.Fatalf("adopt: %v", err)
+	}
+	if adopted, failed := f.downloads.AdoptFound(ctx, 1); adopted != 0 || len(failed) != 0 {
+		t.Fatalf("adopt all: %d, %v", adopted, failed)
+	}
+	if err := f.downloads.Link(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if g, ok, _ := f.owned.Linked(ctx, 1); !ok || g.Path != folder {
+		t.Fatalf("link %+v", g)
+	}
+}
+
+// A search for one game looks for it alone, and leaves what earlier searches found of the others.
+func TestFindOneGame(t *testing.T) {
+	f := newDownloadFixture(t, 2)
+	f.server.files[1][0].SHA1 = sha1Hex(string(chrono))
+	f.server.mu.Lock()
+	f.server.files[2][0] = domain.ROMFile{ID: 20, Name: "Super Metroid (USA).zip", SizeBytes: 3, Category: "game", SHA1: sha1Hex(string(metroid))}
+	f.server.mu.Unlock()
+	chronoPath := f.snesFile(t, "ct.sfc", chrono)
+	smPath := f.snesFile(t, "sm/sm.sfc", metroid)
+
+	if s := f.findDone(t); len(s.Found) != 1 || s.Found[0].Path != chronoPath {
+		t.Fatalf("found %+v", s.Found)
+	}
+	s := f.findWith(t, func(ctx context.Context) (FindStatus, error) { return f.downloads.FindGame(ctx, 2) })
+	if s.ROMID != 2 || !s.Full || s.Total != 1 {
+		t.Fatalf("status %+v", s)
+	}
+	got := map[int]string{}
+	for _, g := range s.Found {
+		got[g.ROMID] = g.Path
+	}
+	if len(got) != 2 || got[1] != chronoPath || got[2] != filepath.Dir(smPath) {
+		t.Fatalf("found %+v", got)
 	}
 }

@@ -82,7 +82,15 @@ func downloadRoutes(s *Server, downloads *app.Downloads) {
 	})
 
 	Register(s, "find_games", func(ctx context.Context, p schema.FindGamesParams) (schema.FindGamesStatus, error) {
-		status, err := downloads.FindGames(ctx, p.PlatformID)
+		status, err := downloads.FindGames(ctx, p.PlatformID, p.Full)
+		if err != nil {
+			return schema.FindGamesStatus{}, wireError(err)
+		}
+		return toWireFind(status), nil
+	})
+
+	Register(s, "find_game", func(ctx context.Context, p schema.FindGameParams) (schema.FindGamesStatus, error) {
+		status, err := downloads.FindGame(ctx, p.ID)
 		if err != nil {
 			return schema.FindGamesStatus{}, wireError(err)
 		}
@@ -188,11 +196,11 @@ func findEvents(s *Server) app.FindListener {
 
 func toWireFind(f app.FindStatus) schema.FindGamesStatus {
 	out := schema.FindGamesStatus{
-		PlatformID: f.PlatformID, Running: f.Running, Done: f.Done, Hashed: f.Hashed, Total: f.Total, Found: []schema.FoundGame{},
-		Adopting: f.Adopting, Adopted: f.Adopted, AdoptTotal: f.AdoptTotal,
+		PlatformID: f.PlatformID, Running: f.Running, Done: f.Done, Hashed: f.Hashed, Total: f.Total, Full: f.Full, ROMID: f.ROMID,
+		Found: []schema.FoundGame{}, Adopting: f.Adopting, Adopted: f.Adopted, AdoptTotal: f.AdoptTotal,
 	}
 	for _, g := range f.Found {
-		out.Found = append(out.Found, schema.FoundGame{ID: g.ROMID, Name: g.Name, Path: g.Path})
+		out.Found = append(out.Found, schema.FoundGame{ID: g.ROMID, Name: g.Name, Path: g.Path, LinkOnly: g.LinkOnly})
 	}
 	if f.Problem != nil {
 		out.Problem = problemOf(f.Problem)

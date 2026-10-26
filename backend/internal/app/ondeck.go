@@ -101,6 +101,8 @@ type adoptFile struct {
 	info os.FileInfo
 	file domain.ROMFile
 	sums domain.FileSums
+	// member is set when the file holds the one file inside RomM's archive that RomM hashed.
+	member bool
 }
 
 // onDeck returns where each game with a User-managed file in its way has it, by ROM id. Games the
@@ -158,11 +160,15 @@ func (d *Downloads) scan(ctx context.Context, platform domain.Platform) (map[int
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(entries))
+	var files, folders []string
 	for _, e := range entries {
-		names = append(names, e.Name())
+		if e.IsDir() {
+			folders = append(folders, e.Name())
+		} else {
+			files = append(files, e.Name())
+		}
 	}
-	folder := domain.NewRomFolder(names)
+	folder := domain.NewRomFolder(files, folders)
 	occupants := map[int]string{}
 	for offset := 0; ; offset += batchPage {
 		page, err := d.catalog.ROMs(ctx, platform.ID, nil, domain.SortName, offset, batchPage)
@@ -296,6 +302,11 @@ func (d *Downloads) onDeckJob(ctx context.Context, id int) (*onDeckJob, error) {
 	d.checks[id] = j
 	// Find my games compared what it found already, and matched it by hash, wherever it lies.
 	if g, ok := d.found[id]; ok && g.Path == path {
+		if g.LinkOnly {
+			j.why = whyLinkOnly
+			close(j.done)
+			return j, nil
+		}
 		j.files, j.matches = g.files, true
 		if !j.stale() {
 			close(j.done)
@@ -309,6 +320,9 @@ func (d *Downloads) onDeckJob(ctx context.Context, id int) (*onDeckJob, error) {
 	}()
 	return j, nil
 }
+
+// whyLinkOnly is why a game found by one file of RomM's archive can't be adopted.
+const whyLinkOnly = "RomM keeps this game as an archive and hashes only one file inside it, so the rest of these files can't be compared with RomM's."
 
 // stale says whether any file the job hashed changed since.
 func (j *onDeckJob) stale() bool {

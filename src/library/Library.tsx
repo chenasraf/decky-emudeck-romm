@@ -39,7 +39,7 @@ import {
   FaTrashAlt,
 } from 'react-icons/fa'
 
-import { call, restartBackend } from '../backend'
+import { call, onEvent, restartBackend } from '../backend'
 import { usePlatformBios } from '../bios'
 import { formatSize, LIBRARY_ROUTE, refreshLibrary, timeAgo, useCatalog } from '../catalog'
 import { useConnection } from '../connection'
@@ -51,6 +51,7 @@ import type {
   CollectionSummary,
   DeleteGamesParams,
   DownloadItem,
+  FindGamesStatus,
   Game,
   GameFilter,
   GameState,
@@ -1453,6 +1454,8 @@ export interface GameDetail {
   notice?: string
   /** What the page says when RomM no longer has the game. */
   removed?: string
+  /** How the last search of this Deck for the game ended, when it found nothing or failed. */
+  searchNote?: string
   error: RpcError | null
 }
 
@@ -1491,17 +1494,33 @@ function useOnDeckCheck(id: number, state: GameState | undefined, reload: number
   return check?.id === id && state === 'on_deck' ? check : null
 }
 
+/** The search of this Deck for one game, as its platform's Find my games reports it. */
+function useGameSearch(id: number, platformId: number | undefined) {
+  const [status, setStatus] = useState<FindGamesStatus | null>(null)
+
+  useEffect(() => {
+    if (platformId === undefined) return
+    return onEvent('find_games', (s) => {
+      if (s.platformId === platformId) setStatus(s)
+    })
+  }, [platformId])
+
+  return status?.romId === id ? status : null
+}
+
 /** A game and what can be done with it, both pages' shared view of it. */
 export function useGameDetail(id: number): GameDetail {
   const downloads = useDownloads()
   const [game, setGame] = useState<Game | null>(null)
   const [error, setError] = useState<RpcError | null>(null)
   const [busy, setBusy] = useState(false)
+  const search = useGameSearch(id, game?.platformId)
+  const searching = search?.running ?? false
 
-  // Reloads when a download ends, which may be this game's.
+  // Reloads when a download ends, which may be this game's, and when a search for it ends.
   useEffect(() => {
     call('get_game', { id }).then(setGame, (err: unknown) => setError(asRpcError(err)))
-  }, [id, downloads.ended])
+  }, [id, downloads.ended, searching])
 
   const download = downloads.items.find((d) => d.id === id)
   const state = download?.state ?? game?.state
@@ -1550,6 +1569,11 @@ export function useGameDetail(id: number): GameDetail {
     switch (state) {
       case 'on_romm':
         actions.push({ label: 'Download', run: get, disabled: busy || downloadOff })
+        actions.push({
+          label: 'Search this Deck',
+          run: () => void act(() => call('find_game', { id })),
+          disabled: busy || searching,
+        })
         break
       case 'queued':
       case 'downloading':
@@ -1621,17 +1645,30 @@ export function useGameDetail(id: number): GameDetail {
     }
   }
 
+  let searchNote: string | undefined
+  if (search?.problem) {
+    searchNote = `The search of this Deck stopped short: ${search.problem.message}`
+  } else if (search?.done && !searching && state === 'on_romm') {
+    searchNote = `Hashed ${search.hashed} files in ${game?.platformName ?? 'the platform'}'s ROM folder, and none of them is this game.`
+  }
+
   let stateText = state ? (STATE_LABELS[state] ?? state) : ''
-  if (download?.converting) stateText = 'Converting on RomM…'
+  if (searching && search) {
+    stateText =
+      search.total > 0
+        ? `Searching this Deck: ${search.hashed} of ${search.total} files…`
+        : 'Searching this Deck…'
+  } else if (download?.converting) stateText = 'Converting on RomM…'
   else if (download?.waitingForGame) stateText = 'Waiting for game to close'
   else if (download?.state === 'downloading') stateText = `Downloading ${percent(download)}%`
   else if (game?.removed) stateText = `${stateText} · Removed from RomM`
 
-  return { game, download, state, stateText, actions, notice, removed, error }
+  return { game, download, state, stateText, actions, notice, removed, searchNote, error }
 }
 
 export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
-  const { game, download, state, stateText, actions, notice, removed, error } = useGameDetail(id)
+  const { game, download, state, stateText, actions, notice, removed, searchNote, error } =
+    useGameDetail(id)
 
   return (
     <PanelSection title={game?.name ?? 'Game'}>
@@ -1657,6 +1694,11 @@ export function GameView({ id, onBack }: { id: number; onBack: () => void }) {
           {notice && (
             <PanelSectionRow>
               <Field label="Not downloaded by the plugin" description={notice} />
+            </PanelSectionRow>
+          )}
+          {searchNote && (
+            <PanelSectionRow>
+              <Field label="Not found on this Deck" description={searchNote} />
             </PanelSectionRow>
           )}
           {(state === 'installed' || state === 'update_available') && game.installNote && (

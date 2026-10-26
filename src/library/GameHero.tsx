@@ -63,7 +63,8 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 
 /** A game's full-screen page: its cover, what it is, where it stands, and what can be done with it. */
 export function GameHero({ id }: { id: number }) {
-  const { game, download, state, stateText, actions, notice, removed, error } = useGameDetail(id)
+  const { game, download, state, stateText, actions, notice, removed, searchNote, error } =
+    useGameDetail(id)
 
   if (!game) {
     return (
@@ -135,6 +136,7 @@ export function GameHero({ id }: { id: number }) {
         )}
         {removed && <ErrorBox>{removed}</ErrorBox>}
         {notice && <div style={{ ...muted, maxWidth: 560, wordBreak: 'break-word' }}>{notice}</div>}
+        {searchNote && <div style={{ ...muted, maxWidth: 560 }}>{searchNote}</div>}
         {error && <ErrorBox>{error.message}</ErrorBox>}
         {actions.length > 0 && (
           <Focusable style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

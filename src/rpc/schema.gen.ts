@@ -133,6 +133,7 @@ export interface Methods {
   esde_notice: Method<ESDENoticeParams, ESDENotice>;
   find_games: Method<FindGamesParams, FindGamesStatus>;
   find_games_status: Method<FindGamesStatusParams, FindGamesStatus>;
+  find_game: Method<FindGameParams, FindGamesStatus>;
   adopt_found_games: Method<AdoptFoundGamesParams, AdoptFoundGamesResult>;
   plan_download_all: Method<PlanDownloadAllParams, DownloadAllPlan>;
   download_all: Method<DownloadAllParams, DownloadAllResult>;
@@ -915,13 +916,23 @@ export interface IgnoreUpdateResult {
 /**
  * FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
  * already there, under RomM's names or others. It changes nothing: what it finds becomes on_deck,
- * for adopt_game, adopt_found_games or link_game.
+ * for adopt_game, adopt_found_games or link_game. Full hashes every file there, not only those of a
+ * size one of RomM's files has, which finds the extracted files of games RomM keeps as archives and
+ * takes far longer.
  */
 export interface FindGamesParams {
   platformId: number /* int */;
+  full: boolean;
 }
 export interface FindGamesStatusParams {
   platformId: number /* int */;
+}
+/**
+ * FindGameParams names the game a full search of its platform's ROM folder looks for, alone. Its
+ * progress and answer come as the platform's find_games status, with romId set to it.
+ */
+export interface FindGameParams {
+  id: number /* int */;
 }
 /**
  * FindGamesStatus is how a platform's Find my games stands.
@@ -938,6 +949,14 @@ export interface FindGamesStatus {
    */
   hashed: number /* int */;
   total: number /* int */;
+  /**
+   * Full is set when the run hashes every file.
+   */
+  full: boolean;
+  /**
+   * ROMID is the one game the run looks for, absent when it looks for all of the platform's.
+   */
+  romId?: number /* int */;
   /**
    * Found are the games found that are still neither adopted nor linked, by name.
    */
@@ -964,9 +983,15 @@ export interface FoundGame {
    * Path is the file or folder holding it.
    */
   path: string;
+  /**
+   * LinkOnly is set when it was found by the one file RomM hashed inside its archive of the game,
+   * so it can be linked but not adopted.
+   */
+  linkOnly: boolean;
 }
 /**
- * AdoptFoundGamesParams adopts every game a platform's Find my games found and still lists.
+ * AdoptFoundGamesParams adopts every game a platform's Find my games found and still lists, those
+ * it can only link aside.
  */
 export interface AdoptFoundGamesParams {
   platformId: number /* int */;

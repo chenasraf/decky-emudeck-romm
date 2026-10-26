@@ -109,6 +109,7 @@ type Methods struct {
 	ESDENotice          Method[ESDENoticeParams, ESDENotice]                         `json:"esde_notice"`
 	FindGames           Method[FindGamesParams, FindGamesStatus]                     `json:"find_games"`
 	FindGamesStatus     Method[FindGamesStatusParams, FindGamesStatus]               `json:"find_games_status"`
+	FindGame            Method[FindGameParams, FindGamesStatus]                      `json:"find_game"`
 	AdoptFoundGames     Method[AdoptFoundGamesParams, AdoptFoundGamesResult]         `json:"adopt_found_games"`
 	PlanDownloadAll     Method[PlanDownloadAllParams, DownloadAllPlan]               `json:"plan_download_all"`
 	DownloadAll         Method[DownloadAllParams, DownloadAllResult]                 `json:"download_all"`
@@ -739,13 +740,22 @@ type IgnoreUpdateResult struct{}
 
 // FindGamesParams names the platform whose ROM folder Find my games hashes, to find RomM's games
 // already there, under RomM's names or others. It changes nothing: what it finds becomes on_deck,
-// for adopt_game, adopt_found_games or link_game.
+// for adopt_game, adopt_found_games or link_game. Full hashes every file there, not only those of a
+// size one of RomM's files has, which finds the extracted files of games RomM keeps as archives and
+// takes far longer.
 type FindGamesParams struct {
-	PlatformID int `json:"platformId"`
+	PlatformID int  `json:"platformId"`
+	Full       bool `json:"full"`
 }
 
 type FindGamesStatusParams struct {
 	PlatformID int `json:"platformId"`
+}
+
+// FindGameParams names the game a full search of its platform's ROM folder looks for, alone. Its
+// progress and answer come as the platform's find_games status, with romId set to it.
+type FindGameParams struct {
+	ID int `json:"id"`
 }
 
 // FindGamesStatus is how a platform's Find my games stands.
@@ -757,6 +767,10 @@ type FindGamesStatus struct {
 	// Hashed and Total count the files a run hashes.
 	Hashed int `json:"hashed"`
 	Total  int `json:"total"`
+	// Full is set when the run hashes every file.
+	Full bool `json:"full"`
+	// ROMID is the one game the run looks for, absent when it looks for all of the platform's.
+	ROMID int `json:"romId,omitempty"`
 	// Found are the games found that are still neither adopted nor linked, by name.
 	Found []FoundGame `json:"found"`
 	// Problem says why the last run stopped short.
@@ -774,9 +788,13 @@ type FoundGame struct {
 	Name string `json:"name"`
 	// Path is the file or folder holding it.
 	Path string `json:"path"`
+	// LinkOnly is set when it was found by the one file RomM hashed inside its archive of the game,
+	// so it can be linked but not adopted.
+	LinkOnly bool `json:"linkOnly"`
 }
 
-// AdoptFoundGamesParams adopts every game a platform's Find my games found and still lists.
+// AdoptFoundGamesParams adopts every game a platform's Find my games found and still lists, those
+// it can only link aside.
 type AdoptFoundGamesParams struct {
 	PlatformID int `json:"platformId"`
 }
