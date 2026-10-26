@@ -26,22 +26,29 @@ func (f ROMFile) Matches(sums FileSums) bool {
 // RomFolder is the entries of a ROM folder, indexed to find what sits where a game would go.
 type RomFolder struct {
 	names map[string]bool
-	// stems maps each entry's name without its extension to the entry; archives maps it for the
-	// archives only.
+	// stems maps each entry's name without its extension, and each folder's whole name too, to the
+	// entry; archives maps it for the archives only.
 	stems    map[string]string
 	archives map[string]string
 }
 
-// NewRomFolder indexes the entry names of a ROM folder.
-func NewRomFolder(names []string) RomFolder {
+// NewRomFolder indexes the names of a ROM folder's files and folders.
+func NewRomFolder(files, folders []string) RomFolder {
 	f := RomFolder{names: map[string]bool{}, stems: map[string]string{}, archives: map[string]string{}}
-	for _, n := range names {
+	for _, n := range files {
 		f.names[n] = true
 		stem := strings.TrimSuffix(n, filepath.Ext(n))
 		f.stems[stem] = n
 		if IsArchive(n) {
 			f.archives[stem] = n
 		}
+	}
+	// A folder may take an extension, as a game's .m3u folder does, or have a dot that's part of its
+	// name, as in "Game (v1.1)": it's indexed both ways.
+	for _, n := range folders {
+		f.names[n] = true
+		f.stems[strings.TrimSuffix(n, filepath.Ext(n))] = n
+		f.stems[n] = n
 	}
 	return f
 }
