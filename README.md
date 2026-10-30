@@ -46,6 +46,12 @@ To skip the download, enter this address under **Install Plugin from URL** in th
 and press **Install**:
 
 ```
+https://decky-romm.casraf.dev/latest.zip
+```
+
+Or:
+
+```
 https://github.com/chenasraf/decky-emudeck-romm/releases/latest/download/decky-emudeck-romm.zip
 ```
 
