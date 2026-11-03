@@ -20,6 +20,10 @@ and how many of this Deck's states RomM keeps. See [Save states](save-sync.md#sa
 Per-platform choices, **Install to** and **Keep archives**, are in each platform's list. See
 [Downloading games](downloads.md).
 
+**Debug logging**, off by default, makes the plugin log every request it makes to RomM and why each
+one failed, in `~/homebrew/logs/decky-emudeck-romm/`. It's there even before you sign in. Turn it on
+when reporting a problem, then do what went wrong again so the log shows it.
+
 ## The server
 
 **Server settings** opens the server page:

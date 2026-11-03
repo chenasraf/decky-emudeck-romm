@@ -22,6 +22,7 @@ type Services struct {
 	Servers    *app.ServerSwitch
 	Media      *app.Media
 	Saves      *app.Saves
+	Logging    *app.Logging
 	// RestoreState puts back the newest state.db backup this version reads. It's nil unless
 	// state.db was refused as newer, the only time it's closed and may be replaced.
 	RestoreState func() error
@@ -33,7 +34,7 @@ func Routes(s *Server, version string, svc Services) {
 	catalogRoutes(s, svc.Catalog, svc.Downloads)
 	downloadRoutes(s, svc.Downloads)
 	biosRoutes(s, svc.BIOS)
-	preferenceRoutes(s, svc.BIOS, svc.Games, svc.Media, svc.Saves)
+	preferenceRoutes(s, svc.BIOS, svc.Games, svc.Media, svc.Saves, svc.Logging)
 	coverRoutes(s, svc.Covers)
 	esdeRoutes(s, svc.ESDE)
 	saveRoutes(s, svc.Saves)

@@ -1054,6 +1054,8 @@ type Preferences struct {
 	ESDEMedia bool `json:"esdeMedia"`
 	// States is how save states sync, for games that don't set their own.
 	States StateSettings `json:"states"`
+	// DebugLogs writes the backend's debug lines to Decky's log.
+	DebugLogs bool `json:"debugLogs"`
 }
 
 // SetPreferencesParams changes the preferences it sets, leaving the rest.
@@ -1062,7 +1064,8 @@ type SetPreferencesParams struct {
 	WaitForGames *bool `json:"waitForGames,omitempty"`
 	ESDEMedia    *bool `json:"esdeMedia,omitempty"`
 	// States changes the state settings it sets.
-	States *StatePrefs `json:"states,omitempty"`
+	States    *StatePrefs `json:"states,omitempty"`
+	DebugLogs *bool       `json:"debugLogs,omitempty"`
 }
 
 // StateSettings is how a game's save states sync.

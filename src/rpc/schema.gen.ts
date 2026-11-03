@@ -1330,6 +1330,10 @@ export interface Preferences {
    * States is how save states sync, for games that don't set their own.
    */
   states: StateSettings;
+  /**
+   * DebugLogs writes the backend's debug lines to Decky's log.
+   */
+  debugLogs: boolean;
 }
 /**
  * SetPreferencesParams changes the preferences it sets, leaving the rest.
@@ -1342,6 +1346,7 @@ export interface SetPreferencesParams {
    * States changes the state settings it sets.
    */
   states?: StatePrefs;
+  debugLogs?: boolean;
 }
 /**
  * StateSettings is how a game's save states sync.

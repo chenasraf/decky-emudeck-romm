@@ -36,11 +36,12 @@ func biosRoutes(s *Server, bios *app.BIOS) {
 	})
 }
 
-func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games, media *app.Media, saves *app.Saves) {
+func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games, media *app.Media, saves *app.Saves, logging *app.Logging) {
 	current := func() schema.Preferences {
 		return schema.Preferences{
 			AutoBIOS: bios.AutoDownload(), WaitForGames: games.WaitForGames(), ESDEMedia: media.Enabled(),
-			States: toWireStateSettings(saves.GlobalStateSettings()),
+			States:    toWireStateSettings(saves.GlobalStateSettings()),
+			DebugLogs: logging.Debug(),
 		}
 	}
 
@@ -66,6 +67,11 @@ func preferenceRoutes(s *Server, bios *app.BIOS, games *app.Games, media *app.Me
 		}
 		if p.States != nil {
 			if err := saves.SetGlobalStateSettings(fromWireStatePrefs(*p.States)); err != nil {
+				return schema.Preferences{}, wireError(err)
+			}
+		}
+		if p.DebugLogs != nil {
+			if err := logging.SetDebug(*p.DebugLogs); err != nil {
 				return schema.Preferences{}, wireError(err)
 			}
 		}

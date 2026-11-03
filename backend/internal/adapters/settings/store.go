@@ -48,6 +48,8 @@ type fileSettings struct {
 	// ESDEMedia copies a downloaded game's cover and screenshot into ES-DE's media folder; unset
 	// means on.
 	ESDEMedia *bool `json:"esdeMedia,omitempty"`
+	// DebugLogs writes the backend's debug lines to Decky's log; unset means off.
+	DebugLogs bool `json:"debugLogs,omitempty"`
 	// States is how save states sync, for games that don't set their own; unset fields mean
 	// domain.DefaultStateSettings.
 	States *fileStates `json:"states,omitempty"`
@@ -119,6 +121,26 @@ func (s *Store) SetESDEMedia(on bool) error {
 		return err
 	}
 	f.ESDEMedia = &on
+	return s.save(f)
+}
+
+// DebugLogs says whether the backend logs its debug lines.
+func (s *Store) DebugLogs() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	return err == nil && f.DebugLogs
+}
+
+// SetDebugLogs turns the backend's debug lines on or off.
+func (s *Store) SetDebugLogs(on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	f.DebugLogs = on
 	return s.save(f)
 }
 

@@ -169,4 +169,5 @@ Deck.
 ### Where do I report a bug?
 
 On the [issue tracker](https://github.com/chenasraf/decky-emudeck-romm/issues). Decky's logs, found
-in `~/homebrew/logs/decky-emudeck-romm/`, help track problems down.
+in `~/homebrew/logs/decky-emudeck-romm/`, help track problems down. Turn on **Settings → Debug
+logging** and do what went wrong again before sending them, so they show the details.

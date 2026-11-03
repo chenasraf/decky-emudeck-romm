@@ -44,7 +44,8 @@ func main() {
 	}
 
 	// stdout carries only the protocol; logs go to stderr, which main.py forwards to decky.logger.
-	level := slog.LevelInfo
+	// The Debug logging setting changes the level while the backend runs.
+	level := new(slog.LevelVar)
 	if v := os.Getenv("BACKEND_LOG_LEVEL"); v != "" {
 		if err := level.UnmarshalText([]byte(v)); err != nil {
 			fmt.Fprintf(os.Stderr, "ignoring BACKEND_LOG_LEVEL=%q: %v\n", v, err)
@@ -64,20 +65,21 @@ func main() {
 		return
 	}
 
-	if err := run(log); err != nil {
+	if err := run(log, level); err != nil {
 		log.Error("exiting", "err", err)
 		os.Exit(1)
 	}
 	log.Info("stopped")
 }
 
-func run(log *slog.Logger) error {
+func run(log *slog.Logger, level *slog.LevelVar) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// Decky exports the plugin's dirs to the plugin process, which passes them down.
 	settingsDir := os.Getenv("DECKY_PLUGIN_SETTINGS_DIR")
 	store := settings.New(settingsDir)
+	logging := app.NewLogging(level, store, log)
 	identity := system.NewIdentity(settingsDir)
 	rommLog := log.With("component", "romm")
 	dial := func(server domain.Server, token string) app.RomM {
@@ -208,7 +210,7 @@ func run(log *slog.Logger) error {
 	}
 	rpc.Routes(srv, version, rpc.Services{
 		Connection: conn, Install: install, Catalog: catalog, Downloads: downloads, BIOS: bios, Games: games, Covers: coverArt, Servers: servers, ESDE: esde, Media: media,
-		Saves: saves, RestoreState: restoreState,
+		Saves: saves, Logging: logging, RestoreState: restoreState,
 	})
 	go conn.Watch(ctx, connectionCheckInterval)
 	go downloads.Resume(ctx)
@@ -227,7 +229,7 @@ func run(log *slog.Logger) error {
 	if err := srv.Notify("ready", schema.Ready{Version: version, Protocol: schema.ProtocolVersion}); err != nil {
 		return fmt.Errorf("send ready: %w", err)
 	}
-	log.Info("started", "version", version, "protocol", schema.ProtocolVersion, "settings_dir", settingsDir)
+	log.Info("started", "version", version, "protocol", schema.ProtocolVersion, "settings_dir", settingsDir, "debug", logging.Debug())
 
 	return srv.Serve(ctx, os.Stdin)
 }

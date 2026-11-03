@@ -503,6 +503,19 @@ function SettingsSection({ onBack }: { onBack: () => void }) {
       {prefs && connection && connection.state !== 'not_set_up' && (
         <SettingsToggles prefs={prefs} setPrefs={setPrefs} />
       )}
+      {prefs && (
+        <PanelSectionRow>
+          <ToggleField
+            label="Debug logging"
+            description="Logs every request to RomM and why it failed, in ~/homebrew/logs/decky-emudeck-romm. Turn it on when reporting a problem, then do what goes wrong again."
+            checked={prefs.debugLogs}
+            onChange={(debugLogs) => {
+              setPrefs({ ...prefs, debugLogs })
+              call('set_preferences', { debugLogs }).then(setPrefs, () => setPrefs(prefs))
+            }}
+          />
+        </PanelSectionRow>
+      )}
     </PanelSection>
   )
 }

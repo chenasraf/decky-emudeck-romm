@@ -191,6 +191,20 @@ func TestESDEMedia(t *testing.T) {
 	}
 }
 
+func TestDebugLogs(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	if s.DebugLogs() {
+		t.Fatal("debug logs are on before anyone set them")
+	}
+	if err := s.SetDebugLogs(true); err != nil {
+		t.Fatal(err)
+	}
+	if !New(dir).DebugLogs() {
+		t.Fatal("turning them on didn't stick")
+	}
+}
+
 func TestSignInNeedsToken(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
