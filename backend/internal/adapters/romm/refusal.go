@@ -24,7 +24,10 @@ type refusal struct {
 	status      int
 	server      string
 	contentType string
-	// detail is the reason RomM's API gave, empty when the body isn't RomM's.
+	// api is set when the body is RomM's API explaining the refusal.
+	api bool
+	// detail is the reason RomM's API gave, and body the start of the response; both are empty
+	// once withheld.
 	detail string
 	body   string
 }
@@ -40,8 +43,16 @@ func newRefusal(resp *http.Response, body []byte) refusal {
 		Detail any `json:"detail"`
 	}
 	if json.Unmarshal(body, &api) == nil && api.Detail != nil {
+		r.api = true
 		r.detail = fmt.Sprint(api.Detail)
 	}
+	return r
+}
+
+// withheld drops what the server said, keeping who said it. A refused request's body can carry a
+// password or a pairing code, and FastAPI's validation errors echo the input back.
+func (r refusal) withheld() refusal {
+	r.detail, r.body = "", ""
 	return r
 }
 
@@ -51,16 +62,19 @@ func readRefusal(resp *http.Response) refusal {
 	return newRefusal(resp, body)
 }
 
-func (r refusal) fromAPI() bool { return r.detail != "" }
+func (r refusal) fromAPI() bool { return r.api }
 
 func (r refusal) attrs() []any {
-	return []any{"status", r.status, "server", r.server, "content_type", r.contentType, "detail", r.detail, "body", r.body}
+	return []any{"status", r.status, "server", r.server, "content_type", r.contentType, "from_api", r.api, "detail", r.detail, "body", r.body}
 }
 
 func (r refusal) String() string {
 	from := "not from RomM's API"
-	if r.fromAPI() {
+	switch {
+	case r.api && r.detail != "":
 		from = "RomM: " + r.detail
+	case r.api:
+		from = "from RomM's API"
 	}
 	if r.server != "" {
 		return fmt.Sprintf("status %d from %s (%s)", r.status, r.server, from)

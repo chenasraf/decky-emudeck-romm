@@ -391,6 +391,9 @@ func (c *Client) exchange(ctx context.Context, client *http.Client, limit int64,
 	if resp.StatusCode >= http.StatusBadRequest {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, limit))
 		r := newRefusal(resp, data)
+		if in != nil {
+			r = r.withheld()
+		}
 		if r.status == http.StatusForbidden {
 			c.log.Warn("request refused", append([]any{"method", method, "url", c.base + path}, r.attrs()...)...)
 		} else {

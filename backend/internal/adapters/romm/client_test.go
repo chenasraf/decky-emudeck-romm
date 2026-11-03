@@ -1,12 +1,15 @@
 package romm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -342,5 +345,41 @@ func TestApproveOwnDeviceAuth(t *testing.T) {
 	}
 	if err := c.ApproveDeviceAuth(context.Background(), "GONE2345", scopes); err == nil {
 		t.Fatal("want an error for an expired pairing")
+	}
+}
+
+// A refused request that sent a body logs who refused it but not what they said, which can echo
+// the body back; a refused GET logs RomM's reason.
+func TestRefusalLogWithholdsEchoedSecrets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/token" {
+			_ = r.ParseForm()
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": []map[string]any{{"loc": []string{"body", "password"}, "input": r.PostForm.Get("password")}}})
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"detail":"Forbidden"}`))
+	}))
+	defer srv.Close()
+	var out bytes.Buffer
+	c := New(domain.Server{URL: srv.URL}, "rmm_x", ver).
+		WithLogger(slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	_, _ = c.PasswordGrant(context.Background(), "admin", "hunter2-secret", []string{"me.write"})
+	if strings.Contains(out.String(), "hunter2-secret") {
+		t.Fatalf("password in the log: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "status=422") || !strings.Contains(out.String(), "from_api=true") {
+		t.Fatalf("refusal not logged: %s", out.String())
+	}
+
+	out.Reset()
+	if _, err := c.Platforms(context.Background()); kindOf(err) != domain.KindMissingPermission {
+		t.Fatalf("platforms: %v", err)
+	}
+	if !strings.Contains(out.String(), "detail=Forbidden") {
+		t.Fatalf("GET refusal lost its detail: %s", out.String())
 	}
 }
