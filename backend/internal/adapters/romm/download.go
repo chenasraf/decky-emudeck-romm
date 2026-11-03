@@ -170,7 +170,7 @@ func (c *Client) askConverted(ctx context.Context, romID, fileID int, name, form
 		return domain.ServedFile{}, 0, unreachable(err)
 	}
 	// Only the headers matter; a server that ignores Range would send the whole file.
-	_ = resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode == http.StatusAccepted:
@@ -186,10 +186,8 @@ func (c *Client) askConverted(ctx context.Context, romID, fileID int, name, form
 		return domain.ServedFile{}, 0, &domain.Error{Kind: domain.KindNotFound, Message: "That game is no longer on RomM. Refresh the library."}
 	case resp.StatusCode >= http.StatusInternalServerError:
 		return domain.ServedFile{}, 0, unreachable(fmt.Errorf("server answered %d", resp.StatusCode))
-	case resp.StatusCode != http.StatusPartialContent:
-		if err := statusError("download the game", resp.StatusCode, nil); err != nil {
-			return domain.ServedFile{}, 0, err
-		}
+	case resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK:
+		return domain.ServedFile{}, 0, c.contentRefused(c.base+path, resp)
 	}
 	served := domain.ServedFile{Name: dispositionName(resp.Header.Get("Content-Disposition"), name), Size: resp.ContentLength}
 	if resp.StatusCode == http.StatusPartialContent {
@@ -244,10 +242,8 @@ func (c *Client) fetchContent(ctx context.Context, path string, from int64, open
 	case resp.StatusCode >= http.StatusInternalServerError:
 		// A proxy in front of a restarting server answers 502 to 504; the download is worth retrying.
 		return unreachable(fmt.Errorf("server answered %d", resp.StatusCode))
-	default:
-		if err := statusError("download the game", resp.StatusCode, nil); err != nil {
-			return err
-		}
+	case resp.StatusCode != http.StatusOK:
+		return c.contentRefused(c.base+path, resp)
 	}
 	w, err := open(offset)
 	if err != nil {

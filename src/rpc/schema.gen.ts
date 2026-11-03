@@ -47,6 +47,11 @@ export const ErrorMissingPermission: ErrorKind = "missing_permission";
 export const ErrorSignedOut: ErrorKind = "signed_out";
 export const ErrorNotFound: ErrorKind = "not_found";
 /**
+ * ErrorServerRefused means the server refused a file without RomM's API saying why: its web
+ * server couldn't read the file, or a proxy in front of it turned the request away.
+ */
+export const ErrorServerRefused: ErrorKind = "server_refused";
+/**
  * ErrorNewerData means the plugin's data is from a newer version of the plugin.
  */
 export const ErrorNewerData: ErrorKind = "newer_data";

@@ -20,6 +20,10 @@ func TestCover(t *testing.T) {
 			_, _ = w.Write(png)
 		case "/broken":
 			w.WriteHeader(http.StatusBadGateway)
+		case "/unreadable":
+			w.Header().Set("Server", "nginx")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte("<html><title>403 Forbidden</title></html>"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -36,6 +40,10 @@ func TestCover(t *testing.T) {
 	}
 	if _, err := c.Cover(context.Background(), "/broken"); kindOf(err) != domain.KindUnreachable {
 		t.Fatalf("bad gateway: %v", err)
+	}
+	// The error says who refused, for the log.
+	if _, err := c.Cover(context.Background(), "/unreadable"); err == nil || err.Error() != "cover: status 403 from nginx (not from RomM's API)" {
+		t.Fatalf("forbidden: %v", err)
 	}
 }
 

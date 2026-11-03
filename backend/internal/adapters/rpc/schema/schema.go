@@ -41,6 +41,9 @@ const (
 	ErrorMissingPermission  ErrorKind = "missing_permission"
 	ErrorSignedOut          ErrorKind = "signed_out"
 	ErrorNotFound           ErrorKind = "not_found"
+	// ErrorServerRefused means the server refused a file without RomM's API saying why: its web
+	// server couldn't read the file, or a proxy in front of it turned the request away.
+	ErrorServerRefused ErrorKind = "server_refused"
 	// ErrorNewerData means the plugin's data is from a newer version of the plugin.
 	ErrorNewerData ErrorKind = "newer_data"
 	// ErrorCantDownload means the game can't be placed: no EmuDeck, no folder for its platform, or

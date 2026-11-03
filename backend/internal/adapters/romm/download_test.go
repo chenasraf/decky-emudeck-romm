@@ -195,6 +195,36 @@ func TestDownloadServerErrorIsRetryable(t *testing.T) {
 	}
 }
 
+func TestDownloadForbidden(t *testing.T) {
+	for name, tc := range map[string]struct {
+		contentType, body string
+		want              domain.Kind
+	}{
+		"by RomM's API": {"application/json", `{"detail":"Forbidden"}`, domain.KindMissingPermission},
+		"by nginx":      {"text/html", "<html><head><title>403 Forbidden</title></head><body><center><h1>403 Forbidden</h1></center><hr><center>nginx</center></body></html>", domain.KindServerRefused},
+		"with no body":  {"", "", domain.KindServerRefused},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.contentType != "" {
+					w.Header().Set("Content-Type", tc.contentType)
+				}
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			c := New(domain.Server{URL: srv.URL}, "rmm_x", ver)
+			if err := c.DownloadFile(context.Background(), 1, "x", 0, into(&bytes.Buffer{})); kindOf(err) != tc.want {
+				t.Fatalf("download: want %s, got %v", tc.want, err)
+			}
+			if _, err := c.Convert(context.Background(), 1, 2, "x.bin", "chd"); kindOf(err) != tc.want {
+				t.Fatalf("convert: want %s, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
 func TestDownloadCutOff(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(1000))

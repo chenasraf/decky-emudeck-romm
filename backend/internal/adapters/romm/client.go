@@ -388,6 +388,20 @@ func (c *Client) exchange(ctx context.Context, client *http.Client, limit int64,
 	defer func() { _ = resp.Body.Close() }()
 	c.log.Debug("request", append(attrs, "status", resp.StatusCode)...)
 
+	if resp.StatusCode >= http.StatusBadRequest {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, limit))
+		r := newRefusal(resp, data)
+		if r.status == http.StatusForbidden {
+			c.log.Warn("request refused", append([]any{"method", method, "url", c.base + path}, r.attrs()...)...)
+		} else {
+			c.log.Debug("request refused", append([]any{"method", method, "url", c.base + path}, r.attrs()...)...)
+		}
+		if out != nil {
+			// An error body that isn't JSON leaves out empty, which callers read as "no detail".
+			_ = json.Unmarshal(data, out)
+		}
+		return resp.StatusCode, nil
+	}
 	if out == nil {
 		return resp.StatusCode, nil
 	}

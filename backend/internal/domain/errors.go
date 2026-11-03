@@ -20,6 +20,9 @@ const (
 	KindMissingPermission  Kind = "missing_permission"
 	KindSignedOut          Kind = "signed_out"
 	KindNotFound           Kind = "not_found"
+	// KindServerRefused means the server refused a file without RomM's API saying why: its web
+	// server couldn't read the file, or a proxy in front of it turned the request away.
+	KindServerRefused Kind = "server_refused"
 	// KindNewerData means state.db is from a newer version of the plugin than the one running.
 	KindNewerData Kind = "newer_data"
 	// KindCantDownload means the game can't be placed: no EmuDeck, no folder for its platform, or

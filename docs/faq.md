@@ -44,6 +44,14 @@ RomM didn't grant the permissions those features need. Sign in again and allow t
 Run Steam ROM Manager to add it. Games installed to a folder marked **not in Steam ROM Manager** in
 **Install to** aren't picked up by it; choose the default folder for those.
 
+### Downloads fail with "The server refused to send the game's file"
+
+RomM's own web server sends ROM files and covers straight from its folders, and it refuses when it
+can't read them. Check that the user RomM's container runs as can read the `library` and `resources`
+folders, on a NAS through the shared folder's permissions or the container's user and group IDs. If
+RomM's web UI can download the game from the same address, turn on **Settings → Debug logging**, try
+again, and report it with the log.
+
 ### "EmuDeck wasn't found"
 
 The plugin looks for EmuDeck's `Emulation` folder in EmuDeck's settings, then in `~/Emulation`.

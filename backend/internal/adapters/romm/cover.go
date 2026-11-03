@@ -49,7 +49,10 @@ func (c *Client) Cover(ctx context.Context, path string) ([]byte, error) {
 	case resp.StatusCode >= http.StatusInternalServerError:
 		return nil, &domain.Error{Kind: domain.KindUnreachable, Message: "Couldn't reach the server.", Err: fmt.Errorf("cover: status %d", resp.StatusCode)}
 	case resp.StatusCode != http.StatusOK:
-		return nil, fmt.Errorf("cover: unexpected status %d", resp.StatusCode)
+		// A library's worth of covers fails together, so each one logs at debug.
+		r := readRefusal(resp)
+		c.log.Debug("cover refused", append([]any{"url", target}, r.attrs()...)...)
+		return nil, fmt.Errorf("cover: %s", r)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxCover+1))
 	if err != nil {
