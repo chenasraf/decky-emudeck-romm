@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.4.1...v0.5.0) (2026-11-03)
+
+
+### Features
+
+* **settings:** debug logging toggle ([a832f36](https://github.com/chenasraf/decky-emudeck-romm/commit/a832f36d2a3c0c4b713c54425ce9bb84f62ad77f))
+
+
+### Bug Fixes
+
+* **romm:** differentiate server refusals from missing permissions ([4dfb105](https://github.com/chenasraf/decky-emudeck-romm/commit/4dfb1051e3a2ee54e1412dbfd7a67a1cb1b42b70))
+* **romm:** withhold refusal bodies of requests that sent one ([8c8f95a](https://github.com/chenasraf/decky-emudeck-romm/commit/8c8f95aaa70531af643ec59ad731407f4a268c52))
+
 ## [0.4.1](https://github.com/chenasraf/decky-emudeck-romm/compare/v0.4.0...v0.4.1) (2026-10-26)
 
 
